@@ -1,0 +1,23 @@
+### Sequencing data input can be either a Illumina sequencer RunFolder (bcl)
+# runFolder : set at run time
+
+### A file listing all samples in the analysis with their barcode sequences and sample settings
+# samples : set at run time
+
+### Path to a .json file defining the reference genome
+genome : /volumes/USR2/Ryan/projects/scalebio_dcis/tools/scalemet_dcis/src/dcis_genome.json
+
+### Value set for the test dataset. Please refer to documentation for an appropriate value to set for your actual experiment
+minUniqCount: 10000
+
+### Output amethyst
+amethystOut: true
+
+### Output dedup bam
+bamDedupOut: true
+
+### Don't output:
+fastqOut: false
+trimOut: false
+covOut: false
+allcOut: false
