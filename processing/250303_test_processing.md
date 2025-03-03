@@ -1,5 +1,4 @@
-[See notebook for wet lab processing.](https://mdandersonorg-my.sharepoint.com/personal/rmulqueen_mdanderson_org/_layouts/OneNote.aspx?id=%2Fpersonal%2Frmulqueen_mdanderson_org%2FDocuments%2FmetACT&wd=target%28scalebio%20sciMETv2.one%7CD3F046A2-B151-0443-938E-82A415D420EB%2F240910%20ScaleBio%20DCIS%20Samples%7C30534461-040E-C54F-BB40-7D53F8115495%2F%29
-onenote:https://mdandersonorg-my.sharepoint.com/personal/rmulqueen_mdanderson_org/Documents/metACT/scalebio%20sciMETv2.one#240910%20ScaleBio%20DCIS%20Samples&section-id={D3F046A2-B151-0443-938E-82A415D420EB}&page-id={30534461-040E-C54F-BB40-7D53F8115495}&end)
+[See notebook for wet lab processing.](https://mdandersonorg-my.sharepoint.com/personal/rmulqueen_mdanderson_org/_layouts/OneNote.aspx?id=%2Fpersonal%2Frmulqueen_mdanderson_org%2FDocuments%2FmetACT&wd=target%28scalebio%20sciMETv2.one%7CD3F046A2-B151-0443-938E-82A415D420EB%2F240910%20ScaleBio%20DCIS%20Samples%7C30534461-040E-C54F-BB40-7D53F8115495%2F%29)
 ```bash
 
 
