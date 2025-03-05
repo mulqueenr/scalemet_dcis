@@ -101,6 +101,7 @@ def load_indexBcs(pcr_set: dict, tsv: Path) -> Dict[str, str]:
     Ryan addition:
         Sets i5 or i7 based on tsv name. Then only outputs barcodes in the i5 or i7 pcr set respectively.
         i5 is 01-13
+        i7 is A,B,C etc
     """
     bcs = {}
     if str(tsv).startswith("i5"):
@@ -113,7 +114,7 @@ def load_indexBcs(pcr_set: dict, tsv: Path) -> Dict[str, str]:
         line = line.strip().split()
         seq = line[0]
         name = line[1] if len(line) > 1 else seq
-        if idx_side == "i5":
+        if idx_side == "i7":
             if name[0] in pcr_set[idx_side]:
                 bcs[name] = seq
         else:
