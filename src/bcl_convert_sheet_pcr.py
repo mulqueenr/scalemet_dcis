@@ -321,9 +321,8 @@ def main(samplesCsv: Path, libJson: Path, runInfo: Path, splitFastq: bool, i7Set
     pcr_set=dict()
     pcr_set["i7"] = i7Set.split(",")
     pcr_set["i5"] = i5Set.split(",")
-    pcr_set["i5"] = ["0"+x if len(x)<2 for x in pcr_set["i5"]] #change from 1 to 01 format if needed
+    pcr_set["i5"] = ["0"+x if len(x)<2 else x for x in pcr_set["i5"] ] #change from 1 to 01 format if needed
     ### End Ryan's bad scripting addition ###
-
     if splitFastq and not libDef["split_on"]:
         raise Exception(
             "If using splitFastq please provide either index1 or index2"
