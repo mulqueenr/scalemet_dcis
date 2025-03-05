@@ -4,7 +4,16 @@
 
 ```bash
 #Should still only need to identify samples at the tagmentation level, and expanding the i5.txt and i7.txt should take care of itself.
+#set up directories and variables
+projDir="/volumes/USR2/Ryan/projects/scalebio_dcis"
+scalebio_nf="/volumes/USR2/Ryan/projects/scalebio_dcis/tools/ScaleMethyl" 
+params="/volumes/USR2/Ryan/projects/scalebio_dcis/tools/scalemet_dcis/src/dcis_runParams.yml"
+runDir="${projDir}/data/241007_RM_scalebio_dcis2"
+bclDir="/volumes/USR2/Ryan/projects/metact/241007_RM_scalebio_dcis2/241004_A01819_0637_BHY5MJDMXY/241004_A01819_0637_BHY5MJDMXY"
 
+samples="${runDir}/samples.csv"
+mkdir -p ${runDir}
+mkdir -p ${runDir}/logs
 
 echo """sample,barcodes,libName
 DCIS-92T,1A01-1D12,ScaleMethyl
@@ -12,37 +21,48 @@ DCIS-66T,1E01-1H12,ScaleMethyl
 DCIS-79T,2A01-2D12,ScaleMethyl
 IDC-79T,2E01-2H12,ScaleMethyl
 HBCA-19T,3A01-3D12,ScaleMethyl
-HBCA-17T,3E01-3H12,ScaleMethyl""" > ${runDir}/samples.csv
+HBCA-17T,3E01-3H12,ScaleMethyl""" > ${samples}
 
+#generate sample sheet using a modified version of bcl_convert_sheet.py to allow for pcr plate specifications.
+python ${projDir}/tools/scalemet_dcis/src/bcl_convert_sheet_pcr.py \
+samples.csv \
+${projDir}/tools/ScaleMethyl/references/lib.json \
+${bclDir}/RunInfo.xml --splitFastq \
+--i7Set A,B \
+--i5Set A,B > samplesheet.csv
+
+bcl-convert --sample-sheet samplesheet.csv \
+--bcl-input-directory ${bclDir} \
+--bcl-num-conversion-threads 4 \
+--bcl-num-compression-threads 4 \
+--bcl-num-decompression-threads 4 \
+--no-lane-splitting true \
+--output-directory ${runDir}/fastq
+
+#Make my own samplesheet and bcl-convert run.
 
 #build proper formated singularity container
-singularity build ~/singularity/scalemethyl_v1.6.sif ~/singularity/public.ecr.aws-o5l3p3e4-scale-methyl-tools@sha256-6fd63db48e8786ed1cfc17d7e3effd3fd696ccb8e5e54803959e2dcd2f794aec.img
+#singularity build ~/singularity/scalemethyl_v1.6.sif ~/singularity/public.ecr.aws-o5l3p3e4-scale-methyl-tools@sha256-6fd63db48e8786ed1cfc17d7e3effd3fd696ccb8e5e54803959e2dcd2f794aec.img
 
-#set up directories and variables
-proj_dir="/volumes/USR2/Ryan/projects/metact"
-scalebio_nf="${proj_dir}/tools2/ScaleMethyl" #tools is a symlink directory so it wasn't mounting properly for singularity
-runDir="${proj_dir}/241007_RM_scalebio_dcis2"
-genome="${proj_dir}/ref/reference/genome.json"
-fastqDir="${runDir}/241004_A01819_0637_BHY5MJDMXY/241004_A01819_0637_BHY5MJDMXY"
-samples="${runDir}/samples.csv"
-
-export SCRATCH="/volumes/USR2/Ryan/scratch/scalemet_work"
-export TMPDIR="/volumes/USR2/Ryan/scratch"
-export NXF_SINGULARITY_CACHEDIR="/volumes/USR2/Ryan/singularity"
-export SINGULARITY_BINDPATH="/volumes/seq/projects/metACT/tools/ScaleMethyl/bin" 
+export SCRATCH="/volumes/USR2/Ryan/projects/scalebio_dcis/scratch/scalemet_work"
+export TMPDIR="/volumes/USR2/Ryan/projects/scalebio_dcis/scratch"
+export NXF_SINGULARITY_CACHEDIR="/volumes/USR2/Ryan/projects/scalebio_dcis/singularity"
+export SINGULARITY_BINDPATH="/volumes/USR2/Ryan/projects/scalebio_dcis/tools/ScaleMethyl/bin" 
 
 mkdir -p $SCRATCH
 
+#add to ../tools/ScaleMethyl/modules/input_reads.nf BclConvert process
+#containerOptions "--bind ${params.outDir}/logs:/var/log/bcl-convert"
 source activate conda #(to use more recent java version)
 cd $runDir
 nextflow run ${scalebio_nf} \
 --runFolder ${fastqDir} \
 --samples ${runDir}/samples.csv \
 --outDir ${runDir} \
---genome ${genome} \
 --maxMemory 500.GB \
---maxCpus 300 \
+--maxCpus 100 \
 -profile singularity \
+-params-file ${params} \
 -w ${SCRATCH}/scalemet_work \
 -resume
 
