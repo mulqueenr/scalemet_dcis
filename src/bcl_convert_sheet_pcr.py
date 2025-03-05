@@ -104,7 +104,7 @@ def load_indexBcs(pcr_set: dict, tsv: Path) -> Dict[str, str]:
         i7 is A,B,C etc
     """
     bcs = {}
-    if str(tsv).startswith("i5"):
+    if 'i5' in str(tsv):
         idx_side = "i5"
     else: 
         idx_side = "i7"
@@ -465,7 +465,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--i5Set",
         type=str,
-        help="PCR set used in i5 (e.g. A,B,C..), comma delim",
+        help="PCR set used in i5 (e.g. 1,2..), comma delim",
     )
     args = parser.parse_args()
 

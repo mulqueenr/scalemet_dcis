@@ -30,23 +30,35 @@ HBCA-19T,3A01-3D12,ScaleMethyl
 HBCA-17T,3E01-3H12,ScaleMethyl""" > ${samples}
 
 #generate sample sheet using a modified version of bcl_convert_sheet.py to allow for pcr plate specifications.
+source activate 
 python ${projDir}/tools/scalemet_dcis/src/bcl_convert_sheet_pcr.py \
 samples.csv \
 ${projDir}/tools/ScaleMethyl/references/lib.json \
 ${bclDir}/RunInfo.xml --splitFastq \
 --i7Set A,B \
---i5Set A,B > samplesheet.csv
+--i5Set 1,2 > samplesheet.csv
 
 bcl-convert \
 --bcl-input-directory ${bclDir} \
 --output-directory ${runDir}/fastq \
---bcl-num-conversion-threads 20 \
---bcl-num-compression-threads 20 \
---bcl-num-decompression-threads 20 \
+--bcl-num-conversion-threads 50 \
+--bcl-num-compression-threads 50 \
+--bcl-num-decompression-threads 50 \
 --no-lane-splitting true \
 --sample-sheet samplesheet.csv \
 --force
 
+zcat Undetermined_S0_I1_001.fastq.gz | \
+grep -A 1 "^@" | grep -v "^@" | grep -v "^--" | \
+sort -T . --parallel=50 --buffer-size=2G | \
+uniq -c | sort -k1,1n | awk 'OFS="\t" {print $1,$2}' > initial_idx1.txt
+
+zcat Undetermined_S0_I2_001.fastq.gz | \
+grep -A 1 "^@" | grep -v "^@" | grep -v "^--" | \
+sort -T . --parallel=50 --buffer-size=2G | \
+uniq -c | sort -k1,1n | awk 'OFS="\t" {print $1,$2}' > initial_idx2.txt
+#remove empty ones
+rm -rf ./fastq/Undetermined*fastq.gz
 
 source activate conda #(to use more recent java version)
 cd $runDir
