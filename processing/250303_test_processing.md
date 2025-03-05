@@ -4,6 +4,13 @@
 
 ```bash
 #Should still only need to identify samples at the tagmentation level, and expanding the i5.txt and i7.txt should take care of itself.
+#export environment variables for working/scratch directories
+export SCRATCH="/volumes/USR2/Ryan/projects/scalebio_dcis/scratch/scalemet_work"
+export TMPDIR="/volumes/USR2/Ryan/projects/scalebio_dcis/scratch"
+export NXF_SINGULARITY_CACHEDIR="/volumes/USR2/Ryan/projects/scalebio_dcis/singularity"
+export SINGULARITY_BINDPATH="/volumes/USR2/Ryan/projects/scalebio_dcis/tools/ScaleMethyl/bin" 
+mkdir -p $SCRATCH
+
 #set up directories and variables
 projDir="/volumes/USR2/Ryan/projects/scalebio_dcis"
 scalebio_nf="/volumes/USR2/Ryan/projects/scalebio_dcis/tools/ScaleMethyl" 
@@ -11,9 +18,8 @@ params="/volumes/USR2/Ryan/projects/scalebio_dcis/tools/scalemet_dcis/src/dcis_r
 runDir="${projDir}/data/241007_RM_scalebio_dcis2"
 bclDir="/volumes/USR2/Ryan/projects/metact/241007_RM_scalebio_dcis2/241004_A01819_0637_BHY5MJDMXY/241004_A01819_0637_BHY5MJDMXY"
 
-samples="${runDir}/samples.csv"
 mkdir -p ${runDir}
-mkdir -p ${runDir}/logs
+samples="${runDir}/samples.csv"
 
 echo """sample,barcodes,libName
 DCIS-92T,1A01-1D12,ScaleMethyl
@@ -31,32 +37,22 @@ ${bclDir}/RunInfo.xml --splitFastq \
 --i7Set A,B \
 --i5Set A,B > samplesheet.csv
 
-bcl-convert --sample-sheet samplesheet.csv \
+bcl-convert \
 --bcl-input-directory ${bclDir} \
---bcl-num-conversion-threads 4 \
---bcl-num-compression-threads 4 \
---bcl-num-decompression-threads 4 \
+--output-directory ${runDir}/fastq \
+--bcl-num-conversion-threads 20 \
+--bcl-num-compression-threads 20 \
+--bcl-num-decompression-threads 20 \
 --no-lane-splitting true \
---output-directory ${runDir}/fastq
+--sample-sheet samplesheet.csv \
+--force
 
-#Make my own samplesheet and bcl-convert run.
 
-#build proper formated singularity container
-#singularity build ~/singularity/scalemethyl_v1.6.sif ~/singularity/public.ecr.aws-o5l3p3e4-scale-methyl-tools@sha256-6fd63db48e8786ed1cfc17d7e3effd3fd696ccb8e5e54803959e2dcd2f794aec.img
-
-export SCRATCH="/volumes/USR2/Ryan/projects/scalebio_dcis/scratch/scalemet_work"
-export TMPDIR="/volumes/USR2/Ryan/projects/scalebio_dcis/scratch"
-export NXF_SINGULARITY_CACHEDIR="/volumes/USR2/Ryan/projects/scalebio_dcis/singularity"
-export SINGULARITY_BINDPATH="/volumes/USR2/Ryan/projects/scalebio_dcis/tools/ScaleMethyl/bin" 
-
-mkdir -p $SCRATCH
-
-#add to ../tools/ScaleMethyl/modules/input_reads.nf BclConvert process
-#containerOptions "--bind ${params.outDir}/logs:/var/log/bcl-convert"
 source activate conda #(to use more recent java version)
 cd $runDir
+
 nextflow run ${scalebio_nf} \
---runFolder ${fastqDir} \
+--fastqDir ${runDir}/fastq \
 --samples ${runDir}/samples.csv \
 --outDir ${runDir} \
 --maxMemory 500.GB \

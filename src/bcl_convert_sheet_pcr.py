@@ -100,21 +100,25 @@ def load_indexBcs(pcr_set: dict, tsv: Path) -> Dict[str, str]:
     
     Ryan addition:
         Sets i5 or i7 based on tsv name. Then only outputs barcodes in the i5 or i7 pcr set respectively.
+        i5 is 01-13
     """
     bcs = {}
     if str(tsv).startswith("i5"):
         idx_side = "i5"
     else: 
         idx_side = "i7"
-
     for line in open(tsv):
         if line.startswith("#"):
             continue
         line = line.strip().split()
         seq = line[0]
         name = line[1] if len(line) > 1 else seq
-        if name[0] in pcr_set[idx_side]:
-            bcs[name] = seq
+        if idx_side == "i7":
+            if name[0] in pcr_set[idx_side]:
+                bcs[name] = seq
+        else:
+            if name[1:2] in pcr_set[idx_side]:
+                bcs[name] = seq    
     return bcs
 
 
@@ -317,6 +321,7 @@ def main(samplesCsv: Path, libJson: Path, runInfo: Path, splitFastq: bool, i7Set
     pcr_set=dict()
     pcr_set["i7"] = i7Set.split(",")
     pcr_set["i5"] = i5Set.split(",")
+    pcr_set["i5"] = ["0"+x if len(x)<2 for x in pcr_set["i5"]] #change from 1 to 01 format if needed
     ### End Ryan's bad scripting addition ###
 
     if splitFastq and not libDef["split_on"]:
@@ -338,7 +343,7 @@ def main(samplesCsv: Path, libJson: Path, runInfo: Path, splitFastq: bool, i7Set
 
     libs = load_libraries(samplesCsv, fqBcs)
     reads = load_run(runInfo)
-    indexInfo = assign_index(pcr_set,libs, libDef, reads)
+    indexInfo = assign_index(pcr_set, libs, libDef, reads)
     # If splitFastq is set, we split the samples by PCR barcode for parallelization
     # in the pattern ("SampleName_PcrIndex")
     # Those will be merged again later in the workflow
