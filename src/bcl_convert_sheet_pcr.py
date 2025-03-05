@@ -113,11 +113,11 @@ def load_indexBcs(pcr_set: dict, tsv: Path) -> Dict[str, str]:
         line = line.strip().split()
         seq = line[0]
         name = line[1] if len(line) > 1 else seq
-        if idx_side == "i7":
+        if idx_side == "i5":
             if name[0] in pcr_set[idx_side]:
                 bcs[name] = seq
         else:
-            if name[1:2] in pcr_set[idx_side]:
+            if name[1:] in pcr_set[idx_side]:
                 bcs[name] = seq    
     return bcs
 
