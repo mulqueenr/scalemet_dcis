@@ -48,17 +48,8 @@ bcl-convert \
 --sample-sheet samplesheet.csv \
 --force
 
-zcat Undetermined_S0_I1_001.fastq.gz | \
-grep -A 1 "^@" | grep -v "^@" | grep -v "^--" | \
-sort -T . --parallel=50 --buffer-size=2G | \
-uniq -c | sort -k1,1n | awk 'OFS="\t" {print $1,$2}' > initial_idx1.txt
-
-zcat Undetermined_S0_I2_001.fastq.gz | \
-grep -A 1 "^@" | grep -v "^@" | grep -v "^--" | \
-sort -T . --parallel=50 --buffer-size=2G | \
-uniq -c | sort -k1,1n | awk 'OFS="\t" {print $1,$2}' > initial_idx2.txt
 #remove empty ones
-rm -rf ./fastq/Undetermined*fastq.gz
+rm -rf ${runDir}/fastq/Undetermined*fastq.gz
 
 source activate conda #(to use more recent java version)
 cd $runDir
@@ -73,5 +64,7 @@ nextflow run ${scalebio_nf} \
 -params-file ${params} \
 -w ${SCRATCH}/scalemet_work \
 -resume
+
+
 
 ```
