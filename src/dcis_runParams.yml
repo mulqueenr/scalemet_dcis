@@ -5,7 +5,7 @@
 # samples : set at run time
 
 ### Path to a .json file defining the reference genome
-genome : /volumes/USR2/Ryan/projects/scalebio_dcis/tools/scalemet_dcis/src/dcis_genome.json
+genome : /home/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/dcis_genome.json
 
 ### Value set for the test dataset. Please refer to documentation for an appropriate value to set for your actual experiment
 minUniqCount: 10000

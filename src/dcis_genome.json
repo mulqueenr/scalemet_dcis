@@ -1,7 +1,7 @@
 {
     "name": "hg38",
     "speciesName": "Homo sapiens",
-    "bsbolt_index": "/volumes/USR2/Ryan/projects/scalebio_dcis/ref/hg38_bsbolt",
+    "bsbolt_index": "/home/rmulqueen/ref/hg38_bsbolt",
     "genomeWindowBlackList": "",
     "chrom.size": "",
     "genomeTiles": "",

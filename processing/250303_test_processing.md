@@ -12,11 +12,11 @@ export SINGULARITY_BINDPATH="/volumes/USR2/Ryan/projects/scalebio_dcis/tools/Sca
 mkdir -p $SCRATCH
 
 #set up directories and variables
-projDir="/volumes/USR2/Ryan/projects/scalebio_dcis"
-scalebio_nf="/volumes/USR2/Ryan/projects/scalebio_dcis/tools/ScaleMethyl" 
-params="/volumes/USR2/Ryan/projects/scalebio_dcis/tools/scalemet_dcis/src/dcis_runParams.yml"
+projDir="/home/rmulqueen/projects/scalebio_dcis"
+scalebio_nf="/home/rmulqueen/projects/scalebio_dcis/tools/ScaleMethyl" 
+params="/home/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/dcis_runParams.yml"
 runDir="${projDir}/data/241007_RM_scalebio_dcis2"
-bclDir="/volumes/USR2/Ryan/projects/metact/241007_RM_scalebio_dcis2/241004_A01819_0637_BHY5MJDMXY/241004_A01819_0637_BHY5MJDMXY"
+bclDir="/home/rmulqueen/projects/scalebio_dcis/seq/241004_A01819_0637_BHY5MJDMXY"
 
 mkdir -p ${runDir}
 samples="${runDir}/samples.csv"
