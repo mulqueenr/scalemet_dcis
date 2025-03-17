@@ -5,10 +5,10 @@
 ```bash
 #Should still only need to identify samples at the tagmentation level, and expanding the i5.txt and i7.txt should take care of itself.
 #export environment variables for working/scratch directories
-export SCRATCH="/volumes/USR2/Ryan/projects/scalebio_dcis/scratch/scalemet_work"
-export TMPDIR="/volumes/USR2/Ryan/projects/scalebio_dcis/scratch"
-export NXF_SINGULARITY_CACHEDIR="/volumes/USR2/Ryan/projects/scalebio_dcis/singularity"
-export SINGULARITY_BINDPATH="/volumes/USR2/Ryan/projects/scalebio_dcis/tools/ScaleMethyl/bin" 
+export SCRATCH="/home/rmulqueen/projects/scalebio_dcis/scratch/scalemet_work"
+export TMPDIR="/home/rmulqueen/projects/scalebio_dcis/scratch"
+export NXF_SINGULARITY_CACHEDIR="/home/rmulqueen/projects/scalebio_dcis/singularity"
+export SINGULARITY_BINDPATH="/home/rmulqueen/projects/scalebio_dcis/tools/ScaleMethyl/bin" 
 mkdir -p $SCRATCH
 
 #set up directories and variables
@@ -51,15 +51,13 @@ bcl-convert \
 #remove empty ones
 rm -rf ${runDir}/fastq/Undetermined*fastq.gz
 
-source activate conda #(to use more recent java version)
 cd $runDir
-
 nextflow run ${scalebio_nf} \
 --fastqDir ${runDir}/fastq \
 --samples ${runDir}/samples.csv \
 --outDir ${runDir} \
 --maxMemory 300.GB \
---maxCpus 50 \
+--maxCpus 200 \
 -profile singularity \
 -params-file ${params} \
 -w ${SCRATCH}/scalemet_work \

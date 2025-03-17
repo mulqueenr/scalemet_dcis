@@ -5,18 +5,18 @@
 ```bash
 #Should still only need to identify samples at the tagmentation level, and expanding the i5.txt and i7.txt should take care of itself.
 #export environment variables for working/scratch directories
-export SCRATCH="/volumes/USR2/Ryan/projects/scalebio_dcis/scratch/scalemet_work"
-export TMPDIR="/volumes/USR2/Ryan/projects/scalebio_dcis/scratch"
-export NXF_SINGULARITY_CACHEDIR="/volumes/USR2/Ryan/projects/scalebio_dcis/singularity"
-export SINGULARITY_BINDPATH="/volumes/USR2/Ryan/projects/scalebio_dcis/tools/ScaleMethyl/bin" 
+export SCRATCH="/home/rmulqueen/projects/scalebio_dcis/scratch/scalemet_work"
+export TMPDIR="/home/rmulqueen/projects/scalebio_dcis/scratch"
+export NXF_SINGULARITY_CACHEDIR="/home/rmulqueen/projects/scalebio_dcis/singularity"
+export SINGULARITY_BINDPATH="/home/rmulqueen/projects/scalebio_dcis/tools/ScaleMethyl/bin" 
 mkdir -p $SCRATCH
 
 #set up directories and variables
-projDir="/volumes/USR2/Ryan/projects/scalebio_dcis"
-scalebio_nf="/volumes/USR2/Ryan/projects/scalebio_dcis/tools/ScaleMethyl" 
-params="/volumes/USR2/Ryan/projects/scalebio_dcis/tools/scalemet_dcis/src/dcis_runParams.yml"
+projDir="/home/rmulqueen/projects/scalebio_dcis"
+scalebio_nf="/home/rmulqueen/projects/scalebio_dcis/tools/ScaleMethyl" 
+params="/home/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/dcis_runParams.yml"
 runDir="${projDir}/data/250307_RM_scalebio_dcis2_homebrew"
-bclDir="/volumes/seq/flowcells/MDA/nextseq2000/2025/250227_RM_CurioWGS_scalemet"
+bclDir="/home/rmulqueen/projects/scalebio_dcis/seq/250227_RM_CurioWGS_scalemet"
 
 mkdir -p ${runDir}
 cd ${runDir}
@@ -63,7 +63,7 @@ nextflow run ${scalebio_nf} \
 --samples ${runDir}/samples.csv \
 --outDir ${runDir} \
 --maxMemory 300.GB \
---maxCpus 50 \
+--maxCpus 200 \
 -profile singularity \
 -params-file ${params} \
 -w ${SCRATCH}/scalemet_work \
