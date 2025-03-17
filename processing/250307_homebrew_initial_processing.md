@@ -15,10 +15,11 @@ mkdir -p $SCRATCH
 projDir="/volumes/USR2/Ryan/projects/scalebio_dcis"
 scalebio_nf="/volumes/USR2/Ryan/projects/scalebio_dcis/tools/ScaleMethyl" 
 params="/volumes/USR2/Ryan/projects/scalebio_dcis/tools/scalemet_dcis/src/dcis_runParams.yml"
-runDir="${projDir}/data/241007_RM_scalebio_dcis2"
-bclDir="/volumes/USR2/Ryan/projects/metact/241007_RM_scalebio_dcis2/241004_A01819_0637_BHY5MJDMXY/241004_A01819_0637_BHY5MJDMXY"
+runDir="${projDir}/data/250307_RM_scalebio_dcis2_homebrew"
+bclDir="/volumes/seq/flowcells/MDA/nextseq2000/2025/250227_RM_CurioWGS_scalemet"
 
 mkdir -p ${runDir}
+cd ${runDir}
 samples="${runDir}/samples.csv"
 
 echo """sample,barcodes,libName
@@ -35,8 +36,11 @@ python ${projDir}/tools/scalemet_dcis/src/bcl_convert_sheet_pcr.py \
 samples.csv \
 ${projDir}/tools/ScaleMethyl/references/lib.json \
 ${bclDir}/RunInfo.xml --splitFastq \
---i7Set A,B \
---i5Set 1,2 > samplesheet.csv
+--i7Set C \
+--i5Set 3 > samplesheet.csv
+
+#update Override Cycles in samplesheet to fit sequencing run
+#OverrideCycles,Y50;I10;I10N14;Y47
 
 bcl-convert \
 --bcl-input-directory ${bclDir} \
