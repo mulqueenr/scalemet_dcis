@@ -11,7 +11,7 @@
         "OverrideCycles": ["Y", "U", "U", "Y"],
         "library_barcodes": {},
         "split_on": "index2",
-        "index1Seqs": "i7.txt",
-        "index2Seqs": "i5.txt"
+        "index1Seqs": "homebrew_i7.txt",
+        "index2Seqs": "homebrew_i5.txt"
     }
 }

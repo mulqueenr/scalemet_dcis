@@ -23,9 +23,6 @@ git clone https://github.com/mulqueenr/scalemet_dcis.git #this repo
 #i7 set goes from A-B, so adding on as C+
 #I'm aware there is a collision between homebrew G10 i7 and kit A10 i7, but my plan is to run them on separate flow cells anyway.
 
-cp scalemet_dcis/ref/i5_with_homebrew.txt ScaleMethyl/references/i5.txt
-cp scalemet_dcis/ref/i7_with_homebrew.txt ScaleMethyl/references/i7.txt
-
 #Run ScaleMethyl as normal for processing
 #A default custom config and runparameters file for processing.
 

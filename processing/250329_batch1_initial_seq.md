@@ -56,11 +56,6 @@ ${bclDir}/RunInfo.xml \
 --i7Set A,B \
 --i5Set 1,2 > homebrew_samplesheet.csv
 
-#i5 is revcomp
-#i7 is seq
-Sample_ID,index,index2
-BCMDCIS32T_A01,GGAGGCCTCC,ATGGAGCTAC
-BCMDCIS32T_A01,CAGCAGTATC,ATGGAGCTAC
 
 #update Override Cycles in samplesheet to fit sequencing run
 #OverrideCycles,Y50;I10;I10N14;Y47
