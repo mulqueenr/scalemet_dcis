@@ -28,4 +28,5 @@ cp scalemet_dcis/ref/i7_with_homebrew.txt ScaleMethyl/references/i7.txt
 
 #Run ScaleMethyl as normal for processing
 #A default custom config and runparameters file for processing.
+
 ```

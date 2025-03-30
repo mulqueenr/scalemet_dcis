@@ -30,13 +30,25 @@ HBCA-19T,3A01-3D12,ScaleMethyl
 HBCA-17T,3E01-3H12,ScaleMethyl""" > ${samples}
 
 #generate sample sheet using a modified version of bcl_convert_sheet.py to allow for pcr plate specifications.
-source activate 
 python ${projDir}/tools/scalemet_dcis/src/bcl_convert_sheet_pcr.py \
-samples.csv \
+${samples} \
 ${projDir}/tools/ScaleMethyl/references/lib.json \
 ${bclDir}/RunInfo.xml --splitFastq \
 --i7Set A,B \
 --i5Set 1,2 > samplesheet.csv
+
+#run bcl-convert within amethyst sif
+cd ${runDir}
+singularity shell \
+--bind ${bclDir} \
+--bind ${runDir} \
+--bind ${bclDir}:/var/log/bcl-convert \
+~/singularity/amethyst.sif
+
+projDir="/home/rmulqueen/projects/scalebio_dcis"
+bclDir="/home/rmulqueen/projects/scalebio_dcis/seq/241004_A01819_0637_BHY5MJDMXY"
+runDir="${projDir}/data/241007_RM_scalebio_dcis2"
+cd ${runDir}
 
 bcl-convert \
 --bcl-input-directory ${bclDir} \
