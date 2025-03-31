@@ -81,5 +81,48 @@ nextflow run ${scalebio_nf} \
 -resume
 
 
+```
 
+
+Correct all symlink with actual links
+
+```bash
+
+#set up functions
+#count reads export
+count_reads() { 
+        samtools view $1 | awk -v b=$1 '{split($1,a,":"); print a[1],b}' | sort | uniq -c | sort -k1,1n
+}
+
+#split bams export
+split_bams() { 
+        test=$1
+        idx=$(echo $test | cut -d ':' -f 8 )
+        outidx=$(echo $idx | sed -e 's/+/_/g' -)
+        bam=$(echo $test | cut -d ' ' -f 3)
+        outprefix=$(echo $bam | cut -d '/' -f 2)
+        ((samtools view -H $bam) && (samtools view $bam | awk -v i=$idx '{split($1,a,":"); if(a[1]==i); print $0}')) | samtools view -bS > ./sc_bams/${outprefix}.${idx}.bam
+}
+
+export -f count_reads
+export -f split_bams
+
+#parallelize it
+scale_runDir="/home/rmulqueen/projects/scalebio_dcis/data/250329_RM_scalebio_batch1_initseq/scale_dat"
+homebrew_runDir="/home/rmulqueen/projects/scalebio_dcis/data/250329_RM_scalebio_batch1_initseq/homebrew_dat"
+
+cd $scale_runDir
+parallel -j 100 count_reads ::: $(find ./ -maxdepth 4 -name '*bam' -type l ) | sort -k1,1n > scale_unique_read_counts.tsv
+
+#filter to bam files with >100000 unique reads
+awk '$1>100000 {print $0}' unique_read_counts.tsv > cells_pf.txt
+mkdir -p sc_bams
+parallel -j 60 -a cells_pf.txt split_bams
+
+scale_runDir="/home/rmulqueen/projects/scalebio_dcis/data/250329_RM_scalebio_batch1_initseq/scale_dat"
+
+
+find ${scale_runDir} -type l -exec bash -c 'cp -R "$(readlink -m "$0")" ./dedup_bams' {} \; #scale pipeline makes empty files, this throws errors for empty files (but can be ignored)
+
+find $runDir -xtype l -exec bash -c 'target="$(readlink "{}")"; link="{}"; target="$(echo "$target" | sed "s/\/rsrch4\/home\/genetics\/rmulqueen\/projects\/metact/\/volumes\/seq\/projects\/metACT/g")"; ln -Tfs "$target" "$link"' \;
 ```

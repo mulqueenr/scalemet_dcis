@@ -164,5 +164,70 @@ nextflow run ${scalebio_nf} \
 -w ${SCRATCH}/scalemet_work \
 -resume
 
+```
 
+Correct all symlink with actual links and split out merged bam files into single-cell bam files.
 
+```bash
+
+#set up functions
+#count reads export
+count_reads() { 
+        samtools view $1 | awk -v b=$1 '{split($1,a,":"); print a[8],b}' | sort | uniq -c | sort -k1,1n
+}
+
+#split bams export
+split_bams() { 
+        test=$1
+        idx=$(echo $test | cut -d ' ' -f 2 )
+        bam=$(echo $test | cut -d ' ' -f 3)
+        outprefix=$(echo $bam | cut -d '/' -f 4)
+        outprefix=$(echo $outprefix | sed -e 's/.dedup.bam//g' -)
+        echo ./sc_bams/${outprefix}.${idx}.bam
+        ((samtools view -H $bam) && (samtools view $bam | awk -v i=$idx '{split($1,a,":"); if(a[8]==i); print $0}')) | samtools view -bS > ./sc_bams/${outprefix}.${idx}.bam
+}
+
+export -f count_reads
+export -f split_bams
+
+```
+Run on scalebio plates
+
+```bash
+scale_runDir="/home/rmulqueen/projects/scalebio_dcis/data/250329_RM_scalebio_batch1_initseq/scale_dat"
+
+#filter to bam files with >100000 unique reads
+cd $scale_runDir
+parallel -j 100 count_reads ::: $(find ./ -maxdepth 4 -name '*bam' -type l ) | sort -k1,1n > scale_unique_read_counts.tsv
+awk '$1>100000 {print $0}' scale_unique_read_counts.tsv > scale_cells.pf.txt
+mkdir -p sc_bams
+parallel -j 100 -a scale_cells.pf.txt split_bams
+
+#also copy all symlink files from scalebio nextflow by following symlinks (so we don't need work dir maintained)
+find ${scale_runDir} -maxdepth 5 -type l -exec bash -c 'cp -L -R "$(readlink -m "$0")" "$0".dereferenced' {} \; #copy files
+find ${scale_runDir} -maxdepth 5 -name "*.dereferenced" -type f -exec bash -c 'mv $0 $(echo $0 | sed -e 's/".dereferenced"//g' -)' {} \; #move to old file names
+
+#clear space from scratch
+rm -rf ${SCRATCH}/scalemet_native_work
+
+```
+
+Run on homebrew plates
+
+```bash
+homebrew_runDir="/home/rmulqueen/projects/scalebio_dcis/data/250329_RM_scalebio_batch1_initseq/homebrew_dat"
+
+#filter to bam files with >100000 unique reads
+cd $homebrew_runDir
+parallel -j 100 count_reads ::: $(find ./ -maxdepth 4 -name '*bam' -type l ) | sort -k1,1n > homebrew_unique_read_counts.tsv
+awk '$1>100000 {print $0}' homebrew_unique_read_counts.tsv > homebrew_cells.pf.txt
+mkdir -p sc_bams
+parallel -j 100 -a homebrew_cells.pf.txt split_bams
+
+#also copy all symlink files from scalebio nextflow by following symlinks (so we don't need work dir maintained)
+find ${homebrew_runDir} -maxdepth 5 -type l -exec bash -c 'cp -L -R "$(readlink -m "$0")" "$0".dereferenced' {} \; #copy files
+find ${homebrew_runDir} -maxdepth 5 -name "*.dereferenced" -type f -exec bash -c 'mv $0 $(echo $0 | sed -e 's/".dereferenced"//g' -)' {} \; #move to old file names
+
+rm -rf ${SCRATCH}/scalemet_work
+
+```
