@@ -10,7 +10,7 @@
     "bcl_convert": {
         "OverrideCycles": ["Y", "U", "U", "Y"],
         "library_barcodes": {},
-        "split_on": "index2",
+        "split_on": "index1",
         "index1Seqs": "homebrew_i7.txt",
         "index2Seqs": "homebrew_i5.txt"
     }
