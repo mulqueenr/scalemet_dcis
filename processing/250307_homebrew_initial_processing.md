@@ -5,18 +5,18 @@
 ```bash
 #Should still only need to identify samples at the tagmentation level, and expanding the i5.txt and i7.txt should take care of itself.
 #export environment variables for working/scratch directories
-export SCRATCH="/home/rmulqueen/projects/scalebio_dcis/scratch/scalemet_work"
-export TMPDIR="/home/rmulqueen/projects/scalebio_dcis/scratch"
-export NXF_SINGULARITY_CACHEDIR="/home/rmulqueen/projects/scalebio_dcis/singularity"
-export SINGULARITY_BINDPATH="/home/rmulqueen/projects/scalebio_dcis/tools/ScaleMethyl/bin" 
+export SCRATCH="/data/rmulqueen/projects/scalebio_dcis/scratch/scalemet_work"
+export TMPDIR="/data/rmulqueen/projects/scalebio_dcis/scratch"
+export NXF_SINGULARITY_CACHEDIR="/data/rmulqueen/projects/scalebio_dcis/singularity"
+export SINGULARITY_BINDPATH="/data/rmulqueen/projects/scalebio_dcis/tools/ScaleMethyl/bin" 
 mkdir -p $SCRATCH
 
 #set up directories and variables
-projDir="/home/rmulqueen/projects/scalebio_dcis"
-scalebio_nf="/home/rmulqueen/projects/scalebio_dcis/tools/ScaleMethyl" 
-params="/home/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/dcis_runParams.yml"
+projDir="/data/rmulqueen/projects/scalebio_dcis"
+scalebio_nf="/data/rmulqueen/projects/scalebio_dcis/tools/ScaleMethyl" 
+params="/data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/dcis_runParams.yml"
 runDir="${projDir}/data/250307_RM_scalebio_dcis2_homebrew"
-bclDir="/home/rmulqueen/projects/scalebio_dcis/seq/250227_RM_CurioWGS_scalemet"
+bclDir="/data/rmulqueen/projects/scalebio_dcis/seq/250227_RM_CurioWGS_scalemet"
 
 mkdir -p ${runDir}
 cd ${runDir}
@@ -49,8 +49,8 @@ singularity shell \
 --bind ${bclDir}:/var/log/bcl-convert \
 ~/singularity/amethyst.sif
 
-projDir="/home/rmulqueen/projects/scalebio_dcis"
-bclDir="/home/rmulqueen/projects/scalebio_dcis/seq/250227_RM_CurioWGS_scalemet"
+projDir="/data/rmulqueen/projects/scalebio_dcis"
+bclDir="/data/rmulqueen/projects/scalebio_dcis/seq/250227_RM_CurioWGS_scalemet"
 runDir="${projDir}/data/250307_RM_scalebio_dcis2_homebrew"
 cd ${runDir}
 bcl-convert \
@@ -108,8 +108,8 @@ export -f count_reads
 export -f split_bams
 
 #parallelize it
-scale_runDir="/home/rmulqueen/projects/scalebio_dcis/data/250329_RM_scalebio_batch1_initseq/scale_dat"
-homebrew_runDir="/home/rmulqueen/projects/scalebio_dcis/data/250329_RM_scalebio_batch1_initseq/homebrew_dat"
+scale_runDir="/data/rmulqueen/projects/scalebio_dcis/data/250329_RM_scalebio_batch1_initseq/scale_dat"
+homebrew_runDir="/data/rmulqueen/projects/scalebio_dcis/data/250329_RM_scalebio_batch1_initseq/homebrew_dat"
 
 cd $scale_runDir
 parallel -j 100 count_reads ::: $(find ./ -maxdepth 4 -name '*bam' -type l ) | sort -k1,1n > scale_unique_read_counts.tsv
@@ -119,7 +119,7 @@ awk '$1>100000 {print $0}' unique_read_counts.tsv > cells_pf.txt
 mkdir -p sc_bams
 parallel -j 60 -a cells_pf.txt split_bams
 
-scale_runDir="/home/rmulqueen/projects/scalebio_dcis/data/250329_RM_scalebio_batch1_initseq/scale_dat"
+scale_runDir="/data/rmulqueen/projects/scalebio_dcis/data/250329_RM_scalebio_batch1_initseq/scale_dat"
 
 
 find ${scale_runDir} -type l -exec bash -c 'cp -R "$(readlink -m "$0")" ./dedup_bams' {} \; #scale pipeline makes empty files, this throws errors for empty files (but can be ignored)

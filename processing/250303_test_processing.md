@@ -5,21 +5,22 @@
 ```bash
 #Should still only need to identify samples at the tagmentation level, and expanding the i5.txt and i7.txt should take care of itself.
 #export environment variables for working/scratch directories
-export SCRATCH="/home/rmulqueen/projects/scalebio_dcis/scratch/scalemet_work"
-export TMPDIR="/home/rmulqueen/projects/scalebio_dcis/scratch"
-export NXF_SINGULARITY_CACHEDIR="/home/rmulqueen/projects/scalebio_dcis/singularity"
-export SINGULARITY_BINDPATH="/home/rmulqueen/projects/scalebio_dcis/tools/ScaleMethyl/bin" 
+export SCRATCH="/data/rmulqueen/projects/scalebio_dcis/scratch/scalemet_work"
+export TMPDIR="/data/rmulqueen/projects/scalebio_dcis/scratch"
+export NXF_SINGULARITY_CACHEDIR="/data/rmulqueen/projects/scalebio_dcis/singularity"
+export SINGULARITY_BINDPATH="/data/rmulqueen/projects/scalebio_dcis/tools/ScaleMethyl/bin" 
 mkdir -p $SCRATCH
 
 #set up directories and variables
-projDir="/home/rmulqueen/projects/scalebio_dcis"
-scalebio_nf="/home/rmulqueen/projects/scalebio_dcis/tools/ScaleMethyl" 
-params="/home/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/dcis_runParams.yml"
+projDir="/data/rmulqueen/projects/scalebio_dcis"
+scalebio_nf="/data/rmulqueen/projects/scalebio_dcis/tools/ScaleMethyl" 
+params="/data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/dcis_runParams.yml"
 runDir="${projDir}/data/241007_RM_scalebio_dcis2"
-bclDir="/home/rmulqueen/projects/scalebio_dcis/seq/241004_A01819_0637_BHY5MJDMXY"
+bclDir="/data/rmulqueen/projects/scalebio_dcis/seq/241004_A01819_0637_BHY5MJDMXY"
 
 mkdir -p ${runDir}
-samples="${runDir}/samples.csv"
+mkdir -p ${runDir}/samplesheets
+cd ${runDir}
 
 echo """sample,barcodes,libName
 DCIS-92T,1A01-1D12,ScaleMethyl
@@ -27,15 +28,15 @@ DCIS-66T,1E01-1H12,ScaleMethyl
 DCIS-79T,2A01-2D12,ScaleMethyl
 IDC-79T,2E01-2H12,ScaleMethyl
 HBCA-19T,3A01-3D12,ScaleMethyl
-HBCA-17T,3E01-3H12,ScaleMethyl""" > ${samples}
+HBCA-17T,3E01-3H12,ScaleMethyl""" > ${runDir}/samples.csv
 
 #generate sample sheet using a modified version of bcl_convert_sheet.py to allow for pcr plate specifications.
-python ${projDir}/tools/scalemet_dcis/src/bcl_convert_sheet_pcr.py \
-${samples} \
+python ${projDir}/tools/ScaleMethyl/bin/bcl_convert_sheet.py \
+${runDir}/samples.csv \
 ${projDir}/tools/ScaleMethyl/references/lib.json \
-${bclDir}/RunInfo.xml --splitFastq \
---i7Set A,B \
---i5Set 1,2 > samplesheet.csv
+${bclDir}/RunInfo.xml \
+--splitFastq > ${runDir}/samplesheets/scalebio_batchprelim_plate1-2_samplesheet.csv
+
 
 #run bcl-convert within amethyst sif
 cd ${runDir}
@@ -45,23 +46,26 @@ singularity shell \
 --bind ${bclDir}:/var/log/bcl-convert \
 ~/singularity/amethyst.sif
 
-projDir="/home/rmulqueen/projects/scalebio_dcis"
-bclDir="/home/rmulqueen/projects/scalebio_dcis/seq/241004_A01819_0637_BHY5MJDMXY"
+projDir="/data/rmulqueen/projects/scalebio_dcis"
+bclDir="/data/rmulqueen/projects/scalebio_dcis/seq/241004_A01819_0637_BHY5MJDMXY"
 runDir="${projDir}/data/241007_RM_scalebio_dcis2"
 cd ${runDir}
 
 bcl-convert \
 --bcl-input-directory ${bclDir} \
 --output-directory ${runDir}/fastq \
---bcl-num-conversion-threads 50 \
---bcl-num-compression-threads 50 \
---bcl-num-decompression-threads 50 \
+--shared-thread-odirect-output true \
 --no-lane-splitting true \
---sample-sheet samplesheet.csv \
+--bcl-num-parallel-tiles 1 \
+--bcl-num-conversion-threads 20 \
+--bcl-num-compression-threads 20 \
+--bcl-num-decompression-threads 20 \
+--sample-sheet ${runDir}/samplesheets/scalebio_batchprelim_plate1-2_samplesheet.csv \
 --force
 
-#remove empty ones
+#remove undetermined ones and empty files
 rm -rf ${runDir}/fastq/Undetermined*fastq.gz
+find ${runDir}/fastq/ -type f -size 1M -exec rm {} \;
 
 cd $runDir
 nextflow run ${scalebio_nf} \
@@ -70,6 +74,17 @@ nextflow run ${scalebio_nf} \
 --outDir ${runDir} \
 --maxMemory 300.GB \
 --maxCpus 200 \
+-profile singularity \
+-params-file ${params} \
+-w ${SCRATCH}/scalemet_work \
+-resume
+
+nextflow run ${scalebio_nf} \
+--fastqDir ${runDir}/scale_fastq \
+--samples ${runDir}/samplesheets/samples.csv \
+--outDir ${runDir}/prelim \
+--maxMemory 300.GB \
+--maxCpus 100 \
 -profile singularity \
 -params-file ${params} \
 -w ${SCRATCH}/scalemet_work \

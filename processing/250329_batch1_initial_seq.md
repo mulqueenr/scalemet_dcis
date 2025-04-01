@@ -9,19 +9,19 @@ Set env variables.
 ```bash
 #Should still only need to identify samples at the tagmentation level, and expanding the i5.txt and i7.txt should take care of itself.
 #export environment variables for working/scratch directories
-export SCRATCH="/home/rmulqueen/projects/scalebio_dcis/scratch/scalemet_work"
-export TMPDIR="/home/rmulqueen/projects/scalebio_dcis/scratch"
-export NXF_SINGULARITY_CACHEDIR="/home/rmulqueen/projects/scalebio_dcis/singularity"
-export SINGULARITY_BINDPATH="/home/rmulqueen/projects/scalebio_dcis/tools/ScaleMethyl/bin" 
+export SCRATCH="/data/rmulqueen/projects/scalebio_dcis/scratch/scalemet_work"
+export TMPDIR="/data/rmulqueen/projects/scalebio_dcis/scratch"
+export NXF_SINGULARITY_CACHEDIR="/data/rmulqueen/projects/scalebio_dcis/singularity"
+export SINGULARITY_BINDPATH="/data/rmulqueen/projects/scalebio_dcis/tools/ScaleMethyl/bin" 
 
 mkdir -p $SCRATCH
 
 #set up directories and variables
-projDir="/home/rmulqueen/projects/scalebio_dcis"
-scalebio_nf="/home/rmulqueen/projects/scalebio_dcis/tools/ScaleMethyl" 
-params="/home/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/dcis_runParams.yml"
+projDir="/data/rmulqueen/projects/scalebio_dcis"
+scalebio_nf="/data/rmulqueen/projects/scalebio_dcis/tools/ScaleMethyl" 
+params="/data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/dcis_runParams.yml"
 runDir="${projDir}/data/250329_RM_scalebio_batch1_initseq"
-bclDir="/home/rmulqueen/projects/scalebio_dcis/seq/250325_VH01788_97_2227YC2NX"
+bclDir="/data/rmulqueen/projects/scalebio_dcis/seq/250325_VH01788_97_2227YC2NX"
 ```
 
 Sample sheet setup for Tn5
@@ -67,11 +67,11 @@ singularity shell \
 --bind ${bclDir}:/var/log/bcl-convert \
 ~/singularity/amethyst.sif
 
-projDir="/home/rmulqueen/projects/scalebio_dcis"
-scalebio_nf="/home/rmulqueen/projects/scalebio_dcis/tools/ScaleMethyl" 
-params="/home/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/dcis_runParams.yml"
+projDir="/data/rmulqueen/projects/scalebio_dcis"
+scalebio_nf="/data/rmulqueen/projects/scalebio_dcis/tools/ScaleMethyl" 
+params="/data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/dcis_runParams.yml"
 runDir="${projDir}/data/250329_RM_scalebio_batch1_initseq"
-bclDir="/home/rmulqueen/projects/scalebio_dcis/seq/250325_VH01788_97_2227YC2NX"
+bclDir="/data/rmulqueen/projects/scalebio_dcis/seq/250325_VH01788_97_2227YC2NX"
 
 #scalebio kit fq split
 bcl-convert \
@@ -124,11 +124,11 @@ cat ${runDir}/samplesheets/homebrew_batch1_plate2_samplesheet.csv > ${runDir}/sa
 grep "^ScaleMethyl_" ${runDir}/samplesheets/homebrew_batch1_plate7_samplesheet.csv >> ${runDir}/samplesheets/homebrew_batch1_plate2-7_samplesheet.csv
 
 #set up directories and variables
-projDir="/home/rmulqueen/projects/scalebio_dcis"
+projDir="/data/rmulqueen/projects/scalebio_dcis"
 runDir="${projDir}/data/250329_RM_scalebio_batch1_initseq"
-scalebio_nf="/home/rmulqueen/projects/scalebio_dcis/tools/ScaleMethyl" 
-params="/home/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/dcis_runParams.yml"
-bclDir="/home/rmulqueen/projects/scalebio_dcis/seq/250325_VH01788_97_2227YC2NX"
+scalebio_nf="/data/rmulqueen/projects/scalebio_dcis/tools/ScaleMethyl" 
+params="/data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/dcis_runParams.yml"
+bclDir="/data/rmulqueen/projects/scalebio_dcis/seq/250325_VH01788_97_2227YC2NX"
 
 #run bcl-convert within amethyst sif
 cd ${runDir}
@@ -194,7 +194,7 @@ export -f split_bams
 Run on scalebio plates
 
 ```bash
-scale_runDir="/home/rmulqueen/projects/scalebio_dcis/data/250329_RM_scalebio_batch1_initseq/scale_dat"
+scale_runDir="/data/rmulqueen/projects/scalebio_dcis/data/250329_RM_scalebio_batch1_initseq/scale_dat"
 
 #filter to bam files with >100000 unique reads
 cd $scale_runDir
@@ -211,12 +211,14 @@ find ${scale_runDir} -maxdepth 5 -name "*.dereferenced" -type f -exec bash -c 'm
 rm -rf ${SCRATCH}/scalemet_native_work
 
 mkdir -p ${scale_runDir}/copykit_cnv
+
 singularity exec \
---bind /home/rmulqueen/projects/scalebio_dcis/ \
+--bind /data/rmulqueen/projects/scalebio_dcis/ \
 ~/singularity/copykit.sif \
 Rscript ~/projects/scalebio_dcis/tools/scalemet_dcis/src/copykit_cnvcalling.R \
 --input_dir ${scale_runDir}/sc_bams \
---output_prefix ${scale_runDir}/copykit_cnv/scale \
+--output_dir ${scale_runDir}/copykit_cnv/ \
+--output_prefix scale \
 --task_cpus 150
 
 ```
@@ -224,7 +226,7 @@ Rscript ~/projects/scalebio_dcis/tools/scalemet_dcis/src/copykit_cnvcalling.R \
 Run on homebrew plates
 
 ```bash
-homebrew_runDir="/home/rmulqueen/projects/scalebio_dcis/data/250329_RM_scalebio_batch1_initseq/homebrew_dat"
+homebrew_runDir="/data/rmulqueen/projects/scalebio_dcis/data/250329_RM_scalebio_batch1_initseq/homebrew_dat"
 
 #filter to bam files with >100000 unique reads
 cd $homebrew_runDir
@@ -241,7 +243,7 @@ rm -rf ${SCRATCH}/scalemet_work
 
 mkdir -p ${homebrew_runDir}/copykit_cnv
 singularity exec \
---bind /home/rmulqueen/projects/scalebio_dcis/ \
+--bind /data/rmulqueen/projects/scalebio_dcis/ \
 ~/singularity/copykit.sif \
 Rscript ~/projects/scalebio_dcis/tools/scalemet_dcis/src/copykit_cnvcalling.R \
 --input_dir ${homebrew_runDir}/sc_bams \
