@@ -210,6 +210,15 @@ find ${scale_runDir} -maxdepth 5 -name "*.dereferenced" -type f -exec bash -c 'm
 #clear space from scratch
 rm -rf ${SCRATCH}/scalemet_native_work
 
+mkdir -p ${scale_runDir}/copykit_cnv
+singularity exec \
+--bind /home/rmulqueen/projects/scalebio_dcis/ \
+~/singularity/copykit.sif \
+Rscript ~/projects/scalebio_dcis/tools/scalemet_dcis/src/copykit_cnvcalling.R \
+--input_dir ${scale_runDir}/sc_bams \
+--output_prefix ${scale_runDir}/copykit_cnv/scale \
+--task_cpus 150
+
 ```
 
 Run on homebrew plates
@@ -229,5 +238,14 @@ find ${homebrew_runDir} -maxdepth 5 -type l -exec bash -c 'cp -L -R "$(readlink 
 find ${homebrew_runDir} -maxdepth 5 -name "*.dereferenced" -type f -exec bash -c 'mv $0 $(echo $0 | sed -e 's/".dereferenced"//g' -)' {} \; #move to old file names
 
 rm -rf ${SCRATCH}/scalemet_work
+
+mkdir -p ${homebrew_runDir}/copykit_cnv
+singularity exec \
+--bind /home/rmulqueen/projects/scalebio_dcis/ \
+~/singularity/copykit.sif \
+Rscript ~/projects/scalebio_dcis/tools/scalemet_dcis/src/copykit_cnvcalling.R \
+--input_dir ${homebrew_runDir}/sc_bams \
+--output_prefix ${homebrew_runDir}/copykit_cnv/homemade \
+--task_cpus 150
 
 ```

@@ -18,7 +18,9 @@ BiocParallel::bpparam()
 
 option_list = list(
   make_option(c("-i", "--input_dir"), type="character", default=".", 
-              help="List of single-cell bam files", metavar="character"),
+              help="Directory with single-cell bam files", metavar="character"),
+  make_option(c("-o", "--output_dir"), type="character", default=".", 
+              help="Output directory for plots and RDS file"),
   make_option(c("-p", "--output_prefix"), type="character", default="homemade", 
               help="Prefix of output"),
   make_option(c("-c", "--task_cpus"), type="integer", default=200, 
@@ -27,6 +29,7 @@ option_list = list(
 
 opt_parser = OptionParser(option_list=option_list);
 opt = parse_args(opt_parser);
+outdir=ifelse(endsWith(opt$output_dir,suffix="/"),opt$output_dir, else paste0(opt$output_dir,"/"))
 cpu_count=opt$task_cpus
 prefix=opt$output_prefix
 
@@ -34,7 +37,7 @@ register(MulticoreParam(progressbar = T, workers = cpu_count), default = T)
 dat <- runVarbin(opt$input_dir, is_paired_end = TRUE, remove_Y = TRUE)
 dat  <- runMetrics(dat)
 
-pdf(paste0(prefix,".qc_metrics.pdf"))
+pdf(paste0(outdir,prefix,".qc_metrics.pdf"))
 plotMetrics(dat, metric = c("overdispersion", 
                               "breakpoint_count",
                               "reads_total",
@@ -52,7 +55,7 @@ dat<- runMetrics(dat)
 dat <- findAneuploidCells(dat)
 dat <- findOutliers(dat)
 
-pdf(paste0(prefix,".subclone.heatmap.outlier.pdf"))
+pdf(paste0(outdir,prefix,".subclone.heatmap.outlier.pdf"))
 plotHeatmap(dat, row_split='outlier',n_threads=cpu_count) 
 dev.off()
 
@@ -68,7 +71,7 @@ dat  <- findClusters(dat, k_superclones=k_clones@metadata$suggestedK-3, k_subclo
 #plotUmap(dat, label = 'subclones')
 #dev.off()
 
-pdf(paste0(prefix,".samples.umap.pdf"))
+pdf(paste0(outdir,prefix,".samples.umap.pdf"))
 plotUmap(dat, label = 'sample_name')
 dev.off()
 
@@ -77,7 +80,7 @@ dev.off()
 dat <- calcConsensus(dat)
 dat <- runConsensusPhylo(dat)
 dat <- runPhylo(dat, metric = 'manhattan')
-dat <- calcInteger(dat, method = 'scquantum')
+dat <- calcInteger(dat, method = 'scquantum',assay="segment_ratios")
 col_fun = colorRamp2(c(-1, 0, 1), c("blue", "white", "red"))
 # Plot a copy number heatmap with clustering annotation
 
@@ -85,7 +88,7 @@ col_fun = colorRamp2(c(-1, 0, 1), c("blue", "white", "red"))
 #plotPhylo(dat, label = 'subclones')
 #dev.off()
 
-pdf(paste0(prefix,".subclone.heatmap.segment_ratios.pdf"))
+pdf(paste0(outdir,prefix,".subclone.heatmap.segment_ratios.pdf"))
 plotHeatmap(dat, label = c('reads_total','sample_name','method'),  
     order_cells = 'consensus_tree',
     assay="segment_ratios",
@@ -93,20 +96,20 @@ plotHeatmap(dat, label = c('reads_total','sample_name','method'),
     col=col_fun)
 dev.off()
 
-pdf(paste0(prefix,".subclone.heatmap.smoothed_bincounts.pdf"))
+pdf(paste0(outdir,prefix,".subclone.heatmap.smoothed_bincounts.pdf"))
 plotHeatmap(dat, label = c('reads_total','sample_name','method'),  
     order_cells = 'consensus_tree',
     assay="smoothed_bincounts",
     n_threads=cpu_count)
 dev.off()
 
-pdf(paste0(prefix,".subclone.heatmap.integer.pdf"))
+pdf(paste0(outdir,prefix,".subclone.heatmap.integer.pdf"))
 plotHeatmap(dat, label = c('reads_total','sample_name','method'), 
     order_cells = 'consensus_tree', 
     assay="integer",
     n_threads=cpu_count)
 dev.off()
 
-saveRDS(dat,file=paste0(prefix,".scCNA.rds"))
-write.table(as.data.frame(dat@colData),file=paste0(prefix,".scCNA.tsv"),sep="\t",col.names=T,row.names=T)
+saveRDS(dat,file=paste0(outdir,prefix,".scCNA.rds"))
+write.table(as.data.frame(dat@colData),file=paste0(outdir,prefix,".scCNA.tsv"),sep="\t",col.names=T,row.names=T)
 
