@@ -29,7 +29,7 @@ option_list = list(
 
 opt_parser = OptionParser(option_list=option_list);
 opt = parse_args(opt_parser);
-outdir=ifelse(endsWith(opt$output_dir,suffix="/"),opt$output_dir, else paste0(opt$output_dir,"/"))
+outdir=ifelse(endsWith(opt$output_dir,suffix="/"),opt$output_dir, paste0(opt$output_dir,"/"))
 cpu_count=opt$task_cpus
 prefix=opt$output_prefix
 

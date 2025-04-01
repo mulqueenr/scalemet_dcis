@@ -245,7 +245,8 @@ singularity exec \
 ~/singularity/copykit.sif \
 Rscript ~/projects/scalebio_dcis/tools/scalemet_dcis/src/copykit_cnvcalling.R \
 --input_dir ${homebrew_runDir}/sc_bams \
---output_prefix ${homebrew_runDir}/copykit_cnv/homemade \
+--output_dir ${homebrew_runDir}/copykit_cnv/ \
+--output_prefix homemade \
 --task_cpus 150
 
 ```
