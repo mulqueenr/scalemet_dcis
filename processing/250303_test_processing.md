@@ -28,15 +28,14 @@ DCIS-66T,1E01-1H12,ScaleMethyl
 DCIS-79T,2A01-2D12,ScaleMethyl
 IDC-79T,2E01-2H12,ScaleMethyl
 HBCA-19T,3A01-3D12,ScaleMethyl
-HBCA-17T,3E01-3H12,ScaleMethyl""" > ${runDir}/samples.csv
+HBCA-17T,3E01-3H12,ScaleMethyl""" > ${runDir}/samplesheets/samples.csv
 
 #generate sample sheet using a modified version of bcl_convert_sheet.py to allow for pcr plate specifications.
 python ${projDir}/tools/ScaleMethyl/bin/bcl_convert_sheet.py \
-${runDir}/samples.csv \
+${runDir}/samplesheets/samples.csv \
 ${projDir}/tools/ScaleMethyl/references/lib.json \
 ${bclDir}/RunInfo.xml \
 --splitFastq > ${runDir}/samplesheets/scalebio_batchprelim_plate1-2_samplesheet.csv
-
 
 #run bcl-convert within amethyst sif
 cd ${runDir}
@@ -54,12 +53,11 @@ cd ${runDir}
 bcl-convert \
 --bcl-input-directory ${bclDir} \
 --output-directory ${runDir}/fastq \
---shared-thread-odirect-output true \
 --no-lane-splitting true \
 --bcl-num-parallel-tiles 1 \
---bcl-num-conversion-threads 20 \
---bcl-num-compression-threads 20 \
---bcl-num-decompression-threads 20 \
+--bcl-num-conversion-threads 50 \
+--bcl-num-compression-threads 50 \
+--bcl-num-decompression-threads 50 \
 --sample-sheet ${runDir}/samplesheets/scalebio_batchprelim_plate1-2_samplesheet.csv \
 --force
 
@@ -70,7 +68,7 @@ find ${runDir}/fastq/ -type f -size 1M -exec rm {} \;
 cd $runDir
 nextflow run ${scalebio_nf} \
 --fastqDir ${runDir}/fastq \
---samples ${runDir}/samples.csv \
+--samples ${runDir}/samplesheets/samples.csv \
 --outDir ${runDir} \
 --maxMemory 300.GB \
 --maxCpus 200 \

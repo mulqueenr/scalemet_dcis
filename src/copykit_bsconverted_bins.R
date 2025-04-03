@@ -1,3 +1,4 @@
+# Script given to me by Kris Wang
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Checking bins against a dataset of normal cells
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -11,10 +12,6 @@
 # "/volumes/seq/projects/CNA_projects/DT_CNA/snap_frozen/Breast/TNBC/TN4/" # D peak
 # "cat /volumes/seq/projects/CNA_projects/DT_CNA/snap_frozen/Lung/PANL2/"
 # "cat /volumes/seq/projects/CNA_projects/DT_CNA/snap_frozen/Lung/PANL5/" # D peak
-#
-
-# cells were aligned with bowtie2, and duplicates marked with sambamba using the snakemake pipeline
-# ```/volumes/lab/users/dminussi/projects/copy_number_pipeline_hg38/cn_pipeline.snk```
 
 # Rsubread was used to count reads into the bins
 

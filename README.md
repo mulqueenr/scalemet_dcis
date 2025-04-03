@@ -13,10 +13,10 @@ Adding homebrew indexes for i5 and i7 so we can use sciMETv2 on excess tagmented
 
 ```bash
 #clone scalemethyl pipeline v 1.2.2
-mkdir -p /data/rmulqueen/projects/tools
-cd /data/rmulqueen/projects/scalemet_dcis/tools
-git clone https://github.com/ScaleBio/ScaleMethyl.git /data/rmulqueen/projects/tools/ScaleMethyl #scalemethyl repo
-git clone https://github.com/mulqueenr/scalemet_dcis.git /data/rmulqueen/projects/tools/scalemet_dcis #this repo
+mkdir -p /data/rmulqueen/projects/scalebio_dcis/tools
+cd /data/rmulqueen/projects/scalebio_dcis/tools
+git clone https://github.com/ScaleBio/ScaleMethyl.git /data/rmulqueen/projects/scalebio_dcis/tools/ScaleMethyl #scalemethyl repo
+git clone https://github.com/mulqueenr/scalemet_dcis.git /data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis #this repo
 
 
 #Run ScaleMethyl as normal for processing
