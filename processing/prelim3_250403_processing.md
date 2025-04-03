@@ -7,6 +7,8 @@
 #export environment variables for working/scratch directories
 export SCRATCH="/data/rmulqueen/projects/scalebio_dcis/scratch/scalemet_work"
 export TMPDIR="/data/rmulqueen/projects/scalebio_dcis/scratch"
+export SINGULARITY_TMPDIR="/data/rmulqueen/projects/scalebio_dcis/scratch"
+export SINGULARITY_CACHEDIR="/data/rmulqueen/projects/scalebio_dcis/scratch"
 export NXF_SINGULARITY_CACHEDIR="/data/rmulqueen/projects/scalebio_dcis/singularity"
 export SINGULARITY_BINDPATH="/data/rmulqueen/projects/scalebio_dcis/tools/ScaleMethyl/bin" 
 mkdir -p $SCRATCH
@@ -55,9 +57,9 @@ bcl-convert \
 --output-directory ${runDir}/fastq \
 --no-lane-splitting true \
 --bcl-num-parallel-tiles 1 \
---bcl-num-conversion-threads 50 \
---bcl-num-compression-threads 50 \
---bcl-num-decompression-threads 50 \
+--bcl-num-conversion-threads 10 \
+--bcl-num-compression-threads 10 \
+--bcl-num-decompression-threads 10 \
 --sample-sheet ${runDir}/samplesheets/scalebio_batchprelim_plate1-2_samplesheet.csv \
 --force
 
@@ -69,25 +71,11 @@ cd $runDir
 nextflow run ${scalebio_nf} \
 --fastqDir ${runDir}/fastq \
 --samples ${runDir}/samplesheets/samples.csv \
---outDir ${runDir} \
---maxMemory 300.GB \
---maxCpus 200 \
--profile singularity \
--params-file ${params} \
--w ${SCRATCH}/scalemet_work \
--resume
-
-nextflow run ${scalebio_nf} \
---fastqDir ${runDir}/scale_fastq \
---samples ${runDir}/samplesheets/samples.csv \
---outDir ${runDir}/prelim \
---maxMemory 300.GB \
+--outDir ${runDir}/dat \
+--maxMemory 200.GB \
 --maxCpus 100 \
 -profile singularity \
 -params-file ${params} \
--w ${SCRATCH}/scalemet_work \
--resume
-
-
+-w ${SCRATCH}/scalemet_work 
 
 ```
