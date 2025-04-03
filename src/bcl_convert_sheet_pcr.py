@@ -20,6 +20,7 @@ SETTINGS = {
     "CreateFastqForIndexReads": "1",
     "MinimumTrimmedReadLength": "16",
     "MaskShortReads": "16",
+    "NoLaneSplitting":"true",
 }
 
 
