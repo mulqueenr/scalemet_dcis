@@ -1,6 +1,8 @@
 # scalemet_dcis
  Repo for processing of dcis samples generated through scalebiomethyl kit and homebrew version
 
+See processing folder for details on intial processing for each sample batch, and sequencing_runs.md within that for raw data locations and links to notebook pages.
+
 ## Directory Structure
 * ref : Reference files, including i5 and i7 index additions, and oligo design files. As well as markdown for how to prepare bsbolt reference and amethyst processing singularity file.
 
@@ -19,7 +21,5 @@ git clone https://github.com/ScaleBio/ScaleMethyl.git /data/rmulqueen/projects/s
 git clone https://github.com/mulqueenr/scalemet_dcis.git /data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis #this repo
 
 
-#Run ScaleMethyl as normal for processing
-#A default custom config and runparameters file for processing.
 
 ```

@@ -2,19 +2,14 @@
 
 [Sample selection and plate processing notes:](/volumes/USR2/Ryan/projects/scalebio_dcis/sample_selection/dcis_sample_selection.xlsx)
 
-Note: this should be rerun, the run transfer has some missing filter files which are costing us some tiles.
-
 Set env variables.
 
 ```bash
-#Should still only need to identify samples at the tagmentation level, and expanding the i5.txt and i7.txt should take care of itself.
 #export environment variables for working/scratch directories
 export SCRATCH="/data/rmulqueen/projects/scalebio_dcis/scratch/scalemet_work"
 export TMPDIR="/data/rmulqueen/projects/scalebio_dcis/scratch"
 export NXF_SINGULARITY_CACHEDIR="/data/rmulqueen/projects/scalebio_dcis/singularity"
 export SINGULARITY_BINDPATH="/data/rmulqueen/projects/scalebio_dcis/tools/ScaleMethyl/bin" 
-
-mkdir -p $SCRATCH
 
 #set up directories and variables
 projDir="/data/rmulqueen/projects/scalebio_dcis"
@@ -22,9 +17,10 @@ scalebio_nf="/data/rmulqueen/projects/scalebio_dcis/tools/ScaleMethyl"
 params="/data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/dcis_runParams.yml"
 runDir="${projDir}/data/250329_RM_scalebio_batch1_initseq"
 bclDir="/data/rmulqueen/projects/scalebio_dcis/seq/250325_VH01788_97_2227YC2NX"
+
 ```
 
-Sample sheet setup for Tn5
+SAMPLE SPECIFIC TN5 SHEET
 
 ```bash
 mkdir -p ${runDir}
@@ -50,7 +46,8 @@ BCMDCIS07T,1G07-1G12;2G01-2G06;3C04-3C06;3G07-3G09;3C10-3C12,ScaleMethyl
 BCMHBCA38L-3h,1H07-1H12;2H01-2H06;3H07-3H09,ScaleMethyl""" > ${samples}
 ```
 
-Scalebio kit processing plates 1 and 6
+MAKE SAMPLE SHEETS FOR PCR
+
 ```bash
 #generate sample sheet using a modified version of bcl_convert_sheet.py to allow for pcr plate specifications.
 python ${projDir}/tools/ScaleMethyl/bin/bcl_convert_sheet.py \
@@ -59,51 +56,7 @@ ${projDir}/tools/ScaleMethyl/references/lib.json \
 ${bclDir}/RunInfo.xml \
 --splitFastq > ${runDir}/samplesheets/scalebio_batch1_plate1-6_samplesheet.csv
 
-#run bcl-convert within amethyst sif
-cd ${runDir}
-singularity shell \
---bind ${bclDir} \
---bind ${runDir} \
---bind ${bclDir}:/var/log/bcl-convert \
-~/singularity/amethyst.sif
-
-projDir="/data/rmulqueen/projects/scalebio_dcis"
-scalebio_nf="/data/rmulqueen/projects/scalebio_dcis/tools/ScaleMethyl" 
-params="/data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/dcis_runParams.yml"
-runDir="${projDir}/data/250329_RM_scalebio_batch1_initseq"
-bclDir="/data/rmulqueen/projects/scalebio_dcis/seq/250325_VH01788_97_2227YC2NX"
-
-#scalebio kit fq split
-bcl-convert \
---bcl-input-directory ${bclDir} \
---output-directory ${runDir}/scale_fastq \
---shared-thread-odirect-output true \
---no-lane-splitting true \
---bcl-num-parallel-tiles 1 \
---bcl-num-conversion-threads 10 \
---bcl-num-compression-threads 10 \
---bcl-num-decompression-threads 10 \
---sample-sheet ${runDir}/samplesheets/scalebio_batch1_plate1-6_samplesheet.csv \
---force
-
-mkdir -p ${SCRATCH}/scalemet_native_work
-nextflow run ${scalebio_nf} \
---fastqDir ${runDir}/scale_fastq \
---samples ${runDir}/samplesheets/samples.csv \
---outDir ${runDir}/scale_dat \
---maxMemory 300.GB \
---maxCpus 100 \
--profile singularity \
--params-file ${params} \
--w ${SCRATCH}/scalemet_native_work \
--resume
-
-```
-
-Homebrew processing plates 2 and 7
-
-```bash
-#maybe rewrite the python script to just be pairwise combo of plates rather than all combos or just run for each combo and append together
+#sample sheets for homebrew plates, run one plate at a time and merge
 python ${projDir}/tools/scalemet_dcis/src/bcl_convert_sheet_pcr.py \
 samples.csv \
 ${projDir}/tools/scalemet_dcis/ref/homebrew.lib.json \
@@ -123,46 +76,61 @@ ${bclDir}/RunInfo.xml \
 cat ${runDir}/samplesheets/homebrew_batch1_plate2_samplesheet.csv > ${runDir}/samplesheets/homebrew_batch1_plate2-7_samplesheet.csv
 grep "^ScaleMethyl_" ${runDir}/samplesheets/homebrew_batch1_plate7_samplesheet.csv >> ${runDir}/samplesheets/homebrew_batch1_plate2-7_samplesheet.csv
 
-#set up directories and variables
-projDir="/data/rmulqueen/projects/scalebio_dcis"
-runDir="${projDir}/data/250329_RM_scalebio_batch1_initseq"
-scalebio_nf="/data/rmulqueen/projects/scalebio_dcis/tools/ScaleMethyl" 
-params="/data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/dcis_runParams.yml"
-bclDir="/data/rmulqueen/projects/scalebio_dcis/seq/250325_VH01788_97_2227YC2NX"
+#make nf-core input sheet
+cd $runDir
+echo """id,samplesheet,flowcell
+scalebio_batch1_plate1-6,${runDir}/samplesheets/scalebio_batch1_plate1-6_samplesheet.csv,${bclDir}
+homebrew_batch1_plate2-7,${runDir}/samplesheets/homebrew_batch1_plate2-7_samplesheet.csv,${bclDir}""" > pipeline_samplesheet.csv
 
-#run bcl-convert within amethyst sif
+```
+
+BCL to FASTQ
+
+```bash
+mkdir -p $SCRATCH/scalemet_work
+
+#use nf-core to split out fastqs
+nextflow run nf-core/demultiplex \
+    --input pipeline_samplesheet.csv \
+    --outdir fastq \
+    --trim_fastq false \
+     --remove_adapter false \
+    --skip_tools fastp,fastqc,kraken,multiqc,checkqc,falco,md5sum,samshee \
+    -profile singularity \
+    -w ${SCRATCH}/scalemet_work
+
+```
+
+RUN SCALE_METHYL PIPELINE
+
+```bash
+mkdir -p ${SCRATCH}/scalemet_native_work
+
 cd ${runDir}
-singularity shell \
---bind ${bclDir} \
---bind ${runDir} \
---bind ${bclDir}:/var/log/bcl-convert \
-~/singularity/amethyst.sif
-
-#homebrew fq split
-bcl-convert \
---bcl-input-directory ${bclDir} \
---output-directory ${runDir}/homebrew_fastq \
---bcl-num-conversion-threads 10 \
---bcl-num-compression-threads 10 \
---bcl-num-decompression-threads 10 \
---bcl-num-parallel-tiles 1 \
---shared-thread-odirect-output true \
---no-lane-splitting true \
---sample-sheet ${runDir}/samplesheets/homebrew_batch1_plate2-7_samplesheet.csv \
---force
-
-
 nextflow run ${scalebio_nf} \
---fastqDir ${runDir}/homebrew_fastq \
+--fastqDir ${runDir}/fastq/scalebio_batch1_plate1-6 \
 --samples ${runDir}/samplesheets/samples.csv \
---outDir ${runDir}/homebrew_dat \
---libStructure ${projDir}/tools/scalemet_dcis/ref/homebrew.lib.json \
+--outDir ${runDir}/scale_dat \
 --maxMemory 300.GB \
---maxCpus 100 \
+--maxCpus 200 \
 -profile singularity \
 -params-file ${params} \
--w ${SCRATCH}/scalemet_work \
--resume
+-w ${SCRATCH}/scalemet_native_work
+```
+
+```bash
+mkdir -p ${SCRATCH}/scalemet_homebrew_work
+
+nextflow run ${scalebio_nf} \
+--fastqDir ${runDir}/fastq/homebrew_batch1_plate2-7 \
+--samples ${runDir}/samplesheets/samples.csv \
+--libStructure ${projDir}/tools/scalemet_dcis/ref/homebrew.lib.json \
+--outDir ${runDir}/homebrew_dat \
+--maxMemory 300.GB \
+--maxCpus 200 \
+-profile singularity \
+-params-file ${params} \
+-w ${SCRATCH}/scalemet_homebrew_work
 
 ```
 
