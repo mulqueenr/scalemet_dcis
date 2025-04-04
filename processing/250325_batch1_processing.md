@@ -138,6 +138,14 @@ Correct all symlink with actual links and split out merged bam files into single
 
 ```bash
 
+#also copy all symlink files from scalebio nextflow by following symlinks (so we don't need work dir maintained)
+find ${runDir} -maxdepth 7 -type l -exec bash -c 'cp -L -R "$(readlink -m "$0")" "$0".dereferenced' {} \; #copy files
+find ${runDir} -maxdepth 7 -name "*.dereferenced" -type f -exec bash -c 'mv $0 $(echo $0 | sed -e 's/".dereferenced"//g' -)' {} \; #move to old file names
+```
+
+Split bams to single-cells and run copykit
+
+```bash
 #set up functions
 #count reads export
 count_reads() { 
@@ -149,7 +157,7 @@ split_bams() {
         test=$1
         idx=$(echo $test | cut -d ' ' -f 2 )
         bam=$(echo $test | cut -d ' ' -f 3)
-        outprefix=$(echo $bam | cut -d '/' -f 4)
+        outprefix=$(echo $bam | awk -F/ '{print $NF}')
         outprefix=$(echo $outprefix | sed -e 's/.dedup.bam//g' -)
         echo ./sc_bams/${outprefix}.${idx}.bam
         ((samtools view -H $bam) && (samtools view $bam | awk -v i=$idx '{split($1,a,":"); if(a[8]==i); print $0}')) | samtools view -bS > ./sc_bams/${outprefix}.${idx}.bam
@@ -158,65 +166,27 @@ split_bams() {
 export -f count_reads
 export -f split_bams
 
-```
-Run on scalebio plates
-
-```bash
-scale_runDir="/data/rmulqueen/projects/scalebio_dcis/data/250329_RM_scalebio_batch1_initseq/scale_dat"
-
 #filter to bam files with >100000 unique reads
-cd $scale_runDir
-parallel -j 100 count_reads ::: $(find ./ -maxdepth 4 -name '*bam' -type l ) | sort -k1,1n > scale_unique_read_counts.tsv
-awk '$1>100000 {print $0}' scale_unique_read_counts.tsv > scale_cells.pf.txt
-mkdir -p sc_bams
-parallel -j 100 -a scale_cells.pf.txt split_bams
+cd ${runDir}/scale_dat
+mkdir -p ${runDir}/scale_dat/cnv
+mkdir -p ${runDir}/scale_dat/sc_bams
 
-#also copy all symlink files from scalebio nextflow by following symlinks (so we don't need work dir maintained)
-find ${scale_runDir} -maxdepth 5 -type l -exec bash -c 'cp -L -R "$(readlink -m "$0")" "$0".dereferenced' {} \; #copy files
-find ${scale_runDir} -maxdepth 5 -name "*.dereferenced" -type f -exec bash -c 'mv $0 $(echo $0 | sed -e 's/".dereferenced"//g' -)' {} \; #move to old file names
+parallel -j 100 count_reads ::: $(find ${runDir}/scale_dat/alignments -maxdepth 5 -name '*bam') | sort -k1,1n > ${runDir}/scale_dat/cnv/scale_unique_read_counts.tsv
+awk '$1>100000 {print $0}' ${runDir}/scale_dat/cnv/scale_unique_read_counts.tsv > ${runDir}/scale_dat/cnv/scale_cells.pf.txt
+
+#split bam files to scbams
+parallel -j 100 -a ${runDir}/scale_dat/cnv/scale_cells.pf.txt split_bams
 
 #clear space from scratch
 rm -rf ${SCRATCH}/scalemet_native_work
 
-mkdir -p ${scale_runDir}/copykit_cnv
-
 singularity exec \
 --bind /data/rmulqueen/projects/scalebio_dcis/ \
 ~/singularity/copykit.sif \
 Rscript ~/projects/scalebio_dcis/tools/scalemet_dcis/src/copykit_cnvcalling.R \
---input_dir ${scale_runDir}/sc_bams \
---output_dir ${scale_runDir}/copykit_cnv/ \
+--input_dir ${runDir}/scale_dat/sc_bams \
+--output_dir ${runDir}/scale_dat/cnv \
 --output_prefix scale \
---task_cpus 150
-
-```
-
-Run on homebrew plates
-
-```bash
-homebrew_runDir="/data/rmulqueen/projects/scalebio_dcis/data/250329_RM_scalebio_batch1_initseq/homebrew_dat"
-
-#filter to bam files with >100000 unique reads
-cd $homebrew_runDir
-parallel -j 100 count_reads ::: $(find ./ -maxdepth 4 -name '*bam' -type l ) | sort -k1,1n > homebrew_unique_read_counts.tsv
-awk '$1>100000 {print $0}' homebrew_unique_read_counts.tsv > homebrew_cells.pf.txt
-mkdir -p sc_bams
-parallel -j 100 -a homebrew_cells.pf.txt split_bams
-
-#also copy all symlink files from scalebio nextflow by following symlinks (so we don't need work dir maintained)
-find ${homebrew_runDir} -maxdepth 5 -type l -exec bash -c 'cp -L -R "$(readlink -m "$0")" "$0".dereferenced' {} \; #copy files
-find ${homebrew_runDir} -maxdepth 5 -name "*.dereferenced" -type f -exec bash -c 'mv $0 $(echo $0 | sed -e 's/".dereferenced"//g' -)' {} \; #move to old file names
-
-rm -rf ${SCRATCH}/scalemet_work
-
-mkdir -p ${homebrew_runDir}/copykit_cnv
-singularity exec \
---bind /data/rmulqueen/projects/scalebio_dcis/ \
-~/singularity/copykit.sif \
-Rscript ~/projects/scalebio_dcis/tools/scalemet_dcis/src/copykit_cnvcalling.R \
---input_dir ${homebrew_runDir}/sc_bams \
---output_dir ${homebrew_runDir}/copykit_cnv/ \
---output_prefix homemade \
---task_cpus 150
+--task_cpus 125
 
 ```
