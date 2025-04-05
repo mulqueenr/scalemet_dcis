@@ -1,5 +1,6 @@
 #run line by line
-#singularity shell --bind /home/rmulqueen/projects/scalebio_dcis/ ~/singularity/copykit.sif
+#singularity shell --bind /data/rmulqueen/projects/scalebio_dcis/ ~/singularity/copykit.sif
+
 
 #example run submission
 #singularity exec \
@@ -21,9 +22,9 @@ option_list = list(
               help="Directory with single-cell bam files", metavar="character"),
   make_option(c("-o", "--output_dir"), type="character", default=".", 
               help="Output directory for plots and RDS file"),
-  make_option(c("-p", "--output_prefix"), type="character", default="homemade", 
+  make_option(c("-p", "--output_prefix"), type="character", default="scale", 
               help="Prefix of output"),
-  make_option(c("-c", "--task_cpus"), type="integer", default=200, 
+  make_option(c("-c", "--task_cpus"), type="integer", default=125, 
               help="Integer number of cpus")
 );
 
@@ -42,9 +43,15 @@ dat  <- runMetrics(dat)
 colData(dat)$sample_name<-unlist(lapply(strsplit(row.names(colData(dat)),"[.]"),"[",1))
 colData(dat)$method<-prefix
 
-copykit_per_sample<-function(dat,sample_name){
-    pdf(paste0(outdir,prefix,".qc_metrics.pdf"))
-    plotMetrics(dat, metric = c("overdispersion", 
+copykit_per_sample<-function(dat_in,sample_name_in="BCMDCIS07T"){
+    print(paste("Processing sample:",sample_name_in))
+    dat_in <- dat_in[,colData(dat_in)$sample_name == sample_name_in]
+    if(ncol(dat_in)<100){
+        print(paste("Sample",sample_name_in,"too few cells, skipping."))
+    } else {
+
+    pdf(paste0(outdir,prefix,".",sample_name_in,".qc_metrics.pdf"))
+    plotMetrics(dat_in, metric = c("overdispersion", 
                                 "breakpoint_count",
                                 "reads_total",
                                 "reads_duplicates",
@@ -52,35 +59,35 @@ copykit_per_sample<-function(dat,sample_name){
                                 "percentage_duplicates"),label = "reads_total")
     dev.off()
 
-    dat <- findAneuploidCells(dat)
-    dat <- findOutliers(dat)
+    dat_in <- findAneuploidCells(dat_in)
+    dat_in <- findOutliers(dat_in)
 
-    pdf(paste0(outdir,prefix,".subclone.heatmap.outlier.pdf"))
-    plotHeatmap(dat, row_split='outlier',n_threads=cpu_count) 
+    pdf(paste0(outdir,prefix,".",sample_name_in,".subclone.heatmap.outlier.pdf"))
+    plotHeatmap(dat_in, row_split='outlier',n_threads=cpu_count) 
     dev.off()
 
     # kNN smooth profiles
-    dat <- knnSmooth(dat)
+    dat_in <- knnSmooth(dat_in)
 
     # Create a umap embedding 
-    dat <- runUmap(dat)
-    k_clones<-findSuggestedK(dat) #10
-    dat  <- findClusters(dat, k_superclones=k_clones@metadata$suggestedK-3, k_subclones=k_clones@metadata$suggestedK+3)#output from k_clones
+    dat_in <- runUmap(dat_in)
+    k_clones<-findSuggestedK(dat_in) #10
+    dat_in  <- findClusters(dat_in, k_superclones=k_clones@metadata$suggestedK-3, k_subclones=k_clones@metadata$suggestedK+3)#output from k_clones
 
     #pdf(paste0(prefix,".subclone.umap.pdf"))
     #plotUmap(dat, label = 'subclones')
     #dev.off()
 
-    pdf(paste0(outdir,prefix,".samples.umap.pdf"))
-    plotUmap(dat, label = 'sample_name')
+    pdf(paste0(outdir,prefix,".",sample_name_in,".samples.umap.pdf"))
+    plotUmap(dat_in, label = 'sample_name')
     dev.off()
 
     # Calculate consensus profiles for each subclone, 
     # and order cells by cluster for visualization with plotHeatmap
-    dat <- calcConsensus(dat)
-    dat <- runConsensusPhylo(dat)
-    dat <- runPhylo(dat, metric = 'manhattan')
-    dat <- calcInteger(dat, method = 'scquantum',assay="segment_ratios")
+    dat_in <- calcConsensus(dat_in)
+    dat_in <- runConsensusPhylo(dat_in)
+    dat_in <- runPhylo(dat_in, metric = 'manhattan')
+    dat_in <- calcInteger(dat_in, method = 'scquantum',assay="segment_ratios")
     col_fun = colorRamp2(c(-1, 0, 1), c("blue", "white", "red"))
     # Plot a copy number heatmap with clustering annotation
 
@@ -88,29 +95,33 @@ copykit_per_sample<-function(dat,sample_name){
     #plotPhylo(dat, label = 'subclones')
     #dev.off()
 
-    pdf(paste0(outdir,prefix,".subclone.heatmap.segment_ratios.pdf"))
-    plotHeatmap(dat, label = c('reads_total','sample_name','method'),  
+    pdf(paste0(outdir,prefix,".",sample_name_in,".subclone.heatmap.segment_ratios.pdf"))
+    plotHeatmap(dat_in, label = c('reads_total','sample_name','method'),  
         order_cells = 'consensus_tree',
         assay="segment_ratios",
         n_threads=cpu_count, 
         col=col_fun)
     dev.off()
 
-    pdf(paste0(outdir,prefix,".subclone.heatmap.smoothed_bincounts.pdf"))
-    plotHeatmap(dat, label = c('reads_total','sample_name','method'),  
+    pdf(paste0(outdir,prefix,".",sample_name_in,".subclone.heatmap.smoothed_bincounts.pdf"))
+    plotHeatmap(dat_in, label = c('reads_total','sample_name','method'),  
         order_cells = 'consensus_tree',
         assay="smoothed_bincounts",
         n_threads=cpu_count)
     dev.off()
 
-    pdf(paste0(outdir,prefix,".subclone.heatmap.integer.pdf"))
-    plotHeatmap(dat, label = c('reads_total','sample_name','method'), 
+    pdf(paste0(outdir,prefix,".",sample_name_in,".subclone.heatmap.integer.pdf"))
+    plotHeatmap(dat_in, label = c('reads_total','sample_name','method'), 
         order_cells = 'consensus_tree', 
         assay="integer",
         n_threads=cpu_count)
     dev.off()
 
-    saveRDS(dat,file=paste0(outdir,prefix,".scCNA.rds"))
-    write.table(as.data.frame(dat@colData),file=paste0(outdir,prefix,".scCNA.tsv"),sep="\t",col.names=T,row.names=T)
-
+    saveRDS(dat_in,file=paste0(outdir,prefix,".",sample_name_in,".scCNA.rds"))
+    write.table(as.data.frame(dat_in@colData),file=paste0(outdir,prefix,".",sample_name_in,".scCNA.tsv"),sep="\t",col.names=T,row.names=T)
+    }
 }
+
+sample_list<-unique(colData(dat)$sample_name)
+
+lapply(sample_list,function(x) {copykit_per_sample(dat,x)})
