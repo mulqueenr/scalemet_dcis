@@ -2,7 +2,7 @@ import cospar as cs
 cs.settings.set_figure_params()
 
 import sys
-sys.path.append('/container_src/MethylTree') #load in methyltree module
+sys.path.append('/opt/miniconda3/condabin/envs/MethylTree') #load in methyltree module
 import methyltree 
 import pandas as pd
 import scanpy as sc

@@ -1,6 +1,13 @@
 #run per line 
 #singularity shell --bind /data/rmulqueen/projects/scalebio_dcis ~/singularity/amethyst.sif
 
+#singularity exec \
+#--bind /data/rmulqueen/projects/scalebio_dcis \
+#~/singularity/amethyst.sif
+#Rscript /data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/amethyst_initial_processing.R \
+#--input_dir ${runDir}/scale_dat \
+#--task_cpus 150
+
 library(amethyst)
 library(rhdf5)
 library(data.table)

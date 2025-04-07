@@ -150,3 +150,15 @@ Rscript /data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/copykit_c
 --task_cpus 125 &
 
 ```
+
+Run AMETHYST object initiation per sample
+
+```bash
+singularity --bind /data/rmulqueen/projects/scalebio_dcis \
+exec \
+~/singularity/amethyst.sif \
+Rscript /data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/amethyst_initial_processing.R \
+--input_dir ${runDir}/scale_dat \
+--task_cpus 150
+
+```

@@ -96,25 +96,28 @@ copykit_per_sample<-function(dat_in,sample_name_in="BCMDCIS07T"){
     #dev.off()
 
     pdf(paste0(outdir,prefix,".",sample_name_in,".subclone.heatmap.segment_ratios.pdf"))
-    plotHeatmap(dat_in, label = c('reads_total','sample_name','method'),  
+    plt<-plotHeatmap(dat_in, label = c('reads_total','sample_name','method'),  
         order_cells = 'consensus_tree',
         assay="segment_ratios",
         n_threads=cpu_count, 
         col=col_fun)
+    draw(plt)
     dev.off()
 
     pdf(paste0(outdir,prefix,".",sample_name_in,".subclone.heatmap.smoothed_bincounts.pdf"))
-    plotHeatmap(dat_in, label = c('reads_total','sample_name','method'),  
+    plt<-plotHeatmap(dat_in, label = c('reads_total','sample_name','method'),  
         order_cells = 'consensus_tree',
         assay="smoothed_bincounts",
         n_threads=cpu_count)
+    draw(plt)
     dev.off()
 
     pdf(paste0(outdir,prefix,".",sample_name_in,".subclone.heatmap.integer.pdf"))
-    plotHeatmap(dat_in, label = c('reads_total','sample_name','method'), 
+    plt<-plotHeatmap(dat_in, label = c('reads_total','sample_name','method'), 
         order_cells = 'consensus_tree', 
         assay="integer",
         n_threads=cpu_count)
+    draw(plt)
     dev.off()
 
     saveRDS(dat_in,file=paste0(outdir,prefix,".",sample_name_in,".scCNA.rds"))
