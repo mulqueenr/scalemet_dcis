@@ -3,15 +3,12 @@
 # Checking bins against a dataset of normal cells
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-# the following datasets are composed of normal, diploid cells:
-#
-# "/volumes/seq/projects/CNA_projects/DT_CNA/snap_frozen/Thyroid_gland/TG1"
-# "/volumes/seq/projects/CNA_projects/DT_CNA/snap_frozen/Thyroid_gland/TG13"
-# "/volumes/seq/projects/CNA_projects/DT_CNA/snap_frozen/Ovary/OV5/"
-# "/volumes/seq/projects/CNA_projects/DT_CNA/snap_frozen/Breast/TNBC/TN27/fastq_input" # D peak
-# "/volumes/seq/projects/CNA_projects/DT_CNA/snap_frozen/Breast/TNBC/TN4/" # D peak
-# "cat /volumes/seq/projects/CNA_projects/DT_CNA/snap_frozen/Lung/PANL2/"
-# "cat /volumes/seq/projects/CNA_projects/DT_CNA/snap_frozen/Lung/PANL5/" # D peak
+# the following datasets include are composed of normal, diploid cells (all HBCA samples):
+/data/rmulqueen/projects/scalebio_dcis/data/240202_prelim1/scale_dat/sc_bams
+/data/rmulqueen/projects/scalebio_dcis/data/240523_prelim2/scale_dat/sc_bams
+/data/rmulqueen/projects/scalebio_dcis/data/241007_prelim3/scale_dat/sc_bams
+/data/rmulqueen/projects/scalebio_dcis/data/250329_RM_scalebio_batch1_initseq/homebrew_dat/sc_bams
+/data/rmulqueen/projects/scalebio_dcis/data/250329_RM_scalebio_batch1_initseq/scale_dat/sc_bams
 
 # Rsubread was used to count reads into the bins
 
@@ -35,8 +32,8 @@ ann <- ann %>%
     )
 
 
-files <- list.files("/mnt/lab/users/dminussi/projects/copy_number_pipeline_hg38/test_data/marked/", full.names = T, pattern = "*.bam")
-files_names <- list.files("/mnt/lab/users/dminussi/projects/copy_number_pipeline_hg38/test_data/marked/", full.names = F, pattern = "*.bam")
+files <- list.files("/mnt/lab/users/dminussi/projects/copy_number_pipeline_hg38/test_data/marked/", full.names = T, pattern = "*.bam$")
+files_names <- list.files("/mnt/lab/users/dminussi/projects/copy_number_pipeline_hg38/test_data/marked/", full.names = F, pattern = "*.bam$")
 files <- files[!str_detect(files, "bai")]
 files_names <- files_names[!str_detect(files_names, "bai")]
 

@@ -202,7 +202,7 @@ Run CNV calling per sample
 singularity exec \
 --bind /data/rmulqueen/projects/scalebio_dcis/ \
 ~/singularity/copykit.sif \
-Rscript ~/projects/scalebio_dcis/tools/scalemet_dcis/src/copykit_cnvcalling.R \
+Rscript /data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/copykit_cnvcalling.R \
 --input_dir ${runDir}/scale_dat/sc_bams \
 --output_dir ${runDir}/scale_dat/cnv \
 --output_prefix scale \
@@ -211,7 +211,7 @@ Rscript ~/projects/scalebio_dcis/tools/scalemet_dcis/src/copykit_cnvcalling.R \
 singularity exec \
 --bind /data/rmulqueen/projects/scalebio_dcis/ \
 ~/singularity/copykit.sif \
-Rscript ~/projects/scalebio_dcis/tools/scalemet_dcis/src/copykit_cnvcalling.R \
+Rscript /data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/copykit_cnvcalling.R \
 --input_dir ${runDir}/homebrew_dat/sc_bams \
 --output_dir ${runDir}/homebrew_dat/cnv \
 --output_prefix homebrew \

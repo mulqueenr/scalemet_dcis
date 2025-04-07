@@ -1,0 +1,80 @@
+#run per line 
+#singularity shell --bind /data/rmulqueen/projects/scalebio_dcis ~/singularity/amethyst.sif
+
+library(amethyst)
+library(rhdf5)
+library(data.table)
+library(ggplot2)
+library(patchwork)
+library(dplyr)
+library(tibble)
+library(tidyr)
+library(plyr)
+library(future)
+library(furrr)
+library(purrr)
+library(cowplot)
+library(pheatmap)
+library(plyr)
+library(optparse) #add this
+
+
+option_list = list(
+  make_option(c("-i", "--input_dir"), type="character", default="/data/rmulqueen/projects/scalebio_dcis/data/250329_RM_scalebio_batch1_initseq/scale_dat", 
+              help="Run Directory, output from ScaleMethyl pipeline", metavar="character"),
+  make_option(c("-p", "--output_prefix"), type="character", default="scale", 
+              help="Prefix of output for all samples merged amethyst output."),
+  make_option(c("-c", "--task_cpus"), type="integer", default=125, 
+              help="Integer number of cpus")
+);
+
+opt_parser = OptionParser(option_list=option_list);
+opt = parse_args(opt_parser);
+cpu_count=opt$task_cpus
+prefix=opt$output_prefix
+
+#read in all sample/csv/sample.passingCellsMapMethylStats.csv files into data frame
+#make a dataframe of all h5 files also <sample>\t<h5location>
+in_dir=opt$input_dir
+setwd(in_dir)
+system("mkdir -p ./amethyst")
+
+samples_list_meta<-list.files("./samples",pattern="*allCells.csv",full.names=T)
+
+
+prepare_amethyst_obj<-function(sample_meta="./samples/BCMDCIS07T.allCells.csv"){
+    sample_name<-gsub(sample_meta,pattern=".allCells.csv",replace="")
+    sample_name<-gsub(sample_name,pattern="./samples/",replace="")
+    sample_meta<-read.csv(sample_meta)
+    sample_meta<-sample_meta[which(sample_meta$pass=="pass"),]
+    sample_meta$h5_path<-unlist(lapply(1:nrow(sample_meta),function(x){
+        well=sample_meta[x,]$tgmt_well
+        h5_file=list.files(paste0(getwd(),"/samples/methylation_coverage/amethyst/",sample_name),pattern=well,full.names=T,include.dirs=T)
+        return(h5_file)
+        }))
+
+    obj <- createObject()
+
+    #metadata MUST have a column called mcg_pct for score calculation
+    #metadata MUST have a column called cov to regress coverage mias
+    obj@metadata<-sample_meta
+    row.names(obj@metadata)<-obj@metadata$cell_id
+    cg_per_read<-mean(obj@metadata$cg_cov/obj@metadata$unique_reads)
+    head(obj@metadata)
+    plt1<-ggplot(obj@metadata, aes(x=unique_reads/total_reads,y=log10(unique_reads)))+geom_point(size=0.2)+theme_minimal()+xlim(c(0,1))+ylim(c(0,7))
+    plt2<-ggplot(obj@metadata, aes(x=sample, y = log10(unique_reads))) + geom_violin() + geom_jitter()+ylim(c(0,7))+theme_minimal()
+    plt3<-ggplot(obj@metadata, aes(x=sample, y = log10(cg_cov))) + geom_violin() + geom_jitter()+ylim(c(0,7))+theme_minimal()
+    plt4<-ggplot(obj@metadata, aes(x=unique_reads, y = cg_cov)) +geom_point() +  geom_smooth(method = "lm", se = FALSE)+theme_minimal()+ggtitle(paste("CG covered per read: ",cg_per_read))
+    plt5<-ggplot(obj@metadata, aes(x=sample, y = mcg_pct))+ geom_violin() + geom_jitter() +ylim(c(0,100))+theme_minimal()
+
+    ggsave((plt1|plt2|plt3)/(plt4|plt5),file=paste0("./amethyst/",sample_name,".cov_plot.pdf"))
+
+    obj@h5paths <- data.frame(row.names = c(rownames(obj@metadata)), paths = obj@metadata$h5_path)
+
+    # index files
+    obj@index[["chr_cg"]] <- indexChr(obj, type = "CG", threads = cpu_count)
+    saveRDS(obj,file=paste0("./amethyst/",sample_name,".amethyst.rds"))
+    return(obj)
+}
+
+obj_list<-lapply(samples_list_meta,prepare_amethyst_obj)

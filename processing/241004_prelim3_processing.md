@@ -141,6 +141,7 @@ parallel -j 200 -a ${runDir}/scale_dat/cnv/scale_cells.pf.txt split_bams
 Run CNV calling per sample
 
 ```bash
+
 singularity exec \
 --bind /data/rmulqueen/projects/scalebio_dcis/ \
 ~/singularity/copykit.sif \
@@ -148,6 +149,6 @@ Rscript /data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/copykit_c
 --input_dir ${runDir}/scale_dat/sc_bams \
 --output_dir ${runDir}/scale_dat/cnv \
 --output_prefix scale \
---task_cpus 125 &
+--task_cpus 125
 
 ```

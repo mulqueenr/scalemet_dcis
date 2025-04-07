@@ -2,18 +2,19 @@
 
 
 ```bash
-#export environment variables for working/scratch directories
-export SCRATCH="/data/rmulqueen/projects/scalebio_dcis/scratch/scalemet_work"
-export TMPDIR="/data/rmulqueen/projects/scalebio_dcis/scratch"
-export NXF_SINGULARITY_CACHEDIR="/data/rmulqueen/projects/scalebio_dcis/singularity"
-export SINGULARITY_BINDPATH="/data/rmulqueen/projects/scalebio_dcis/tools/ScaleMethyl/bin" 
-
 #set up directories and variables
 projDir="/data/rmulqueen/projects/scalebio_dcis"
 scalebio_nf="/data/rmulqueen/projects/scalebio_dcis/tools/ScaleMethyl" 
 params="/data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/dcis_runParams.yml"
 runDir="${projDir}/data/240523_prelim2"
 bclDir="/data/rmulqueen/projects/scalebio_dcis/seq/240523_VH00219_594_AAFLYGNM5"
+
+#export environment variables for working/scratch directories
+export SCRATCH="/data/rmulqueen/projects/scalebio_dcis/scratch/scalemet_work"
+export TMPDIR="/data/rmulqueen/projects/scalebio_dcis/scratch"
+export NXF_SINGULARITY_CACHEDIR="/data/rmulqueen/projects/scalebio_dcis/singularity"
+export SINGULARITY_BINDPATH="/data/rmulqueen/projects/scalebio_dcis/tools/ScaleMethyl/bin" 
+
 
 
 ```
@@ -138,10 +139,10 @@ Run CNV calling per sample
 singularity exec \
 --bind /data/rmulqueen/projects/scalebio_dcis/ \
 ~/singularity/copykit.sif \
-Rscript /data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/copykit_cnvcalling.R \
+script /data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/copykit_cnvcalling.R \
 --input_dir ${runDir}/scale_dat/sc_bams \
 --output_dir ${runDir}/scale_dat/cnv \
 --output_prefix scale \
---task_cpus 125 &
+--task_cpus 125
 
 ```
