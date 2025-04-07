@@ -27,30 +27,9 @@ mkdir -p ${runDir}/samplesheets
 cd ${runDir}
 
 echo """sample,barcodes,libName
-BCMDCIS41T,3A01-3A08,ScaleMethyl
-BCMDCIS41T,3B01-3B08,ScaleMethyl
-BCMDCIS41T,3C01-3C08,ScaleMethyl
-BCMDCIS41T,3D01-3D08,ScaleMethyl
-BCMDCIS41T,3E01-3E08,ScaleMethyl
-BCMDCIS41T,3F01-3F08,ScaleMethyl
-BCMDCIS41T,3G01-3G08,ScaleMethyl
-BCMDCIS41T,3H01-3H08,ScaleMethyl
-BCMDCIS66T,3A09-3A11,ScaleMethyl
-BCMDCIS66T,3B09-3B11,ScaleMethyl
-BCMDCIS66T,3C09-3C11,ScaleMethyl
-BCMDCIS66T,3D09-3D11,ScaleMethyl
-BCMDCIS66T,3E09-3E11,ScaleMethyl
-BCMDCIS66T,3F09-3F11,ScaleMethyl
-BCMDCIS66T,3G09-3G11,ScaleMethyl
-BCMDCIS66T,3H09-3H11,ScaleMethyl
-BCMDCIS81T,3A12-3A12,ScaleMethyl
-BCMDCIS81T,3B12-3B12,ScaleMethyl
-BCMDCIS81T,3C12-3C12,ScaleMethyl
-BCMDCIS81T,3D12-3D12,ScaleMethyl
-BCMDCIS81T,3E12-3E12,ScaleMethyl
-BCMDCIS81T,3F12-3F12,ScaleMethyl
-BCMDCIS81T,3G12-3G12,ScaleMethyl
-BCMDCIS81T,3H12-3H12,ScaleMethyl""" > ${runDir}/samplesheets/samples.csv
+BCMDCIS41T,3A01-3A08;3B01-3B08;3C01-3C08;3D01-3D08;3E01-3E08;3F01-3F08;3G01-3G08;3H01-3H08,ScaleMethyl
+BCMDCIS66T,3A09-3A11;3B09-3B11;3C09-3C11;3D09-3D11;3E09-3E11;3F09-3F11;3G09-3G11;3H09-3H11,ScaleMethyl
+BCMDCIS81T,3A12;3B12;3C12;3D12;3E12;3F12;3G12;3H12,ScaleMethyl""" > ${runDir}/samplesheets/samples.csv
 
 ```
 
@@ -86,7 +65,6 @@ nextflow run nf-core/demultiplex \
     --skip_tools fastp,fastqc,kraken,multiqc,checkqc,falco,md5sum,samshee \
     -profile singularity \
     -w $SCRATCH/scalemet_prelim2
-
 ```
 
 RUN SCALE_METHYL PIPELINE
@@ -107,5 +85,63 @@ nextflow run ${scalebio_nf} \
 -params-file ${params} \
 -w $SCRATCH/scalemet_prelim2
 
+```
+
+Correct all symlink with actual links and split out merged bam files into single-cell bam files.
+
+```bash
+
+#also copy all symlink files from scalebio nextflow by following symlinks (so we don't need work dir maintained)
+find ${runDir} -maxdepth 7 -type l -exec bash -c 'cp -L -R "$(readlink -m "$0")" "$0".dereferenced' {} \; #copy files
+find ${runDir} -maxdepth 7 -name "*.dereferenced" -type f -exec bash -c 'mv $0 $(echo $0 | sed -e 's/".dereferenced"//g' -)' {} \; #move to old file names
+```
+
+Split bams to single-cells and run copykit
+
+```bash
+#set up functions
+#count reads export
+count_reads() { 
+        samtools view $1 | awk -v b=$1 '{split($1,a,":"); print a[8],b}' | sort | uniq -c | sort -k1,1n
+}
+
+#split bams export
+split_bams() { 
+        test=$1
+        idx=$(echo $test | cut -d ' ' -f 2 )
+        bam=$(echo $test | cut -d ' ' -f 3)
+        outprefix=$(echo $bam | awk -F/ '{print $NF}')
+        outprefix=$(echo $outprefix | sed -e 's/.dedup.bam//g' -)
+        echo ./sc_bams/${outprefix}.${idx}.bam
+        ((samtools view -H $bam) && (samtools view $bam | awk -v i=$idx '{split($1,a,":"); if(a[8]==i); print $0}')) | samtools view -bS > ./sc_bams/${outprefix}.${idx}.bam
+}
+
+export -f count_reads
+export -f split_bams
+
+#filter to bam files with >100000 unique reads
+cd ${runDir}/scale_dat
+mkdir -p ${runDir}/scale_dat/cnv
+mkdir -p ${runDir}/scale_dat/sc_bams
+
+parallel -j 100 count_reads ::: $(find ${runDir}/scale_dat/alignments -maxdepth 5 -name '*bam') | sort -k1,1n > ${runDir}/scale_dat/cnv/scale_unique_read_counts.tsv
+awk '$1>100000 {print $0}' ${runDir}/scale_dat/cnv/scale_unique_read_counts.tsv > ${runDir}/scale_dat/cnv/scale_cells.pf.txt
+
+#split bam files to scbams
+parallel -j 200 -a ${runDir}/scale_dat/cnv/scale_cells.pf.txt split_bams
+```
+
+
+Run CNV calling per sample
+
+```bash
+singularity exec \
+--bind /data/rmulqueen/projects/scalebio_dcis/ \
+~/singularity/copykit.sif \
+Rscript /data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/copykit_cnvcalling.R \
+--input_dir ${runDir}/scale_dat/sc_bams \
+--output_dir ${runDir}/scale_dat/cnv \
+--output_prefix scale \
+--task_cpus 125 &
 
 ```

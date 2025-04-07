@@ -144,7 +144,7 @@ find ${runDir} -maxdepth 7 -name "*.dereferenced" -type f -exec bash -c 'mv $0 $
 ```
 
 Split bams to single-cells and run copykit
-
+Scale
 ```bash
 #set up functions
 #count reads export
@@ -171,15 +171,34 @@ cd ${runDir}/scale_dat
 mkdir -p ${runDir}/scale_dat/cnv
 mkdir -p ${runDir}/scale_dat/sc_bams
 
-parallel -j 100 count_reads ::: $(find ${runDir}/scale_dat/alignments -maxdepth 5 -name '*bam') | sort -k1,1n > ${runDir}/scale_dat/cnv/scale_unique_read_counts.tsv
+parallel -j 200 count_reads ::: $(find ${runDir}/scale_dat/alignments -maxdepth 5 -name '*bam') | sort -k1,1n > ${runDir}/scale_dat/cnv/scale_unique_read_counts.tsv
 awk '$1>100000 {print $0}' ${runDir}/scale_dat/cnv/scale_unique_read_counts.tsv > ${runDir}/scale_dat/cnv/scale_cells.pf.txt
 
 #split bam files to scbams
-parallel -j 100 -a ${runDir}/scale_dat/cnv/scale_cells.pf.txt split_bams
+parallel -j 200 -a ${runDir}/scale_dat/cnv/scale_cells.pf.txt split_bams
 
-#clear space from scratch
-rm -rf ${SCRATCH}/scalemet_native_work
+```
 
+Homebrew
+
+```bash
+#filter to bam files with >100000 unique reads
+cd ${runDir}/homebrew_dat
+mkdir -p ${runDir}/homebrew_dat/cnv
+mkdir -p ${runDir}/homebrew_dat/sc_bams
+
+
+parallel -j 200 count_reads ::: $(find ${runDir}/homebrew_dat/alignments -maxdepth 5 -name '*bam') | sort -k1,1n > ${runDir}/homebrew_dat/cnv/homebrew_unique_read_counts.tsv
+awk '$1>100000 {print $0}' ${runDir}/homebrew_dat/cnv/homebrew_unique_read_counts.tsv > ${runDir}/homebrew_dat/cnv/homebrew_cells.pf.txt
+
+#split bam files to scbams
+parallel -j 200 -a ${runDir}/homebrew_dat/cnv/homebrew_cells.pf.txt split_bams
+
+```
+
+Run CNV calling per sample
+
+```bash
 singularity exec \
 --bind /data/rmulqueen/projects/scalebio_dcis/ \
 ~/singularity/copykit.sif \
@@ -187,6 +206,14 @@ Rscript ~/projects/scalebio_dcis/tools/scalemet_dcis/src/copykit_cnvcalling.R \
 --input_dir ${runDir}/scale_dat/sc_bams \
 --output_dir ${runDir}/scale_dat/cnv \
 --output_prefix scale \
---task_cpus 125
+--task_cpus 125 &
 
+singularity exec \
+--bind /data/rmulqueen/projects/scalebio_dcis/ \
+~/singularity/copykit.sif \
+Rscript ~/projects/scalebio_dcis/tools/scalemet_dcis/src/copykit_cnvcalling.R \
+--input_dir ${runDir}/homebrew_dat/sc_bams \
+--output_dir ${runDir}/homebrew_dat/cnv \
+--output_prefix homebrew \
+--task_cpus 125 &
 ```
