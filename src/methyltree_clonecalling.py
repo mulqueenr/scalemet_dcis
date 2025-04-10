@@ -1,8 +1,5 @@
-import cospar as cs
-cs.settings.set_figure_params()
-
 import sys
-sys.path.append('/opt/miniconda3/condabin/envs/MethylTree') #load in methyltree module
+sys.path.append('/MethylTree') #load in methyltree module
 import methyltree 
 import pandas as pd
 import scanpy as sc
@@ -11,6 +8,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 import argparse
 import cospar as cs
+#cs.settings.set_figure_params()
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-i', "--input",default="DCIS-41T")  #description='sample name input (matching prefix to methyltree output from amethyst processing)'
