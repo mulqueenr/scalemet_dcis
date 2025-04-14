@@ -136,7 +136,7 @@ workflow {
 
     cells_pf= COUNT_READS.out.cells_pf
     .splitCsv( sep="\t", header: false)
-    . map { row -> tuple(row[0], row[1], row[2]) }
+    .map { row -> tuple(row[0], row[1], row[2]) }
 
     SPLIT_BAMS(cells_pf) \
     | collect \
