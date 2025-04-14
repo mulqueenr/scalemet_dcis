@@ -48,7 +48,8 @@ process COUNT_READS {
 		"""
         #use a function to parallelize
         count_reads() { 
-        samtools view \$1 | awk -v b=\$1 '{split(\$1,a,":"); print a[8],b}' | sort | uniq -c | sort -k1,1n
+        bam_in=\$1
+        samtools view \$1 | awk -v b=\$bam_in '{split(\$1,a,":"); print a[8],b}' | sort | uniq -c | sort -k1,1n
         }
         export -f count_reads
 
