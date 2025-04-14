@@ -44,8 +44,6 @@ prefix=opt$output_prefix
 #make a dataframe of all h5 files also <sample>\t<h5location>
 in_dir=opt$input_dir
 setwd(in_dir)
-system("mkdir -p ./amethyst")
-system("mkdir -p ./methyltree")
 
 samples_list_meta<-list.files("./samples",pattern="*allCells.csv",full.names=T)
 
