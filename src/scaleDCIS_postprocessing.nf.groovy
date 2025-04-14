@@ -128,7 +128,7 @@ process AMETHYST_INIT {
 
 workflow {
 
-    bam_in = channel.fromPath( '${params.runDir}/alignments/**/*.bam' , type: 'file' , followLinks: 'true')
+    bam_in = channel.fromPath( '${params.runDir}/alignments/**/*.bam' , type: 'file')
     
     //Split bams and run copykit
     indir= channel.fromPath( params.runDir , type: 'dir')
