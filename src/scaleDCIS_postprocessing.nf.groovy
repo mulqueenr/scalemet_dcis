@@ -60,7 +60,7 @@ process COUNT_READS {
 
 process SPLIT_BAMS {
 	//Take output of COUNT_READS with each line being a tuple, then split from source bam to single cell bam
-	maxForks "$params.max_forks"
+	maxForks "${params.max_forks}"
     publishDir "${params.runDir}/cnv/sc_bam", mode: 'copy', overwrite:true, pattern: "*bam"
 
 	input:
@@ -134,7 +134,7 @@ workflow {
     COUNT_READS(indir) 
     COUNT_READS.out.cells_pf.view()
 
-    cells_pf= COUNT_READS.out.cells_pf
+    cells_pf = COUNT_READS.out.cells_pf
     .splitCsv( sep: "\t", header: false)
     .map { row -> tuple(row[0], row[1], row[2]) }
 
