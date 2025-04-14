@@ -8,31 +8,37 @@ import numpy as np
 from matplotlib import pyplot as plt
 import argparse
 import cospar as cs
+import re
+
 #cs.settings.set_figure_params()
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-i', "--input",default="DCIS-41T")  #description='sample name input (matching prefix to methyltree output from amethyst processing)'
+parser.add_argument('-i', "--input",default="MDA-MB-231_methyltree_input.h5")  #description='sample name input (matching prefix to methyltree output from amethyst processing)'
+parser.add_argument('-c', "--cpu_cores",default="50")  #description='sample name input (matching prefix to methyltree output from amethyst processing)'
+
 args = parser.parse_args()
-in_dir= "/volumes/USR2/Ryan/projects/metact/amethyst_processing"
+in_dir= "./"
 os.chdir(in_dir)
-prefix=args.input
+in_dat=args.input
+sample_name=re.sub("_methyltree_input.h5", "", args.input) 
+
 
 print('Read in H5 Data') # 
-dat=pd.read_hdf(prefix+"_methyltree_input.h5", key="data", mode='r')
+dat=pd.read_hdf(in_dat, key="data", mode='r')
 dat.rename(columns={'cell_id': 'index'}, inplace=True)
 df_out=dat.pivot(index='index',columns='genomic_region_id',values='value')
 adata=sc.AnnData(df_out) #This adata has not annotation yet. We will use the df_sample from raw_data folder to annotate this object later
 
 print('Read in metadata')
-metadat=pd.read_hdf(prefix+"_methyltree_input.h5", key="metadata", mode='r')
+metadat=pd.read_hdf(in_dat, key="metadata", mode='r')
 metadat.to_csv("sample_sheet.tsv.gz",sep='\t',compression='gzip')
 
 print('Set up output directories')
-out_dir=prefix+'_methyltree'+'/data'
-save_data_des=prefix
+out_dir=sample_name+'_methyltree'+'/data'
+save_data_des=sample_name
 clone_key='large_clone_id'
-data_des=prefix
-figure_path=prefix+'_methyltree'+'/figure'
+data_des=sample_name
+figure_path=sample_name+'_methyltree'+'/figure'
 data_path=os.getcwd()
 os.makedirs(out_dir,exist_ok=True)
 os.makedirs(figure_path,exist_ok=True)
@@ -41,7 +47,8 @@ df_sample=methyltree.hf.load_sample_info(data_path)
 adata_final,stat_out=methyltree.analysis.comprehensive_lineage_analysis(
                                                         out_dir,data_path,save_data_des,clone_key,
                                                         adata_orig=adata,
-                                                        clone_color_dict=None,heatmap_additional_key_list=['celltype'],
+                                                        clone_color_dict=None,
+                                                        heatmap_additional_key_list=['celltype'],
                                                         compute_similarity=True,
                                                         update_sample_info=True,
                                                         # correct the correlation bias

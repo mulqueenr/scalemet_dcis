@@ -146,3 +146,18 @@ script /data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/copykit_cn
 --task_cpus 125
 
 ```
+
+
+Run AMETHYST object initiation per sample
+Generates METHYLTREE input for processing as well
+
+```bash
+singularity \
+exec \
+--bind /data/rmulqueen/projects/scalebio_dcis  \
+~/singularity/amethyst.sif \
+Rscript /data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/amethyst_initial_processing.R \
+--input_dir ${runDir}/scale_dat \
+--task_cpus 150
+
+```
