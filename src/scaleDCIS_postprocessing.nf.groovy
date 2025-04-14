@@ -142,7 +142,10 @@ workflow {
     | collect \
     | COPYKIT
 
-    copykit_clones=COPYKIT.out.copykit_tsv | collect 
+    copykit_clones = 
+        COPYKIT.out.copykit_tsv 
+        .collectFile(name: 'copykit_clones.txt', newLine: true)
+
     //Initiate amethyst object per sample    
     AMETHYST_INIT(indir, copykit_clones)
 }
