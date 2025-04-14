@@ -134,7 +134,7 @@ workflow {
     COUNT_READS(indir) 
 
     cells_pf = COUNT_READS.out.cells_pf
-    .splitCsv( sep: "\t", header: false)
+    .splitCsv( sep: " ", header: false)
     .map { row -> tuple(row[0], row[1], row[2]) }
     .view()
 
