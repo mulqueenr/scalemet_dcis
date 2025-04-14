@@ -53,7 +53,7 @@ process COUNT_READS {
         export -f count_reads
 
         parallel -j ${task.cpus} count_reads ::: \$(find ${params.runDir}/alignments -maxdepth 5 -name '*bam') | sort -k1,1n > unique_read_counts.tsv
-        awk 'OFS="," {if(\$1>${params.min_cnv_count}); print \$1,\$2,\$3}' unique_read_counts.tsv > cells_pf.tsv
+        awk 'OFS="," {if(\$1>${params.min_cnv_count}) print \$1,\$2,\$3}' unique_read_counts.tsv > cells_pf.tsv
 		"""
 }
 
@@ -68,7 +68,7 @@ process SPLIT_BAMS {
 		path("*bam")
 	script:
 	"""
-        outprefix=${bam.Name}
+        outprefix="${bam.Name}"
         outprefix=\$(echo \$outprefix | sed -e 's/.dedup.bam//g' -)
         ((samtools view -H $bam) && (samtools view $bam | awk -v i=$idx '{split(\$1,a,":"); if(a[8]==i); print \$0}')) | samtools view -bS > ${outprefix}.${idx}.bam
 	"""
@@ -136,7 +136,6 @@ workflow {
     cells_pf = COUNT_READS.out.cells_pf
     .splitCsv( header: false)
     .map { row -> tuple(row[0], row[1], row[2]) }
-    .view()
 
     SPLIT_BAMS(cells_pf) \
     | collect \
