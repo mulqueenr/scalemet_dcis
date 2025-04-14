@@ -53,7 +53,7 @@ process COUNT_READS {
         export -f count_reads
 
         parallel -j ${task.cpus} count_reads ::: \$(find ${params.runDir}/alignments -maxdepth 5 -name '*bam') | sort -k1,1n > unique_read_counts.tsv
-        awk '\$1>${params.min_cnv_count} {print \$1,\$2,\$3}' unique_read_counts.tsv > cells_pf.tsv
+        awk 'OFS="," {if(\$1>${params.min_cnv_count}); print \$1,\$2,\$3}' unique_read_counts.tsv > cells_pf.tsv
 		"""
 }
 
