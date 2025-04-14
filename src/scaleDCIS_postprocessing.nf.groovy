@@ -36,7 +36,6 @@ process COUNT_READS {
     //Count reads to split bams by minimum read counts
 	cpus "${params.max_cpus}"
     publishDir "${params.runDir}/cnv/read_counts", mode: 'copy', overwrite:true, pattern: "*tsv"
-    cpus "${params.max_cpus}"
 
 	input:
 		path runDir
@@ -53,8 +52,8 @@ process COUNT_READS {
         }
         export -f count_reads
 
-        parallel -j ${task.cpus} count_reads ::: \$(find ${runDir}/alignments -maxdepth 5 -name '*bam') | sort -k1,1n > unique_read_counts.tsv
-        awk '\$1>${params.min_cnv_count} {print \$0}' unique_read_counts.tsv > cells_pf.tsv
+        parallel -j ${task.cpus} count_reads ::: \$(find ${params.runDir}/alignments -maxdepth 5 -name '*bam') | sort -k1,1n > unique_read_counts.tsv
+        awk '\$1>${params.min_cnv_count} {print \$1,\$2,\$3}' unique_read_counts.tsv > cells_pf.tsv
 		"""
 }
 
