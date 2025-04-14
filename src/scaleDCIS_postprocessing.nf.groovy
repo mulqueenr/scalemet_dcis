@@ -70,7 +70,7 @@ process SPLIT_BAMS {
 	"""
         outprefix="${bam.Name}"
         outprefix=\$(echo \$outprefix | sed -e 's/.dedup.bam//g' -)
-        ((samtools view -H $bam) && (samtools view $bam | awk -v i=$idx '{split(\$1,a,":"); if(a[8]==i); print \$0}')) | samtools view -bS > ${outprefix}.${idx}.bam
+        ((samtools view -H $bam) && (samtools view $bam | awk -v i=$idx '{split(\$1,a,":"); if(a[8]==i); print \$0}')) | samtools view -bS > \${outprefix}.${idx}.bam
 	"""
 }
 
