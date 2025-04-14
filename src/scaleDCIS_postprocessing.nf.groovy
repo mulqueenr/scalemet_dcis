@@ -134,9 +134,11 @@ workflow {
     COUNT_READS(indir) 
     COUNT_READS.out.cells_pf.view()
 
-    splitCsv(COUNT_READS.out.cells_pf, sep="\t", header: false) \
-    | map { row -> tuple(row[0], row[1], row[2]) } \
-    | SPLIT_BAMS \
+    cells_pf= COUNT_READS.out.cells_pf
+    .splitCsv( sep="\t", header: false)
+    . map { row -> tuple(row[0], row[1], row[2]) }
+
+    SPLIT_BAMS(cells_pf) \
     | collect \
     | COPYKIT
 
