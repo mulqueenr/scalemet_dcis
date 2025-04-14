@@ -111,6 +111,7 @@ process AMETHYST_INIT {
 
 	input:
 		path runDir, stageAs: 'rundir/'
+        path copykit_clones
 
 	output:
 		tuple val(cellid),path("*.R1_001.trim.fastq.gz"), path("*.R2_001.trim.fastq.gz"), emit: fqs
@@ -141,6 +142,7 @@ workflow {
     | collect \
     | COPYKIT
 
+    copykit_clones=COPYKIT.out.copykit_tsv | collect 
     //Initiate amethyst object per sample    
-    AMETHYST_INIT(indir, COPYKIT.out.copykit_tsv)
+    AMETHYST_INIT(indir, copykit_clones)
 }
