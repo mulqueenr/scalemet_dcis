@@ -27,7 +27,7 @@ library(optparse) #add this
 
 
 option_list = list(
-  make_option(c("-i", "--input_dir"), type="character", default="/data/rmulqueen/projects/scalebio_dcis/data/250329_RM_scalebio_batch1_initseq/scale_dat", 
+  make_option(c("-i", "--input_dir"), type="character", default="/data/rmulqueen/projects/scalebio_dcis/data/240202_prelim1/scale_dat", 
               help="Run Directory, output from ScaleMethyl pipeline", metavar="character"),
   make_option(c("-p", "--output_prefix"), type="character", default="scale", 
               help="Prefix of output for all samples merged amethyst output."),
@@ -45,11 +45,12 @@ prefix=opt$output_prefix
 in_dir=opt$input_dir
 setwd(in_dir)
 system("mkdir -p ./amethyst")
+system("mkdir -p ./methyltree")
 
 samples_list_meta<-list.files("./samples",pattern="*allCells.csv",full.names=T)
 
 
-methyltree_output<-function(obj=obj,prefix="DCIS-41T",sample="DCIS-41T",filt_min_pct=10,filt_max_pct=80,threads=1){
+methyltree_output<-function(obj=obj,prefix="DCIS-41T",sample="DCIS-41T",filt_min_pct=20,filt_max_pct=70,threads=1){
         obj@metadata$methyltree_group<-"all"
         #make 500bp windows with methylation percentages
         methyltreewindows <- calcSmoothedWindows(obj, 
@@ -66,10 +67,10 @@ methyltree_output<-function(obj=obj,prefix="DCIS-41T",sample="DCIS-41T",filt_min
         #filter to windows to middling methylation values
         print(paste("Filtering by m0 >=", as.character(filt_min_pct), "m1 <=", as.character(filt_max_pct),as.character(nrow(methyltreewindows[["pct_matrix"]]))))
         #merge windows that are touching
-        methyltreewindows<-reduce(GenomicRanges::makeGRangesFromDataFrame(methyltreewindows[["pct_matrix"]]))
+        methyltreewindows<-GenomicRanges::reduce(GenomicRanges::makeGRangesFromDataFrame(methyltreewindows[["pct_matrix"]]))
         print(paste("Filtered window count:",as.character(nrow(as.data.frame((methyltreewindows))))))
-        print(paste("Filtered window average width:",as.character(mean(width(methyltreewindows)))))
-        print(paste("Total genome covered:",as.character(sum(width(methyltreewindows))/1000000),"Mbp"))
+        print(paste("Filtered window average width:",as.character(mean(GenomicRanges::width(methyltreewindows))),"bp"))
+        print(paste("Total genome covered:",as.character(sum(GenomicRanges::width(methyltreewindows))/1000000),"Mbp"))
         #make a merged windows percentile matrix per cell for methyltree
 
         methyltreeoutput<-makeWindows(obj,
@@ -87,8 +88,8 @@ methyltree_output<-function(obj=obj,prefix="DCIS-41T",sample="DCIS-41T",filt_min
       colnames(methyltreewindows)<-c("chr","start","end")
       methyltreewindows<-GenomicRanges::makeGRangesFromDataFrame(methyltreewindows)
       print(paste("Final Filtered window count:",as.character(nrow(as.data.frame((methyltreewindows))))))
-      print(paste("Final Filtered window average width:",as.character(mean(width(methyltreewindows)))))
-      print(paste("Final Total genome covered:",as.character(sum(width(methyltreewindows))/1000000),"Mbp"))
+      print(paste("Final Filtered window average width:",as.character(mean(GenomicRanges::width(methyltreewindows)))))
+      print(paste("Final Total genome covered:",as.character(sum(GenomicRanges::width(methyltreewindows))/1000000),"Mbp"))
       methyltreeoutput<-makeWindows(obj,
                   type = "CG", 
                   metric = "percent", 
@@ -105,17 +106,17 @@ methyltree_output<-function(obj=obj,prefix="DCIS-41T",sample="DCIS-41T",filt_min
           values_to = "value",
           values_drop_na = TRUE)
     #make a metadata sheet with cluster info
-    out_metadata<-obj@metadata[,c("pass","cluster_id","cg_cov","mcg_pct","subclones")]
-    colnames(obj_metadata)<-c("HQ","celltype","nCG","met_rate","large_clone_id") #match names
+    out_metadata<-obj@metadata[,c("pass","cg_cov","mcg_pct","methyltree_group")]
+    colnames(out_metadata)<-c("HQ","nCG","met_rate","large_clone_id") #match names
     out_metadata$sample<-row.names(out_metadata) #sample (cell) names
     out_metadata$met_rate<-out_metadata$met_rate/100 #percentage to rate
 
     if(file.exists(paste0(prefix,"_methyltree_input.h5"))){
         system(paste0("rm -rf ",prefix,"_methyltree_input.h5"))
     }
-      h5createFile(file=paste0(prefix,"_methyltree_input.h5"))
-      h5write(methyltreeoutput,file=paste0(prefix,"_methyltree_input.h5"),name="data")
-      h5write(out_metadata,file=paste0(prefix,"_methyltree_input.h5"),name="metadata")
+      h5createFile(file=paste0("./methyltree",prefix,"_methyltree_input.h5"))
+      h5write(methyltreeoutput,file=paste0("./methyltree",prefix,"_methyltree_input.h5"),name="data")
+      h5write(out_metadata,file=paste0("./methyltree",prefix,"_methyltree_input.h5"),name="metadata")
 }
 
 

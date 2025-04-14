@@ -154,8 +154,9 @@ Rscript /data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/copykit_c
 Run AMETHYST object initiation per sample
 
 ```bash
-singularity --bind /data/rmulqueen/projects/scalebio_dcis \
+singularity \
 exec \
+--bind /data/rmulqueen/projects/scalebio_dcis  \
 ~/singularity/amethyst.sif \
 Rscript /data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/amethyst_initial_processing.R \
 --input_dir ${runDir}/scale_dat \
