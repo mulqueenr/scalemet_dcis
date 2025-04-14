@@ -132,7 +132,6 @@ workflow {
     indir= channel.fromPath( params.runDir , type: 'dir')
 
     COUNT_READS(indir) 
-    COUNT_READS.out.cells_pf.view()
 
     cells_pf = COUNT_READS.out.cells_pf
     .splitCsv( sep: "\t", header: false)
