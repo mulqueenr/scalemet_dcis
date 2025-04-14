@@ -127,8 +127,6 @@ process AMETHYST_INIT {
 
 
 workflow {
-
-    bam_in = channel.fromPath( '${params.runDir}/alignments/**/*.bam' , type: 'file')
     
     //Split bams and run copykit
     indir= channel.fromPath( params.runDir , type: 'dir')
@@ -136,7 +134,7 @@ workflow {
     COUNT_READS(indir) 
 
     COUNT_READS.out.cells_pf
-    .splitCsv(,sep="\t", header: false)
+    .splitCsv(sep="\t", header: false)
     .map { row -> tuple(row[0], row[1], row[2]) } \
     | SPLIT_BAMS \
     | collect \
