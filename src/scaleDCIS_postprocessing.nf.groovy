@@ -133,8 +133,9 @@ workflow {
     //Split bams and run copykit
     indir= channel.fromPath( params.runDir , type: 'dir')
 
-    COUNT_READS(indir) \
-    | splitCsv(sep="\t", header: false) \
+    COUNT_READS(indir) 
+    
+    COUNT_READS.out.cells_pf.splitCsv(sep="\t", header: false) \
     | map { row -> tuple(row[0], row[1], row[2]) } \
     | SPLIT_BAMS \
     | collect \
