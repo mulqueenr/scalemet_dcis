@@ -7,7 +7,7 @@ nextflow.enable.dsl=2
 params.projDir="/data/rmulqueen/projects/scalebio_dcis" //Project directory for processing
 params.runDir="/data/rmulqueen/projects/scalebio_dcis/data/240202_prelim1/scale_data" //Output from scalemethyl pipeline
 params.outputPrefix="scale" //Output from scalemethyl pipeline
-params.src = "/home/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/" //src directory for cloned repo
+params.src = "/data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/" //src directory for cloned repo
 params.min_cnv_count= "100000" //minimum readcount to try copykit per cell
 
 params.max_cpus=50
