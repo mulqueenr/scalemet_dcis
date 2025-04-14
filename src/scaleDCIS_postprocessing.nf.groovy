@@ -133,8 +133,8 @@ workflow {
 
     COUNT_READS(indir) 
     COUNT_READS.out.cells_pf.view()
-    /*
-    file(COUNT_READS.out.cells_pf) \
+
+    channel.fromPath( COUNT_READS.out.cells_pf) \
     | splitCsv(sep="\t", header: false) \
     | map { row -> tuple(row[0], row[1], row[2]) } \
     | SPLIT_BAMS \
@@ -143,5 +143,4 @@ workflow {
 
     //Initiate amethyst object per sample    
     AMETHYST_INIT(indir, COPYKIT.out.copykit_tsv)
-    */
 }
