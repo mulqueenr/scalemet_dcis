@@ -52,7 +52,7 @@ process COUNT_READS {
         }
         export -f count_reads
 
-        parallel -j ${task.cpus} count_reads ::: $(find ${runDir}/alignments -maxdepth 5 -name '*bam') | sort -k1,1n > unique_read_counts.tsv
+        parallel -j ${task.cpus} count_reads ::: \$(find ${runDir}/alignments -maxdepth 5 -name '*bam') | sort -k1,1n > unique_read_counts.tsv
         awk '\$1>${params.min_cnv_count} {print \$1,\$2}' unique_read_counts.tsv > cells_pf.tsv
 		"""
 }
@@ -112,7 +112,7 @@ process AMETHYST_INIT {
 
 	input:
 		path runDir, stageAs: 'rundir/'
-        
+
 	output:
 		tuple val(cellid),path("*.R1_001.trim.fastq.gz"), path("*.R2_001.trim.fastq.gz"), emit: fqs
 		path("*.trim_report.log"), emit: trim_log

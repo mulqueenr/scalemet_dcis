@@ -103,6 +103,7 @@ Run initial postprocessing to fit into amethyst object for future merging.
 
 ```bash
 cd ${runDir}
+
 nextflow run ${projDir}/tools/scalemet_dcis/src/scaleDCIS_postprocessing.nf.groovy \
 --runDir ${runDir}/scale_dat \
 --maxMemory 300.GB \
