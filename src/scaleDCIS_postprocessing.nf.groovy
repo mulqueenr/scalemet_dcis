@@ -134,8 +134,8 @@ workflow {
     indir= channel.fromPath( params.runDir , type: 'dir')
 
     COUNT_READS(indir) 
-    
-    COUNT_READS.out.cells_pf.splitCsv(sep="\t", header: false) \
+
+    splitCsv(COUNT_READS.out.cells_pf,sep="\t", header: false) \
     | map { row -> tuple(row[0], row[1], row[2]) } \
     | SPLIT_BAMS \
     | collect \
