@@ -51,19 +51,21 @@ copykit_per_sample<-function(dat_in,sample_name_in="BCMDCIS07T"){
     } else {
 
     pdf(paste0(outdir,prefix,".",sample_name_in,".qc_metrics.pdf"))
-    plotMetrics(dat_in, metric = c("overdispersion", 
+    plt<-plotMetrics(dat_in, metric = c("overdispersion", 
                                 "breakpoint_count",
                                 "reads_total",
                                 "reads_duplicates",
                                 "reads_assigned_bins",
                                 "percentage_duplicates"),label = "reads_total")
+    print(plt)
     dev.off()
 
     dat_in <- findAneuploidCells(dat_in)
     dat_in <- findOutliers(dat_in)
 
     pdf(paste0(outdir,prefix,".",sample_name_in,".subclone.heatmap.outlier.pdf"))
-    plotHeatmap(dat_in, row_split='outlier',n_threads=cpu_count) 
+    plt<-plotHeatmap(dat_in, row_split='outlier',n_threads=cpu_count) 
+    print(plt)
     dev.off()
 
     # kNN smooth profiles
@@ -79,7 +81,8 @@ copykit_per_sample<-function(dat_in,sample_name_in="BCMDCIS07T"){
     #dev.off()
 
     pdf(paste0(outdir,prefix,".",sample_name_in,".samples.umap.pdf"))
-    plotUmap(dat_in, label = 'sample_name')
+    plt<-plotUmap(dat_in, label = 'sample_name')
+    print(plt)
     dev.off()
 
     # Calculate consensus profiles for each subclone, 
@@ -101,7 +104,7 @@ copykit_per_sample<-function(dat_in,sample_name_in="BCMDCIS07T"){
         assay="segment_ratios",
         n_threads=cpu_count, 
         col=col_fun)
-    draw(plt)
+    print(plt)
     dev.off()
 
     pdf(paste0(outdir,prefix,".",sample_name_in,".subclone.heatmap.smoothed_bincounts.pdf"))
@@ -109,7 +112,7 @@ copykit_per_sample<-function(dat_in,sample_name_in="BCMDCIS07T"){
         order_cells = 'consensus_tree',
         assay="smoothed_bincounts",
         n_threads=cpu_count)
-    draw(plt)
+    print(plt)
     dev.off()
 
     pdf(paste0(outdir,prefix,".",sample_name_in,".subclone.heatmap.integer.pdf"))
@@ -117,7 +120,7 @@ copykit_per_sample<-function(dat_in,sample_name_in="BCMDCIS07T"){
         order_cells = 'consensus_tree', 
         assay="integer",
         n_threads=cpu_count)
-    draw(plt)
+    print(plt)
     dev.off()
 
     saveRDS(dat_in,file=paste0(outdir,prefix,".",sample_name_in,".scCNA.rds"))

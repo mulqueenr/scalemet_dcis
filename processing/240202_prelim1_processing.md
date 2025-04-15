@@ -109,7 +109,8 @@ nextflow run ${projDir}/tools/scalemet_dcis/src/scaleDCIS_postprocessing.nf.groo
 --maxMemory 300.GB \
 --maxCpus 200 \
 --outputPrefix scale \
--w $SCRATCH/scalemet_prelim1
+-w $SCRATCH/scalemet_prelim1 \
+-resume
 ```
 
 
