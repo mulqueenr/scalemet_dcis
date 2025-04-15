@@ -23,7 +23,7 @@ library(purrr)
 library(cowplot)
 library(pheatmap)
 library(plyr)
-library(optparse) #add this
+library(optparse,lib.loc="/home/rmulqueen/R/x86_64-conda-linux-gnu-library/4.4") #add this
 
 
 option_list = list(

@@ -105,7 +105,7 @@ process AMETHYST_INIT {
 	//TRIM READS OF ADAPTERS AND KNOWN METHYLATED REGIONS (GAP FILLS)
 	cpus "${params.max_cpus}"
 	publishDir "${params.outdir}/reports/adapter_trim", mode: 'copy', overwrite: true, pattern: "*.log"
-	containerOptions "--bind ${params.src}:/src/,${params.projDir}"
+	containerOptions "--bind ${params.src}:/src/,${params.projDir},/home/rmulqueen/R/x86_64-conda-linux-gnu-library/4.4"
     
 	label 'amethyst'
 
