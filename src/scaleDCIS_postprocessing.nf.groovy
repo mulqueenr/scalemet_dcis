@@ -21,8 +21,8 @@ log.info """
 		Src Dir : ${params.src}
 		NF Working Dir : ${workflow.launchDir}
 
-		Max cpus : ${params.max_cpus}
-        Max forks : ${params.max_forks}
+		Max cpus : ${params.maxCpus}
+		Max forks : ${params.maxForks}
 		================================================
 
 """.stripIndent()
@@ -31,7 +31,7 @@ log.info """
 //COPYKIT PROCESSING//
 process COUNT_READS { 
     //Count reads to split bams by minimum read counts
-	cpus "${params.max_cpus}"
+	cpus "${params.maxCpus}"
     publishDir "${params.runDir}/cnv/read_counts", mode: 'copy', overwrite:true, pattern: "*tsv"
 
 	input:
@@ -58,7 +58,7 @@ process COUNT_READS {
 process SPLIT_BAMS {
 	//Take output of COUNT_READS with each line being a tuple, then split from source bam to single cell bam
     publishDir "${params.runDir}/cnv/sc_bam", mode: 'copy', overwrite:true, pattern: "*bam"
-	maxForks "${params.max_cpus}"
+	maxForks "${params.maxForks}"
 	input:
 		tuple val(read_count),val(idx),path(bam)
 	output:
@@ -74,7 +74,7 @@ process SPLIT_BAMS {
 
 process COPYKIT { 
 	//Run COPYKIT on single cell bam files
-	cpus "${params.max_cpus}"
+	cpus "${params.maxCpus}"
 	containerOptions "--bind ${params.src}:/src/,${params.projDir}"
     publishDir "${params.runDir}/cnv/copykit", mode: 'copy', overwrite:true, pattern: "*{tsv,rds}"
     publishDir "${params.runDir}/cnv/copykit_plots", mode: 'copy', overwrite:true, pattern: "*pdf"
@@ -102,7 +102,7 @@ process COPYKIT {
 //Initiate amethyst object with added CNV clones
 process AMETHYST_INIT {
 	//TRIM READS OF ADAPTERS AND KNOWN METHYLATED REGIONS (GAP FILLS)
-	cpus "${params.max_cpus}"
+	cpus "${params.maxCpus}"
     publishDir "${params.runDir}/amethyst/amethyst_plots", mode: 'copy', overwrite:true, pattern: "*pdf"
 	publishDir "${params.runDir}/amethyst/", mode: 'copy', overwrite:true, pattern: "*rds"
 
