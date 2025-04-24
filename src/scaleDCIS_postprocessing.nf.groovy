@@ -41,7 +41,7 @@ process COUNT_READS {
 		path runDir
 	output:
 		path("cells_pf.tsv"), emit: cells_pf
-        path("cells_pf.tsv"), emit: uniq_read_counts
+        path("unique_read_counts.tsv"), emit: uniq_read_counts
 
     script:
 		"""
@@ -76,8 +76,7 @@ process SPLIT_BAMS {
 
 
 process COPYKIT { 
-	//Generate cell level Fastq Files from BCL Files and generated white list
-	//TODO This container should be updated to be in the SIF and not local run
+	//Run COPYKIT on single cell bam files
 	cpus "${params.max_cpus}"
 	containerOptions "--bind ${params.src}:/src/,${params.projDir}"
     publishDir "${params.runDir}/cnv/copykit", mode: 'copy', overwrite:true, pattern: "*{tsv,rds}"
@@ -87,9 +86,10 @@ process COPYKIT {
 	input:
 		path bams
 	output:
-		path("*.tsv"), emit: copykit_tsv
+		path("*.scCNA.tsv"), emit: copykit_tsv
         path("*.rds"), emit: copykit_rds
         path("*.pdf"), emit: cnv_plots
+		path("${params.outputPrefix}.merged.cnv.tsv"), emit: copykit_clones
     script:
 		"""
         Rscript /src/copykit_cnvcalling.R \
@@ -97,30 +97,36 @@ process COPYKIT {
             --output_dir . \
             --output_prefix ${params.outputPrefix} \
             --task_cpus ${task.cpus}
+
+		cat *.scCNA.tsv > ${params.outputPrefix}.merged.cnv.tsv
 		"""
 }
 
-// TRIM, ALIGN, and DEDUPLICATE READS
+//Initiate amethyst object with added CNV clones
 process AMETHYST_INIT {
 	//TRIM READS OF ADAPTERS AND KNOWN METHYLATED REGIONS (GAP FILLS)
 	cpus "${params.max_cpus}"
-	publishDir "${params.outdir}/reports/adapter_trim", mode: 'copy', overwrite: true, pattern: "*.log"
-	containerOptions "--bind ${params.src}:/src/,${params.projDir},/home/rmulqueen/R/x86_64-conda-linux-gnu-library/4.4"
-    
+    publishDir "${params.runDir}/amethyst/amethyst_plots", mode: 'copy', overwrite:true, pattern: "*pdf"
+	publishDir "${params.runDir}/amethyst/", mode: 'copy', overwrite:true, pattern: "*rds"
+
+	containerOptions "--bind ${params.src}:/src/,${params.runDir},${params.projDir},/home/rmulqueen/R/x86_64-conda-linux-gnu-library/4.4"
+    //last container option only necessary because i didnt add optparse to SIF
+
 	label 'amethyst'
 
 	input:
-		path runDir, stageAs: 'rundir/'
-        path copykit_clones
+		path copykit_clones
 
 	output:
-		tuple val(cellid),path("*.R1_001.trim.fastq.gz"), path("*.R2_001.trim.fastq.gz"), emit: fqs
-		path("*.trim_report.log"), emit: trim_log
+		path("*.pdf"), emit: amethyst_plots
+		path("*.rds"), emit: amethyst_obj
+
 	script:
 		"""
         Rscript /src/amethyst_initial_processing.R \
-        --input_dir rundir/. \
+        --input_dir ${params.runDir} \
         --output_prefix ${params.outputPrefix} \
+		--cnv_clones ${copykit_clones} \
         --task_cpus ${task.cpus}
 		"""
 }
@@ -139,12 +145,12 @@ workflow {
 
     SPLIT_BAMS(cells_pf) \
     | collect \
-    | COPYKIT
-
-    copykit_clones = 
-        COPYKIT.out.copykit_tsv 
-        .collectFile(name: 'copykit_clones.txt', newLine: true)
+    | COPYKIT        
 
     //Initiate amethyst object per sample    
-    AMETHYST_INIT(indir, copykit_clones)
+    AMETHYST_INIT(COPYKIT.out.copykit_clones)
 }
+
+//Downstream:
+//Merge amethyst objects, identify cell types
+//Output amethyst for methyltree processing

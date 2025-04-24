@@ -24,7 +24,7 @@ option_list = list(
               help="Output directory for plots and RDS file"),
   make_option(c("-p", "--output_prefix"), type="character", default="scale", 
               help="Prefix of output"),
-  make_option(c("-c", "--task_cpus"), type="integer", default=125, 
+  make_option(c("-t", "--task_cpus"), type="integer", default=125, 
               help="Integer number of cpus")
 );
 
@@ -124,7 +124,7 @@ copykit_per_sample<-function(dat_in,sample_name_in="BCMDCIS07T"){
     dev.off()
 
     saveRDS(dat_in,file=paste0(outdir,prefix,".",sample_name_in,".scCNA.rds"))
-    write.table(as.data.frame(dat_in@colData),file=paste0(outdir,prefix,".",sample_name_in,".scCNA.tsv"),sep="\t",col.names=T,row.names=T)
+    write.table(as.data.frame(dat_in@colData)[,c("sample","sample_name","overdispersion","superclones","subclones")],file=paste0(outdir,prefix,".",sample_name_in,".scCNA.tsv"),sep="\t",col.names=F,row.names=F)
     }
 }
 

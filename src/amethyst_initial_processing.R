@@ -13,32 +13,36 @@ library(rhdf5)
 library(data.table)
 library(ggplot2)
 library(patchwork)
-library(dplyr)
 library(tibble)
 library(tidyr)
-library(plyr)
+library(plyr); library(dplyr)
 library(future)
 library(furrr)
 library(purrr)
 library(cowplot)
 library(pheatmap)
-library(plyr)
 library(optparse,lib.loc="/home/rmulqueen/R/x86_64-conda-linux-gnu-library/4.4") #add this
 
 
 option_list = list(
-  make_option(c("-i", "--input_dir"), type="character", default="/data/rmulqueen/projects/scalebio_dcis/data/240202_prelim1/scale_dat", 
-              help="Run Directory, output from ScaleMethyl pipeline", metavar="character"),
-  make_option(c("-p", "--output_prefix"), type="character", default="scale", 
-              help="Prefix of output for all samples merged amethyst output."),
-  make_option(c("-c", "--task_cpus"), type="integer", default=125, 
-              help="Integer number of cpus")
+    make_option(c("-i", "--input_dir"), type="character", default="/data/rmulqueen/projects/scalebio_dcis/data/240202_prelim1/scale_dat", 
+                help="Run Directory, output from ScaleMethyl pipeline", metavar="character"),
+    make_option(c("-p", "--output_prefix"), type="character", default="scale", 
+                help="Prefix of output for all samples merged amethyst output."),
+    make_option(c("-c","--copykit_input"),type="character",default="scale.merged.cnv.tsv",
+                help="Merged output from COPYKIT function call, tsv."),
+    make_option(c("-t", "--task_cpus"), type="integer", default=125, 
+                help="Integer number of cpus")
 );
+
+
 
 opt_parser = OptionParser(option_list=option_list);
 opt = parse_args(opt_parser);
 cpu_count=opt$task_cpus
 prefix=opt$output_prefix
+cnv<-read.table(opt$copykit_input,row.names=F,col.names=c("cell_id","sample_name","overdispersion","superclones","subclones"))
+row.names(cnv)<-cnv$sample
 
 #read in all sample/csv/sample.passingCellsMapMethylStats.csv files into data frame
 #make a dataframe of all h5 files also <sample>\t<h5location>
@@ -48,7 +52,7 @@ setwd(in_dir)
 samples_list_meta<-list.files("./samples",pattern="*allCells.csv",full.names=T)
 
 
-prepare_amethyst_obj<-function(sample_meta="./samples/BCMDCIS07T.allCells.csv"){
+prepare_amethyst_obj<-function(sample_meta="./samples/BCMDCIS07T.allCells.csv",cnv_in=cnv){
     sample_name<-gsub(sample_meta,pattern=".allCells.csv",replace="")
     sample_name<-gsub(sample_name,pattern="./samples/",replace="")
     sample_meta<-read.csv(sample_meta)
@@ -66,6 +70,11 @@ prepare_amethyst_obj<-function(sample_meta="./samples/BCMDCIS07T.allCells.csv"){
     #metadata MUST have a column called cov to regress coverage mias
     obj@metadata<-sample_meta
     row.names(obj@metadata)<-obj@metadata$cell_id
+
+    #add in CNV information
+    obj@metadata$overdispersion<-cnv_in[row.names(obj@metadata),"overdispersion"]
+    obj@metadata$superclones<-cnv_in[row.names(obj@metadata),"superclones"]
+    obj@metadata$subclones<-cnv_in[row.names(obj@metadata),"subclones"]
     cg_per_read<-mean(obj@metadata$cg_cov/obj@metadata$unique_reads)
     print(paste("Plotting QC for :",as.character(sample_name)))
 
@@ -83,10 +92,7 @@ prepare_amethyst_obj<-function(sample_meta="./samples/BCMDCIS07T.allCells.csv"){
     # index files
     obj@index[["chr_cg"]] <- indexChr(obj, type = "CG", threads = cpu_count)
     print(paste("Saving amethyst object for :",as.character(sample_name)))
-    saveRDS(obj,file=paste0("./amethyst/",sample_name,".amethyst.rds"))
-
-    print(paste("Generating Methyltree input for :",as.character(sample_name)))
-
+    saveRDS(obj,file=paste0(sample_name,".amethyst.rds"))
     return(obj)
 }
 
