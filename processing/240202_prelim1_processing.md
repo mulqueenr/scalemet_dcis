@@ -107,6 +107,7 @@ cd ${runDir}
 nextflow run ${projDir}/tools/scalemet_dcis/src/scaleDCIS_postprocessing.nf.groovy \
 --runDir ${runDir}/scale_dat \
 --maxMemory 300.GB \
+--maxForks 100 \
 --maxCpus 200 \
 --outputPrefix scale \
 -w $SCRATCH/scalemet_prelim1 \

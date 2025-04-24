@@ -10,9 +10,6 @@ params.outputPrefix="scale" //Output from scalemethyl pipeline
 params.src = "/data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/" //src directory for cloned repo
 params.min_cnv_count= "100000" //minimum readcount to try copykit per cell
 
-params.max_cpus=50
-params.max_forks=100
-
 
 log.info """
 
@@ -61,7 +58,7 @@ process COUNT_READS {
 process SPLIT_BAMS {
 	//Take output of COUNT_READS with each line being a tuple, then split from source bam to single cell bam
     publishDir "${params.runDir}/cnv/sc_bam", mode: 'copy', overwrite:true, pattern: "*bam"
-
+	forks "${params.max_forks}"
 	input:
 		tuple val(read_count),val(idx),path(bam)
 	output:
