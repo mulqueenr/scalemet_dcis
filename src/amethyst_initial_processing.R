@@ -41,7 +41,7 @@ opt_parser = OptionParser(option_list=option_list);
 opt = parse_args(opt_parser);
 cpu_count=opt$task_cpus
 prefix=opt$output_prefix
-cnv<-read.table(opt$copykit_input,row.names=F,col.names=c("cell_id","sample_name","overdispersion","superclones","subclones"))
+cnv<-read.table(opt$copykit_input,col.names=c("cell_id","sample_name","overdispersion","superclones","subclones"))
 row.names(cnv)<-cnv$sample
 
 #read in all sample/csv/sample.passingCellsMapMethylStats.csv files into data frame
