@@ -58,7 +58,7 @@ prepare_amethyst_obj<-function(sample_meta="./samples/BCMDCIS07T.allCells.csv",c
     sample_meta<-sample_meta[which(sample_meta$pass=="pass"),]
     sample_meta$h5_path<-unlist(lapply(1:nrow(sample_meta),function(x){
         well=sample_meta[x,]$tgmt_well
-        h5_file=list.files(paste0(indir,"/samples/methylation_coverage/amethyst/",sample_name),pattern=well,full.names=T,include.dirs=T)
+        h5_file=list.files(paste0(in_dir,"/samples/methylation_coverage/amethyst/",sample_name),pattern=well,full.names=T,include.dirs=T)
         return(h5_file)
         }))
     print(paste("Generating amethyst object for :",as.character(sample_name)))
