@@ -42,7 +42,7 @@ opt = parse_args(opt_parser);
 cpu_count=opt$task_cpus
 prefix=opt$output_prefix
 cnv<-read.table(opt$copykit_input,col.names=c("cell_id","sample_name","overdispersion","superclones","subclones"))
-row.names(cnv)<-cnv$sample
+row.names(cnv)<-cnv$cell_id
 
 #read in all sample/csv/sample.passingCellsMapMethylStats.csv files into data frame
 #make a dataframe of all h5 files also <sample>\t<h5location>
