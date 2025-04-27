@@ -57,7 +57,7 @@ process COUNT_READS {
 process SPLIT_BAMS {
 	//Take output of COUNT_READS with each line being a tuple, then split from source bam to single cell bam
     publishDir "${params.runDir}/cnv/sc_bam", mode: 'copy', overwrite:true, pattern: "*bam"
-	maxForks 200
+	maxForks 400
 
 	input:
 		tuple val(read_count),val(idx),path(bam)
