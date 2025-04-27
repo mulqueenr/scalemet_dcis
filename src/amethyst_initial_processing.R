@@ -48,7 +48,7 @@ row.names(cnv)<-cnv$cell_id
 #make a dataframe of all h5 files also <sample>\t<h5location>
 in_dir=opt$input_dir
 
-samples_list_meta<-list.files(in_dir,"/samples",pattern="*allCells.csv",full.names=T)
+samples_list_meta<-list.files(paste0(in_dir,"/samples"),pattern="*allCells.csv",full.names=T)
 
 
 prepare_amethyst_obj<-function(sample_meta="./samples/BCMDCIS07T.allCells.csv",cnv_in=cnv){
