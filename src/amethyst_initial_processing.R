@@ -47,9 +47,8 @@ row.names(cnv)<-cnv$cell_id
 #read in all sample/csv/sample.passingCellsMapMethylStats.csv files into data frame
 #make a dataframe of all h5 files also <sample>\t<h5location>
 in_dir=opt$input_dir
-setwd(in_dir)
 
-samples_list_meta<-list.files("./samples",pattern="*allCells.csv",full.names=T)
+samples_list_meta<-list.files(in_dir,"/samples",pattern="*allCells.csv",full.names=T)
 
 
 prepare_amethyst_obj<-function(sample_meta="./samples/BCMDCIS07T.allCells.csv",cnv_in=cnv){
@@ -59,7 +58,7 @@ prepare_amethyst_obj<-function(sample_meta="./samples/BCMDCIS07T.allCells.csv",c
     sample_meta<-sample_meta[which(sample_meta$pass=="pass"),]
     sample_meta$h5_path<-unlist(lapply(1:nrow(sample_meta),function(x){
         well=sample_meta[x,]$tgmt_well
-        h5_file=list.files(paste0(getwd(),"/samples/methylation_coverage/amethyst/",sample_name),pattern=well,full.names=T,include.dirs=T)
+        h5_file=list.files(paste0(indir,"/samples/methylation_coverage/amethyst/",sample_name),pattern=well,full.names=T,include.dirs=T)
         return(h5_file)
         }))
     print(paste("Generating amethyst object for :",as.character(sample_name)))
