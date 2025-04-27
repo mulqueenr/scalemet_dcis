@@ -123,7 +123,7 @@ process AMETHYST_INIT {
         Rscript /src/amethyst_initial_processing.R \
         --input_dir ${params.runDir} \
         --output_prefix ${params.outputPrefix} \
-		--cnv_clones ${copykit_clones} \
+		--copykit_input ${copykit_clones} \
         --task_cpus ${task.cpus}
 		"""
 }
