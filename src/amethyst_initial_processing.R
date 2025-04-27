@@ -53,7 +53,7 @@ samples_list_meta<-list.files(paste0(in_dir,"/samples"),pattern="*allCells.csv",
 
 prepare_amethyst_obj<-function(sample_meta="./samples/BCMDCIS07T.allCells.csv",cnv_in=cnv){
     sample_name<-gsub(sample_meta,pattern=".allCells.csv",replace="")
-    sample_name<-gsub(sample_name,pattern="./samples/",replace="")
+    sample_name<-basename(sample_name)
     sample_meta<-read.csv(sample_meta)
     sample_meta<-sample_meta[which(sample_meta$pass=="pass"),]
     sample_meta$h5_path<-unlist(lapply(1:nrow(sample_meta),function(x){
@@ -84,7 +84,7 @@ prepare_amethyst_obj<-function(sample_meta="./samples/BCMDCIS07T.allCells.csv",c
     plt4<-ggplot(obj@metadata, aes(x=unique_reads, y = cg_cov)) +geom_point() +  geom_smooth(method = "lm", se = FALSE)+theme_minimal()+ggtitle(paste("CG covered per read: ",cg_per_read))
     plt5<-ggplot(obj@metadata, aes(x=sample, y = mcg_pct))+ geom_violin() + geom_jitter() +ylim(c(0,100))+theme_minimal()
 
-    ggsave((plt1|plt2|plt3)/(plt4|plt5),file=paste0("./amethyst/",sample_name,".cov_plot.pdf"))
+    ggsave((plt1|plt2|plt3)/(plt4|plt5),file=paste0(sample_name,".cov_plot.pdf"))
 
     obj@h5paths <- data.frame(row.names = c(rownames(obj@metadata)), paths = obj@metadata$h5_path)
 
