@@ -25,7 +25,7 @@ library(optparse,lib.loc="/home/rmulqueen/R/x86_64-conda-linux-gnu-library/4.4")
 
 
 option_list = list(
-    make_option(c("-i", "--input_dir"), type="character", default="/data/rmulqueen/projects/scalebio_dcis/data/240202_prelim1/scale_dat", 
+    make_option(c("-i", "--input_dir"), type="character", default="/data/rmulqueen/projects/scalebio_dcis/data/240523_prelim2/scale_dat", 
                 help="Run Directory, output from ScaleMethyl pipeline", metavar="character"),
     make_option(c("-p", "--output_prefix"), type="character", default="scale", 
                 help="Prefix of output for all samples merged amethyst output."),
@@ -42,14 +42,13 @@ opt = parse_args(opt_parser);
 cpu_count=opt$task_cpus
 prefix=opt$output_prefix
 cnv<-read.table(opt$copykit_input,col.names=c("cell_id","sample_name","overdispersion","superclones","subclones"))
-row.names(cnv)<-cnv$cell_id
+row.names(cnv)<-unlist(lapply(strsplit(cnv$cell_id,"[.]"),"[",3))
 
 #read in all sample/csv/sample.passingCellsMapMethylStats.csv files into data frame
 #make a dataframe of all h5 files also <sample>\t<h5location>
 in_dir=opt$input_dir
 
 samples_list_meta<-list.files(paste0(in_dir,"/samples"),pattern="*allCells.csv",full.names=T)
-
 
 correct_h5_cellnames<-function(h5,run_id){
     h5list = h5ls(h5)
@@ -67,6 +66,7 @@ correct_h5_cellnames<-function(h5,run_id){
 
 prepare_amethyst_obj<-function(sample_meta="./samples/BCMDCIS07T.allCells.csv",cnv_in=cnv){
     sample_name<-gsub(sample_meta,pattern=".allCells.csv",replace="")
+    run_id=strsplit(in_dir,"/")[[1]][length(strsplit(in_dir,"/")[[1]])-1]
     sample_name<-basename(sample_name)
     sample_meta<-read.csv(sample_meta)
     sample_meta<-sample_meta[which(sample_meta$pass=="pass"),]
@@ -102,14 +102,13 @@ prepare_amethyst_obj<-function(sample_meta="./samples/BCMDCIS07T.allCells.csv",c
 
     obj@h5paths <- data.frame(row.names = c(rownames(obj@metadata)), paths = obj@metadata$h5_path)
 
-    run_id<-strsplit(dirname(in_dir),"/")[[1]][2]
-
     #correct h5 names
-    print(paste("Appended",run_id,"to names in h5 files in",basename(x)))
+    print(paste("Appended",run_id,"to names in h5 files."))
     lapply(unique(obj@h5paths$paths),function(i){correct_h5_cellnames(h5=i,run_id)})
-    
+    h5closeAll()
+
     #correct cell id names
-    print(paste("Corrected",run_id,"metadata cell names in",basename(x)))
+    print(paste("Corrected",run_id,"metadata cell names."))
     row.names(obj@h5paths)<-paste0(row.names(obj@h5paths),"+",run_id)
     row.names(obj@metadata)<-paste0(row.names(obj@metadata),"+",run_id)
 
