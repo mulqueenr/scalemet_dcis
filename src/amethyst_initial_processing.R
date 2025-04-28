@@ -51,6 +51,20 @@ in_dir=opt$input_dir
 samples_list_meta<-list.files(paste0(in_dir,"/samples"),pattern="*allCells.csv",full.names=T)
 
 
+correct_h5_cellnames<-function(h5,run_id){
+    h5list = h5ls(h5)
+    print(paste("Correcting",run_id,"metadata cell names in",basename(h5)))
+
+    for (i in 1:nrow(h5list)){
+        tryCatch({if(endsWith(h5list[i,"group"],"/CG")){ #just run on CG
+            if( !(paste0(h5list[i,"name"],"+",run_id) %in% h5list$name) && !endsWith(h5list[i,"name"],run_id)){
+                celldat<-h5read(h5,paste0("CG/",h5list[i,"name"]))
+                h5write(celldat, file=h5, name=paste0("CG/",h5list[i,"name"],"+",run_id))
+            }
+        }}, error =function(e) { cat("Proceeding past line",i,"for",basename(h5),"\n")} )      
+    }
+}
+
 prepare_amethyst_obj<-function(sample_meta="./samples/BCMDCIS07T.allCells.csv",cnv_in=cnv){
     sample_name<-gsub(sample_meta,pattern=".allCells.csv",replace="")
     sample_name<-basename(sample_name)
@@ -88,8 +102,33 @@ prepare_amethyst_obj<-function(sample_meta="./samples/BCMDCIS07T.allCells.csv",c
 
     obj@h5paths <- data.frame(row.names = c(rownames(obj@metadata)), paths = obj@metadata$h5_path)
 
+    run_id<-strsplit(dirname(in_dir),"/")[[1]][2]
+
+    #correct h5 names
+    print(paste("Appended",run_id,"to names in h5 files in",basename(x)))
+    lapply(unique(obj@h5paths$paths),function(i){correct_h5_cellnames(h5=i,run_id)})
+    
+    #correct cell id names
+    print(paste("Corrected",run_id,"metadata cell names in",basename(x)))
+    row.names(obj@h5paths)<-paste0(row.names(obj@h5paths),"+",run_id)
+    row.names(obj@metadata)<-paste0(row.names(obj@metadata),"+",run_id)
+
+    #set up ref
+    gtf <- rtracklayer::readGFF("/container_ref/gencode.v43.annotation.gtf.gz")
+    for (i in c("gene_name", "exon_number")) {
+        gtf$i <- unlist(lapply(gtf$attributes, extractAttributes, i))}
+    gtf <- dplyr::mutate(gtf, location = paste0(seqid, "_", start, "_", end))
+    obj@ref<-gtf
+
     # index files
     obj@index[["chr_cg"]] <- indexChr(obj, type = "CG", threads = cpu_count)
+
+    #initial window genomeMatrix
+    obj@genomeMatrices[["cg_100k_score"]] <- makeWindows(obj,
+                                                      stepsize = 100000, type = "CG", 
+                                                      metric = "score", index = "chr_cg", nmin = 2,
+                                                      threads = as.numeric(cpu_count)) 
+
     print(paste("Saving amethyst object for :",as.character(sample_name)))
     saveRDS(obj,file=paste0(sample_name,".amethyst.rds"))
     return(obj)

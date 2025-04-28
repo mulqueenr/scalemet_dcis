@@ -97,67 +97,18 @@ find ${runDir} -maxdepth 7 -type l -exec bash -c 'cp -L -R "$(readlink -m "$0")"
 find ${runDir} -maxdepth 7 -name "*.dereferenced" -type f -exec bash -c 'mv $0 $(echo $0 | sed -e 's/".dereferenced"//g' -)' {} \; #move to old file names
 ```
 
-Split bams to single-cells and run copykit
+
+Run initial postprocessing to fit into amethyst object for future merging.
 
 ```bash
-#set up functions
-#count reads export
-count_reads() { 
-        samtools view $1 | awk -v b=$1 '{split($1,a,":"); print a[8],b}' | sort | uniq -c | sort -k1,1n
-}
+cd ${runDir}
 
-#split bams export
-split_bams() { 
-        test=$1
-        idx=$(echo $test | cut -d ' ' -f 2 )
-        bam=$(echo $test | cut -d ' ' -f 3)
-        outprefix=$(echo $bam | awk -F/ '{print $NF}')
-        outprefix=$(echo $outprefix | sed -e 's/.dedup.bam//g' -)
-        echo ./sc_bams/${outprefix}.${idx}.bam
-        ((samtools view -H $bam) && (samtools view $bam | awk -v i=$idx '{split($1,a,":"); if(a[8]==i); print $0}')) | samtools view -bS > ./sc_bams/${outprefix}.${idx}.bam
-}
-
-export -f count_reads
-export -f split_bams
-
-#filter to bam files with >100000 unique reads
-cd ${runDir}/scale_dat
-mkdir -p ${runDir}/scale_dat/cnv
-mkdir -p ${runDir}/scale_dat/sc_bams
-
-parallel -j 100 count_reads ::: $(find ${runDir}/scale_dat/alignments -maxdepth 5 -name '*bam') | sort -k1,1n > ${runDir}/scale_dat/cnv/scale_unique_read_counts.tsv
-awk '$1>100000 {print $0}' ${runDir}/scale_dat/cnv/scale_unique_read_counts.tsv > ${runDir}/scale_dat/cnv/scale_cells.pf.txt
-
-#split bam files to scbams
-parallel -j 200 -a ${runDir}/scale_dat/cnv/scale_cells.pf.txt split_bams
-```
-
-
-Run CNV calling per sample
-
-```bash
-singularity exec \
---bind /data/rmulqueen/projects/scalebio_dcis/ \
-~/singularity/copykit.sif \
-script /data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/copykit_cnvcalling.R \
---input_dir ${runDir}/scale_dat/sc_bams \
---output_dir ${runDir}/scale_dat/cnv \
---output_prefix scale \
---task_cpus 125
-
-```
-
-
-Run AMETHYST object initiation per sample
-Generates METHYLTREE input for processing as well
-
-```bash
-singularity \
-exec \
---bind /data/rmulqueen/projects/scalebio_dcis  \
-~/singularity/amethyst.sif \
-Rscript /data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/amethyst_initial_processing.R \
---input_dir ${runDir}/scale_dat \
---task_cpus 150
-
+nextflow run ${projDir}/tools/scalemet_dcis/src/scaleDCIS_postprocessing.nf.groovy \
+--runDir ${runDir}/scale_dat \
+--maxMemory 300.GB \
+--maxForks 100 \
+--maxCpus 200 \
+--outputPrefix scale \
+-w $SCRATCH/scalemet_prelim2 \
+-resume
 ```
