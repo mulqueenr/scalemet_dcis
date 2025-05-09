@@ -44,6 +44,12 @@ prefix=opt$output_prefix
 cnv<-read.table(opt$copykit_input,col.names=c("cell_id","sample_name","overdispersion","superclones","subclones"))
 row.names(cnv)<-unlist(lapply(strsplit(cnv$cell_id,"[.]"),"[",3))
 
+#set up ref
+gtf <- rtracklayer::readGFF("/container_ref/gencode.v43.annotation.gtf.gz")
+for (i in c("gene_name", "exon_number")) {
+    gtf$i <- unlist(lapply(gtf$attributes, extractAttributes, i))}
+gtf <- dplyr::mutate(gtf, location = paste0(seqid, "_", start, "_", end))
+
 #read in all sample/csv/sample.passingCellsMapMethylStats.csv files into data frame
 #make a dataframe of all h5 files also <sample>\t<h5location>
 in_dir=opt$input_dir
@@ -112,11 +118,7 @@ prepare_amethyst_obj<-function(sample_meta="./samples/BCMDCIS07T.allCells.csv",c
     row.names(obj@h5paths)<-paste0(row.names(obj@h5paths),"+",run_id)
     row.names(obj@metadata)<-paste0(row.names(obj@metadata),"+",run_id)
 
-    #set up ref
-    gtf <- rtracklayer::readGFF("/container_ref/gencode.v43.annotation.gtf.gz")
-    for (i in c("gene_name", "exon_number")) {
-        gtf$i <- unlist(lapply(gtf$attributes, extractAttributes, i))}
-    gtf <- dplyr::mutate(gtf, location = paste0(seqid, "_", start, "_", end))
+    #add ref
     obj@ref<-gtf
 
     # index files

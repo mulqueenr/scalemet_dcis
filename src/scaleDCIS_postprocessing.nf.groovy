@@ -150,4 +150,7 @@ workflow {
 
 //Downstream:
 //Merge amethyst objects, identify cell types
-//Output amethyst for methyltree processing
+//Add filter to remove samples with less than some cell count
+//Add telomere processing
+//Add scAGE processing
+//Add methyltree processing
