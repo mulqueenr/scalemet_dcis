@@ -116,7 +116,7 @@ nextflow run ${scalebio_nf} \
 --outDir ${runDir}/homebrew_dat \
 --maxMemory 300.GB \
 --maxCpus 200 \
--profile singularity \
+-profile singularity \ d
 -params-file ${params} \
 -w ${SCRATCH}/scalemet_homebrew_work
 
@@ -143,12 +143,4 @@ nextflow run ${projDir}/tools/scalemet_dcis/src/scaleDCIS_postprocessing.nf.groo
 --outputPrefix homebrew \
 -w $SCRATCH/scalemet_batch1_homebrew \
 -resume
-
-nextflow run ${projDir}/tools/scalemet_dcis/src/scaleDCIS_postprocessing.nf.groovy \
---runDir ${runDir}/scale_dat \
---maxMemory 300.GB \
---maxForks 100 \
---maxCpus 200 \
---outputPrefix scale \
--w $SCRATCH/scalemet_batch1_scale \
--resume
+```

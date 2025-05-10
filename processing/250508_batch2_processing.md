@@ -112,7 +112,7 @@ cd ${runDir}
 nextflow run ${scalebio_nf} \
 --fastqDir ${runDir}/fastq/homebrew_batch2_plate1-2 \
 --samples ${runDir}/samplesheets/samples.csv \
---outDir ${runDir}/scale_dat \
+--outDir ${runDir}/homebrew_dat \
 --libStructure ${projDir}/tools/scalemet_dcis/ref/homebrew.lib.json \
 --maxMemory 300.GB \
 --maxCpus 200 \
@@ -153,8 +153,7 @@ nextflow run ${projDir}/tools/scalemet_dcis/src/scaleDCIS_postprocessing.nf.groo
 --maxForks 100 \
 --maxCpus 200 \
 --outputPrefix homebrew \
--w $SCRATCH/scalemet_batch1_homebrew \
--resume
+-w $SCRATCH/scalemet_batch2_homebrew
 
 nextflow run ${projDir}/tools/scalemet_dcis/src/scaleDCIS_postprocessing.nf.groovy \
 --runDir ${runDir}/scale_dat \
@@ -162,5 +161,5 @@ nextflow run ${projDir}/tools/scalemet_dcis/src/scaleDCIS_postprocessing.nf.groo
 --maxForks 100 \
 --maxCpus 200 \
 --outputPrefix scale \
--w $SCRATCH/scalemet_batch1_scale \
+-w $SCRATCH/scalemet_batch2_scale \
 -resume

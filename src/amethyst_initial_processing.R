@@ -25,13 +25,13 @@ library(optparse,lib.loc="/home/rmulqueen/R/x86_64-conda-linux-gnu-library/4.4")
 
 
 option_list = list(
-    make_option(c("-i", "--input_dir"), type="character", default="/data/rmulqueen/projects/scalebio_dcis/data/240523_prelim2/scale_dat", 
+    make_option(c("-i", "--input_dir"), type="character", default="/data/rmulqueen/projects/scalebio_dcis/data/250508_RM_scalebio_batch2_initseq/scale_dat", 
                 help="Run Directory, output from ScaleMethyl pipeline", metavar="character"),
     make_option(c("-p", "--output_prefix"), type="character", default="scale", 
                 help="Prefix of output for all samples merged amethyst output."),
     make_option(c("-c","--copykit_input"),type="character",default="scale.merged.cnv.tsv",
                 help="Merged output from COPYKIT function call, tsv."),
-    make_option(c("-t", "--task_cpus"), type="integer", default=125, 
+    make_option(c("-t", "--task_cpus"), type="integer", default=300, 
                 help="Integer number of cpus")
 );
 
@@ -74,7 +74,7 @@ prepare_amethyst_obj<-function(sample_meta="./samples/BCMDCIS07T.allCells.csv",c
     sample_name<-gsub(sample_meta,pattern=".allCells.csv",replace="")
     run_id=strsplit(in_dir,"/")[[1]][length(strsplit(in_dir,"/")[[1]])-1]
     sample_name<-basename(sample_name)
-    sample_meta<-read.csv(sample_meta)
+    sample_meta<-read.csv(file=sample_meta,colClasses=c("i7_well"="character","i5_well"="character","tgmt_well"="character"))
     sample_meta<-sample_meta[which(sample_meta$pass=="pass"),]
     sample_meta$h5_path<-unlist(lapply(1:nrow(sample_meta),function(x){
         well=sample_meta[x,]$tgmt_well
