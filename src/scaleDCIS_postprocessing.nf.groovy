@@ -74,12 +74,14 @@ process SPLIT_BAMS {
 
 process COPYKIT { 
 	//Run COPYKIT on single cell bam files
+	
 	cpus "${params.maxCpus}"
+	
 	containerOptions "--bind ${params.src}:/src/,${params.projDir}"
     publishDir "${params.runDir}/cnv/copykit", mode: 'copy', overwrite:true, pattern: "*{tsv,rds}"
     publishDir "${params.runDir}/cnv/copykit_plots", mode: 'copy', overwrite:true, pattern: "*pdf"
-
 	label 'copykit'
+
 	input:
 		path bams
 	output:
@@ -96,6 +98,7 @@ process COPYKIT {
             --task_cpus ${task.cpus}
 
 		cat *.scCNA.tsv > ${params.outputPrefix}.merged.cnv.tsv
+		echo "Done!"
 		"""
 }
 
