@@ -33,6 +33,7 @@ project_data_directory="/data/rmulqueen/projects/scalebio_dcis/data"
 setwd(project_data_directory)
 amethyst_files=list.files(path=project_data_directory,pattern="*.amethyst.rds",recursive=TRUE,full.names=TRUE)
 
+system("mkdir -p merged_data")
 window_name="cg_100k_score"
 
 ########################################
@@ -44,13 +45,19 @@ dat_list<-mclapply(amethyst_files, function(x) {
     return(obj)},mc.cores=20)
 
 
-#note BCMDCIS81T is TNBC and has no cells. I should add a filter in pipeline to remove it earlier.
 
+#note BCMDCIS81T is TNBC and has no cells. I should add a filter in pipeline to remove it earlier.
+#in this case i just deleted the file
 ########################################
 ## Run nakshatri atac peaks on all samples to cluster
 ########################################
 nakshatri_peaks<-readRDS("/data/rmulqueen/projects/scalebio_dcis/ref/celltype_peaks.500bp.rds")
-nakshatri_bed<-data.frame(seqnames=seqnames(nakshatri_peaks),starts=start(nakshatri_peaks),ends=end(nakshatri_peaks))
+nakshatri_bed<-data.frame(
+        seqnames=seqnames(nakshatri_peaks),
+        starts=start(nakshatri_peaks),
+        ends=end(nakshatri_peaks))
+dat <- combineObject(objList = dat_list, genomeMatrices=window_name)
+
 nakshatri_bed<-nakshatri_bed[nakshatri_bed$seqnames %in% unique(dat@ref$seqid),]
 dat@genomeMatrices[["nakshatri_peaks"]] <- makeWindows(dat, 
                                                      bed = nakshatri_bed,
@@ -60,13 +67,11 @@ dat@genomeMatrices[["nakshatri_peaks"]] <- makeWindows(dat,
                                                      index = "chr_cg", 
                                                      nmin = 2) 
 
-dat <- combineObject(objList = dat_list, genomeMatrices=window_name)
-saveRDS(dat,file="all_samples.amethyst.rds")
+saveRDS(dat,file="./merged_data/all_samples.amethyst.rds")
 
 #subset to just patient samples
 dat<-subsetObject(dat,cells=row.names(dat@metadata)[!(dat@metadata$sample %in% c("MCF10A","MCF7","MDA-MB-231"))])
-saveRDS(dat,file="scaledcis.amethyst.rds")
-dat<-readRDS(file="scaledcis.amethyst.rds")
+saveRDS(dat,file="./merged_data/scaledcis.amethyst.rds")
 
 dat<-subsetObject(dat,cells=row.names(dat@metadata[dat@metadata$cg_cov>=50000,]))
 #replace cov with cg specific cov 
@@ -80,7 +85,8 @@ cluster_by_windows<-function(obj,
     neighbors.=50,
     est_dim=10,
     k_pheno=15,
-    dist.=0.1){
+    dist.=0.1,
+    outname="clustering"){
   print(paste("Estimating dimensions..."))                                           
   #filter windows by cell coverage
   obj@genomeMatrices[[window_name]] <- obj@genomeMatrices[[window_name]][rowSums(!is.na(obj@genomeMatrices[[window_name]])) >= 45, ]
@@ -102,7 +108,7 @@ cluster_by_windows<-function(obj,
   p3 <- dimFeature(obj, colorBy = log10(cov), pointSize = 1) + scale_color_gradientn(colors = c("black", "turquoise", "gold", "red")) + ggtitle("Coverage distribution")
   p4 <- dimFeature(obj, colorBy = mcg_pct, pointSize = 1) + scale_color_gradientn(colors = c("black", "turquoise", "gold", "red")) + ggtitle("Global %mCG distribution")
   plt<-plot_grid(p1, p2,p3, p4,ncol=2)
-  ggsave(plt,file=paste0(window_name,"_umap.pdf"),width=20,height=20)     
+  ggsave(plt,file=paste0(outname,"_umap.pdf"),width=20,height=20)     
   return(obj)                                             
 }
 
@@ -112,8 +118,7 @@ dat<-cluster_by_windows(dat,window_name="nakshatri_peaks",threads.=task_cpus,est
 #final hyperparamters
 dat<-cluster_by_windows(dat,window_name="nakshatri_peaks",threads.=task_cpus,est_dim=12,neighbors.=25,dist.=0.01,k_pheno=15)
 
-saveRDS(dat,file="scaledcis.amethyst.pf.rds")
-dat<-readRDS(file="scaledcis.amethyst.pf.rds")
+saveRDS(dat,file="./merged_data/scaledcis.amethyst.pf.rds")
 ########################################
 ## From Nakshatri ATAC peaks, generate list of DMRs and recluster on those.
 ### Nakshatri is only normal breast tissue, so clustering is hampered for DCIS/IDC epithelia
@@ -172,8 +177,8 @@ out<-dmr_and_1kb_window_gen(dat,prefix="nakshatri_peaks",threads.=20)
 dmr_out<-out[["dmr"]]
 obj<-out[["object"]]
 
-saveRDS(obj,file="scaledcis.amethyst.pf.nakshatri_clus.rds")
-saveRDS(dmr_out,file="scaledcis.nakshatri_cluster.dmr.rds")
+saveRDS(obj,file="./merged_data/scaledcis.amethyst.pf.nakshatri_clus.rds")
+saveRDS(dmr_out,file="./merged_data/scaledcis.nakshatri_cluster.dmr.rds")
 
 dmr_out<-readRDS("scaledcis.nakshatri_cluster.dmr.rds")
 
@@ -189,8 +194,17 @@ dat@genomeMatrices[["dmr_sites"]] <- makeWindows(dat,
                                                      nmin = 2) 
 
 
+for(d in c(8,10,12,14,16,18,20)){
+    for(neigh in c(20,50,75,100)){
+        for(q in c(0.1,0.05,0.01)){
+            dat<-cluster_by_windows(dat,window_name="dmr_sites",
+            outname=paste("clustest",d,neigh,q,sep="_"),
+            threads.=task_cpus,est_dim=d,neighbors.=neigh,dist.=q,
+            k_pheno=15)
+        }
+    }
+}
 
-dat<-cluster_by_windows(dat,window_name="dmr_sites",threads.=task_cpus,est_dim=20,neighbors.=20,dist.=0.1,k_pheno=15)
 
 #run DMR and 1kb windows on reclustered data
 out<-dmr_and_1kb_window_gen(dat,prefix="dmr_sites",threads.=10)

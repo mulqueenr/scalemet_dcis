@@ -15,6 +15,8 @@ library(copykit)
 library(BiocParallel)
 library(optparse)
 library(circlize)
+library(dendextend,lib.loc="/home/rmulqueen/R/x86_64-pc-linux-gnu-library/4.3") #add this
+library(cluster)
 BiocParallel::bpparam()
 
 option_list = list(
@@ -36,7 +38,7 @@ prefix=opt$output_prefix
 
 register(MulticoreParam(progressbar = T, workers = cpu_count), default = T)
 
-dat <- runVarbin(opt$input_dir, is_paired_end = TRUE, remove_Y = TRUE)
+dat <- runVarbin(opt$input_dir, is_paired_end = TRUE, remove_Y = TRUE,resolution="500kb")
 dat  <- runMetrics(dat)
 
 #note that "sample" is a default metadata column for the cell label, so we need to use "sample_name"
@@ -46,7 +48,7 @@ colData(dat)$method<-prefix
 copykit_per_sample<-function(dat_in,sample_name_in="BCMDCIS07T"){
     print(paste("Processing sample:",sample_name_in))
     dat_in <- dat_in[,colData(dat_in)$sample_name == sample_name_in]
-    if(ncol(dat_in)<100){
+    if(ncol(dat_in)<50){
         print(paste("Sample",sample_name_in,"too few cells, skipping."))
     } else {
 
@@ -60,7 +62,7 @@ copykit_per_sample<-function(dat_in,sample_name_in="BCMDCIS07T"){
     print(plt)
     dev.off()
 
-    dat_in <- findAneuploidCells(dat_in)
+    dat_in <- findAneuploidCells(dat_in,simul=FALSE)
     dat_in <- findOutliers(dat_in)
 
     pdf(paste0(outdir,prefix,".",sample_name_in,".subclone.heatmap.outlier.pdf"))
@@ -69,25 +71,54 @@ copykit_per_sample<-function(dat_in,sample_name_in="BCMDCIS07T"){
     dev.off()
 
     # kNN smooth profiles
-    dat_in <- knnSmooth(dat_in)
+    dat_in <- knnSmooth(dat_in,k=10)
+    col_fun = colorRamp2(c(-1.5, 0, 1.5), c("blue", "white", "red"))
+
+    #cluster with ward d2
+    dend<-dist(t(dat_in@assays@data$segment_ratios)) %>%
+                            hclust(method="ward.D2") %>%
+                            as.dendrogram()
+    k_clus<-find_k(dend, krange = 3:10)
+
+    pdf(paste0(outdir,prefix,".",sample_name_in,".cluster_estimate.pdf"))    
+    plot(k_clus,
+        xlab = "Number of clusters (k)",
+        ylab = "Average silhouette width",
+        main = "Estimating the number of clusters using\n average silhouette width")
+    plot(silhouette(k_clus$pamobject))
+    dev.off()
+    memb <- cutree(dend, k = k_clus$nc)
+
+    dat_in@distMat<-dist(t(dat_in@assays@data$segment_ratios))
+    colData(dat_in)$cnv_clus<-as.character(unname(memb[row.names(dat_in@colData)]))
+
+    pdf(paste0(outdir,prefix,".",sample_name_in,".subclone.heatmap.smoothed_bincounts.pdf"))
+    plt<-plotHeatmap(dat_in, 
+        label = c('reads_total','sample_name','method','cnv_clus'),  
+        assay="segment_ratios",
+        n_threads=cpu_count,
+        row_split="cnv_clus",
+        col=col_fun,
+        order_cells='hclust')
+    print(plt)
+    dev.off()
+
 
     # Create a umap embedding 
-    dat_in <- runUmap(dat_in)
-    k_clones<-findSuggestedK(dat_in) #10
-    dat_in  <- findClusters(dat_in, k_superclones=k_clones@metadata$suggestedK-3, k_subclones=k_clones@metadata$suggestedK+3)#output from k_clones
+    dat_in <- runUmap(dat_in,assay="segment_ratios")
 
-    #pdf(paste0(prefix,".subclone.umap.pdf"))
-    #plotUmap(dat, label = 'subclones')
-    #dev.off()
-
-    pdf(paste0(outdir,prefix,".",sample_name_in,".samples.umap.pdf"))
-    plt<-plotUmap(dat_in, label = 'sample_name')
+    pdf(paste0(outdir,prefix,".",sample_name_in,".clus.umap.pdf"))
+    plt<-plotUmap(dat_in, label = 'cnv_clus')
     print(plt)
+    dev.off()
+
+    pdf(paste0(outdir,prefix,".",sample_name_in,".superclones.umap.pdf"))
+    plotUmap(dat_in, label = 'cnv_clus')
     dev.off()
 
     # Calculate consensus profiles for each subclone, 
     # and order cells by cluster for visualization with plotHeatmap
-    dat_in <- calcConsensus(dat_in)
+    dat_in <- calcConsensus(dat_in,consensus_by="cnv_clus")
     dat_in <- runConsensusPhylo(dat_in)
     dat_in <- runPhylo(dat_in, metric = 'manhattan')
     dat_in <- calcInteger(dat_in, method = 'scquantum',assay="segment_ratios")
@@ -124,7 +155,7 @@ copykit_per_sample<-function(dat_in,sample_name_in="BCMDCIS07T"){
     dev.off()
 
     saveRDS(dat_in,file=paste0(outdir,prefix,".",sample_name_in,".scCNA.rds"))
-    write.table(as.data.frame(dat_in@colData)[,c("sample","sample_name","overdispersion","superclones","subclones")],file=paste0(outdir,prefix,".",sample_name_in,".scCNA.tsv"),sep="\t",col.names=F,row.names=F)
+    write.table(as.data.frame(dat_in@colData)[,c("sample","sample_name","overdispersion","cnv_clus")],file=paste0(outdir,prefix,".",sample_name_in,".scCNA.tsv"),sep="\t",col.names=F,row.names=F)
     }
 }
 

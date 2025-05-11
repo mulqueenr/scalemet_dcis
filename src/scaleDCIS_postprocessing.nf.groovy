@@ -145,7 +145,7 @@ workflow {
     | COPYKIT        
 
     //Initiate amethyst object per sample    
-    AMETHYST_INIT(COPYKIT.out.copykit_clones)
+    //AMETHYST_INIT(COPYKIT.out.copykit_clones)
 }
 
 //Downstream:
