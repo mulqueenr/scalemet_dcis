@@ -77,7 +77,7 @@ process COPYKIT {
 	
 	cpus "${params.maxCpus}"
 	
-	containerOptions "--bind ${params.src}:/src/,${params.projDir}"
+	containerOptions "--bind ${params.src}:/src/,${params.projDir},/home/rmulqueen/R/x86_64-pc-linux-gnu-library/4.3"
     publishDir "${params.runDir}/cnv/copykit", mode: 'copy', overwrite:true, pattern: "*{tsv,rds}"
     publishDir "${params.runDir}/cnv/copykit_plots", mode: 'copy', overwrite:true, pattern: "*pdf"
 	label 'copykit'
