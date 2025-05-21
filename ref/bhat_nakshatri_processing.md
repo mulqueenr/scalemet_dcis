@@ -254,3 +254,41 @@ macs3 callpeak --tempdir $PWD --outdir $PWD \
       --nomodel --extsize 500 \
       -t $i & done &
 ```
+
+
+
+#epi only with ref
+bhat_nakshatri<-readRDS(opt$ref_object)
+table(bhat_nakshatri$cell_type)
+bhat_nakshatri$assigned_celltype<-bhat_nakshatri$cell_type
+
+bhat_nakshatri[["ATAC"]]<-bhat_nakshatri[["our_peaks"]]
+DefaultAssay(bhat_nakshatri)<-"ATAC"
+
+
+
+
+###Plotting of bhat nakshatri markers
+ga<-Identify_Marker_TFs(x=x,group_by=group_by,assay="GeneActivity",assay_name="GeneActivity")
+
+ga_markers<-ga %>%
+filter(GeneActivity.padj<0.01) %>% 
+filter(GeneActivity.logFC>0.1) %>% 
+group_by(GeneActivity.group) %>% 
+slice_min(n=5,order_by=GeneActivity.padj,with_ties=FALSE) %>% 
+as.data.frame()
+
+tf_ga<-average_features(x=bhat_nakshatri,features=ga_markers$gene,assay="GeneActivity",group_by=group_by)
+tf_ga<-tf_ga[row.names(tf_ga) %in% ga_markers$gene,]
+    colfun_ga=colorRamp2(c(0,1,2),magma(3))
+
+ga_plot<-Heatmap(tf_ga,
+    name="Gene Activity",
+    column_title="Gene Activity",
+    col=colfun_ga,
+    column_names_gp = gpar(fontsize = 8),
+    show_row_names=TRUE,
+    column_names_rot=90)
+pdf("nakshatri.ga.markers.pdf")
+print(ga_plot)
+dev.off()
