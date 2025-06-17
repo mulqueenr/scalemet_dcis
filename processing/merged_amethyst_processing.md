@@ -7,6 +7,7 @@ cd /data/rmulqueen/projects/scalebio_dcis/data
 
 ```R
 library(amethyst)
+library(rhdf5)
 library(data.table)
 library(ggplot2)
 library(patchwork)

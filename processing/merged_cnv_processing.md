@@ -1,5 +1,7 @@
 
-singularity shell --bind /data/rmulqueen/projects/scalebio_dcis/ /data/rmulqueen/projects/scalebio_dcis/singularity/copykit.sif
+singularity shell --bind /data/rmulqueen/projects/scalebio_dcis/ \
+--bind /home/rmulqueen/R/ \
+/data/rmulqueen/projects/scalebio_dcis/singularity/copykit.sif
 
 #maybe just move sc_bams to new folder per sample instead?
 ```R
@@ -35,181 +37,188 @@ prefix="./merged_cnv/scaledcis"
 register(MulticoreParam(progressbar = T, workers = cpu_count), default = T)
 
 #mappability of bsconverted DNA (PE 100bp)
-if(!exists(k100.umap.bedgraph.gz)){
+if(!exists("k100.umap.bedgraph.gz")){
     system("wget https://bismap.hoffmanlab.org/raw/hg38/k100.umap.bedgraph.gz")
 }
 
-#ref setup
-genome <- "hg38"
-resolution <- "200kb"
-min_bincount = 10
-hg38_grangeslist <- hg38_grangeslist
-hg38_rg<-hg38_grangeslist[[paste0("hg38_",resolution)]]
+# #ref setup
+# genome <- "hg38"
+# resolution <- "200kb"
+# min_bincount = 10
+# hg38_grangeslist <- hg38_grangeslist
+# hg38_rg<-hg38_grangeslist[[paste0("hg38_",resolution)]]
 
-#summarize mappability over ref bincounts
-mappability<-read_bed("k100.umap.bedgraph.gz")
-mappability$mapp<-as.numeric(mappability$name)
+# #summarize mappability over ref bincounts
+# mappability<-read_bed("k100.umap.bedgraph.gz")
+# mappability$mapp<-as.numeric(mappability$name)
 
-map_out<- hg38_rg %>%
-  group_by_overlaps(mappability) %>%
-  summarise(mapp = mean(mapp,na.rm=T))
-hg38_rg$mapp<-NA
-hg38_rg[map_out$query,]$mapp<-map_out$mapp
-#fill in mapp with NA values of average scores
-hg38_rg[is.na(hg38_rg$mapp),]$mapp<-mean(hg38_rg$mapp,na.rm=T)
+# map_out<- hg38_rg %>%
+#   group_by_overlaps(mappability) %>%
+#   summarise(mapp = mean(mapp,na.rm=T))
+# hg38_rg$mapp<-NA
+# hg38_rg[map_out$query,]$mapp<-map_out$mapp
+# #fill in mapp with NA values of average scores
+# hg38_rg[is.na(hg38_rg$mapp),]$mapp<-mean(hg38_rg$mapp,na.rm=T)
 
-hg38_rg <- as.data.frame(hg38_rg)
-rg<-NULL
-rg <- hg38_rg %>%
-dplyr::rename(chr = "seqnames") %>%
-dplyr::mutate(GeneID = 1:nrow(hg38_rg))
-rg <- dplyr::filter(rg,chr != "chrY")
+# hg38_rg <- as.data.frame(hg38_rg)
+# rg<-NULL
+# rg <- hg38_rg %>%
+# dplyr::rename(chr = "seqnames") %>%
+# dplyr::mutate(GeneID = 1:nrow(hg38_rg))
+# rg <- dplyr::filter(rg,chr != "chrY")
 
 setwd("/data/rmulqueen/projects/scalebio_dcis/data")
 merged_met<-read.csv("scaledcis.metadata.tsv",sep="\t")
 col_fun = colorRamp2(c(-2,-1.5,1, 0, 1, 1.5,2), c("darkblue","blue","white", "white", "white","red","darkred"))
 
-
+#note i broke this a bunch
 cnv_per_sample<-function(samp_name){
 
-    samp<-merged_met[merged_met$sample==samp_name,]
-    samp<-samp[!is.na(samp$sc_bam),]
-    # bindings for NSE and data
-    Chr <- chr <- strand <- GeneID <- NULL
-    reads_assigned_bins <- reads_duplicates <- reads_total <- NULL
-
-    files <-samp$sc_bam
-    files_names <- row.names(samp)
-
-    varbin_counts_list_all_fields <-BiocParallel::bplapply(
-                files,Rsubread::featureCounts,
-                ignoreDup = TRUE,
-                countMultiMappingReads = FALSE,
-                annot.ext = rg,
-                useMetaFeatures = FALSE,
-                verbose = TRUE,
-                isPairedEnd = TRUE,
-                BPPARAM = bpparam())
-                #maxMOp=100, #this is added for methylation alignments
-                #primaryOnly=TRUE, #this is added for methylation alignments
-
-    names(varbin_counts_list_all_fields) <- files_names
-    varbin_counts_list <- lapply(varbin_counts_list_all_fields,"[[",1)
-    varbin_counts_list <- lapply(varbin_counts_list,as.vector)
-    min_bc <- which(vapply(varbin_counts_list, mean, numeric(1)) < min_bincount)
-    if (length(min_bc) > 0) {
-    varbin_counts_list <- varbin_counts_list[-min_bc]
-    varbin_counts_list_all_fields <- varbin_counts_list_all_fields[-min_bc]
-    message(length(min_bc), " bam files had less than ", min_bincount," mean bincounts and were removed.")}
-
-    # LOWESS GC normalization
-    message("Performing GC correction.")
-    varbin_counts_list_gccor <-BiocParallel::bplapply(varbin_counts_list, function(x) {
-        gc_cor <- lowess(rg$gc_content, log(x + 1e-3), f = 0.05)
-        gc_cor_z <- approx(gc_cor$x, gc_cor$y, rg$gc_content)
-        exp(log(x) - gc_cor_z$y) * median(x)
-        },
-    BPPARAM = bpparam())
+dat<-runVarbin(
+  dir="/data/rmulqueen/projects/scalebio_dcis/data/240523_prelim2/scale_dat/sc_bams",
+  genome = "hg38",
+  resolution = "220kb",
+  remove_Y = TRUE,
+  is_paired_end = TRUE,
+  #method = "multipcf",
+  BPPARAM = bpparam()
+ )
+ 
+ samp<-merged_met[merged_met$sample==samp_name,]
+samp<-samp[!is.na(samp$sc_bam),]
+samp$cellid<-unlist(lapply(strsplit(basename(samp$sc_bam),"[.]"),"[",3))
 
 
-    pdf(paste0(prefix,".",samp_name,".subclone.loessGC.pdf"))
-    gplots::plotLowess(gc_cor)
-    dev.off()
-    # LOWESS MAPPABILITY normalization (also on 0-1 scale)
-    message("Performing MAPPABILITY correction.")
-    varbin_counts_list_mappcor <-BiocParallel::bplapply(varbin_counts_list, function(x) {
-        map_cor <- lowess(rg$mapp, log(x + 1e-3), f = 0.05)
-        map_cor_z <- approx(map_cor$x, map_cor$y, rg$mapp)
-        exp(log(x) - map_cor_z$y) * median(x)
-        },
-    BPPARAM = bpparam())
+#     # bindings for NSE and data
+#     Chr <- chr <- strand <- GeneID <- NULL
+#     reads_assigned_bins <- reads_duplicates <- reads_total <- NULL
 
-    varbin_counts_df <- round(dplyr::bind_cols(varbin_counts_list_mappcor), 2)
+#     files <-samp$sc_bam
+#     files_names <- row.names(samp)
 
-    # filtering low read counts where the sum of bins does not reach more than 0
-    good_cells <- names(varbin_counts_df[which(colSums(varbin_counts_df) != 0)])
-    varbin_counts_df <- varbin_counts_df[good_cells]
-    rg <- rg %>%dplyr::select(-strand, -GeneID)
-    rg_gr <- GenomicRanges::makeGRangesFromDataFrame(rg,ignore.strand = TRUE,keep.extra.columns = TRUE)
-    cna_obj <- CopyKit(assays = list(bincounts = varbin_counts_df),rowRanges = rg_gr)
+#     varbin_counts_list_all_fields <-BiocParallel::bplapply(
+#                 files,Rsubread::featureCounts,
+#                 ignoreDup = TRUE,
+#                 countMultiMappingReads = FALSE,
+#                 annot.ext = rg,
+#                 useMetaFeatures = FALSE,
+#                 verbose = TRUE,
+#                 isPairedEnd = TRUE,
+#                 maxMOp=100, #this is added for methylation alignments
+#                 primaryOnly=TRUE, #this is added for methylation alignments
+#                 BPPARAM = bpparam())
 
-    # Adding genome and resolution information to metadata
-    S4Vectors::metadata(cna_obj)$genome <- genome
-    S4Vectors::metadata(cna_obj)$resolution <- resolution
+#     names(varbin_counts_list_all_fields) <- files_names
+#     varbin_counts_list <- lapply(varbin_counts_list_all_fields,"[[",1)
+#     varbin_counts_list <- lapply(varbin_counts_list,as.vector)
+#     min_bc <- which(vapply(varbin_counts_list, mean, numeric(1)) < min_bincount)
+#     if (length(min_bc) > 0) {
+#     varbin_counts_list <- varbin_counts_list[-min_bc]
+#     varbin_counts_list_all_fields <- varbin_counts_list_all_fields[-min_bc]
+#     message(length(min_bc), " bam files had less than ", min_bincount," mean bincounts and were removed.")}
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Sun Feb 14 20:55:01 2021
-    # ADDING READS METRICS TO METADATA
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Sun Feb 14 20:55:24 2021
+#     # LOWESS GC normalization
+#     message("Performing GC correction.")
+#     varbin_counts_list_gccor <-BiocParallel::bplapply(varbin_counts_list, function(x) {
+#         gc_cor <- lowess(rg$gc_content, log(x + 1e-3), f = 0.05)
+#         gc_cor_z <- approx(gc_cor$x, gc_cor$y, rg$gc_content)
+#         exp(log(x) - gc_cor_z$y) * median(x)
+#         },
+#     BPPARAM = bpparam())
 
-    varbin_reads_list <- lapply(varbin_counts_list_all_fields,"[[",4)
+#     # LOWESS MAPPABILITY normalization (also on 0-1 scale)
+#     message("Performing MAPPABILITY correction.")
+#     varbin_counts_list_mappcor <-BiocParallel::bplapply(varbin_counts_list, function(x) {
+#         map_cor <- lowess(rg$mapp, log(x + 1e-3), f = 0.05)
+#         map_cor_z <- approx(map_cor$x, map_cor$y, rg$mapp)
+#         exp(log(x) - map_cor_z$y) * median(x)
+#         },
+#     BPPARAM = bpparam())
 
-    # saving info and removing columns from list elements
-    metadata_info_names <- varbin_reads_list[[1]][c(1, 2, 8, 9, 12, 14), 1]
-    metadata_info_names <-
-    c(
-    "reads_assigned_bins",
-    "reads_unmapped",
-    "reads_duplicates",
-    "reads_multimapped",
-    "reads_unassigned",
-    "reads_ambiguous"
-    )
+#     varbin_counts_df <- round(dplyr::bind_cols(varbin_counts_list_mappcor), 2)
 
-    varbin_reads_info <-lapply(seq_along(varbin_reads_list), function(x) {
-    # RSubread seems to change underlines to dot on some cases
-    # Have to make more complicated lapply to extract the name of the list
-    # and guarantee that the cell is properly named
-    name <- names(varbin_reads_list)[[x]]
-    df <- varbin_reads_list[[x]][c(1, 2, 8, 9, 12, 14), -1, drop = FALSE]
-    names(df) <- name
-    df
-    })
+#     # filtering low read counts where the sum of bins does not reach more than 0
+#     good_cells <- names(varbin_counts_df[which(colSums(varbin_counts_df) != 0)])
+#     varbin_counts_df <- varbin_counts_df[good_cells]
+#     rg <- rg %>%dplyr::select(-strand, -GeneID)
+#     rg_gr <- GenomicRanges::makeGRangesFromDataFrame(rg,ignore.strand = TRUE,keep.extra.columns = TRUE)
+#     cna_obj <- CopyKit(assays = list(bincounts = varbin_counts_df),rowRanges = rg_gr)
 
-    names(varbin_reads_list) <- names(varbin_counts_list_all_fields)
-    bam_metrics <- dplyr::bind_cols(varbin_reads_info)
+#     # Adding genome and resolution information to metadata
+#     S4Vectors::metadata(cna_obj)$genome <- genome
+#     S4Vectors::metadata(cna_obj)$resolution <- resolution
 
-    # making sure metrics match varbin_counts_df
-    bam_metrics <- bam_metrics[good_cells]
-    rownames(bam_metrics) <- metadata_info_names
-    bam_metrics <- as.data.frame(t(bam_metrics))
+#     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Sun Feb 14 20:55:01 2021
+#     # ADDING READS METRICS TO METADATA
+#     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Sun Feb 14 20:55:24 2021
 
-    # adding total
-    reads_tot <- rowSums(bam_metrics)
-    bam_metrics$sample <- rownames(bam_metrics)
-    bam_metrics <-
-    dplyr::relocate(bam_metrics, sample, .before = reads_assigned_bins)
-    bam_metrics <- bam_metrics %>%
-    dplyr::mutate(reads_total = reads_tot,percentage_duplicates = round(reads_duplicates / reads_total, 3))
+#     varbin_reads_list <- lapply(varbin_counts_list_all_fields,"[[",4)
 
-    # adding to metadata
-    SummarizedExperiment::colData(cna_obj) <-S4Vectors::DataFrame(bam_metrics)
-    colnames(cna_obj) <- names(varbin_counts_df)
+#     # saving info and removing columns from list elements
+#     metadata_info_names <- varbin_reads_list[[1]][c(1, 2, 8, 9, 12, 14), 1]
+#     metadata_info_names <-
+#     c(
+#     "reads_assigned_bins",
+#     "reads_unmapped",
+#     "reads_duplicates",
+#     "reads_multimapped",
+#     "reads_unassigned",
+#     "reads_ambiguous"
+#     )
 
-    dat<-cna_obj
-    dat@metadata$resolution <- "220kb"
+#     varbin_reads_info <-lapply(seq_along(varbin_reads_list), function(x) {
+#     # RSubread seems to change underlines to dot on some cases
+#     # Have to make more complicated lapply to extract the name of the list
+#     # and guarantee that the cell is properly named
+#     name <- names(varbin_reads_list)[[x]]
+#     df <- varbin_reads_list[[x]][c(1, 2, 8, 9, 12, 14), -1, drop = FALSE]
+#     names(df) <- name
+#     df
+#     })
+
+#     names(varbin_reads_list) <- names(varbin_counts_list_all_fields)
+#     bam_metrics <- dplyr::bind_cols(varbin_reads_info)
+
+#     # making sure metrics match varbin_counts_df
+#     bam_metrics <- bam_metrics[good_cells]
+#     rownames(bam_metrics) <- metadata_info_names
+#     bam_metrics <- as.data.frame(t(bam_metrics))
+
+#     # adding total
+#     reads_tot <- rowSums(bam_metrics)
+#     bam_metrics$sample <- rownames(bam_metrics)
+#     bam_metrics <-
+#     dplyr::relocate(bam_metrics, sample, .before = reads_assigned_bins)
+#     bam_metrics <- bam_metrics %>%
+#     dplyr::mutate(reads_total = reads_tot,percentage_duplicates = round(reads_duplicates / reads_total, 3))
+
+#     # adding to metadata
+#     SummarizedExperiment::colData(cna_obj) <-S4Vectors::DataFrame(bam_metrics)
+#     colnames(cna_obj) <- names(varbin_counts_df)
+
+#     dat<-cna_obj
+#     dat@metadata$resolution <- "220kb"
 
     #dat <- dat[,colData(dat)$reads_assigned_bins >= 100000]
     colData(dat)$sample_name<-samp_name
-    colData(dat)$celltype<-NA
-    colData(dat)$cg_cov<-NA
-    colData(dat)$mcg_pct<-NA
+    colData(dat)$cellid<-unlist(lapply(strsplit(row.names(colData(dat)),"[.]"),"[",3))
 
-    colData(dat)[row.names(samp),]$celltype<-samp$celltype
-    colData(dat)[row.names(samp),]$cg_cov<-samp$cg_cov
-    colData(dat)[row.names(samp),]$mcg_pct<-samp$mcg_pct
+    colData(dat)$rownames<-row.names(colData(dat))
+    colData(dat)<-merge(colData(dat),samp,by="cellid",all.x=TRUE)
+    row.names(colData(dat))<-colData(dat)$rownames
 
     #to denoise some more increase penalties
     #alpha = 1e-20, merge_levels_alpha = 1e-20,gamma = 60
     #STD: alpha = 1e-5,merge_levels_alpha = 1e-5,gamma = 40,
-    dat<-runVst(dat)
-    dat<-runSegmentation(dat,method="CBS",merge_levels_alpha=1e-5,alpha=1e-5,undo.splits="prune")
+    #dat<-runVst(dat)
+    #dat<-runSegmentation(dat,method="CBS",merge_levels_alpha=1e-5,alpha=1e-5,undo.splits="prune")
 
     pdf(paste0(prefix,".",samp_name,".subclone.heatmap.outlier.pdf"))
-       plt<-plotHeatmap(dat, label = c('reads_assigned_bins','sample_name',"mcg_pct","cg_cov","celltype"),order='hclust',n_threads=cpu_count)
+       plt<-plotHeatmap(dat, label = c('reads_assigned_bins'),order='hclust',n_threads=cpu_count,col=col_fun)
        draw(plt)
     dev.off()
-
-#col=col_fun
+    
+#"mcg_pct","cg_cov","celltype"
     pdf(paste0(prefix,".",samp_name,".subclone.heatmap.outlier.annot.pdf"))
     plt<-HeatmapAnnotation(gc = dat@rowRanges$gc_content, map =dat@rowRanges$mapp, 
     simple_anno_size = unit(2, "cm"))
