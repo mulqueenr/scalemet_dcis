@@ -127,25 +127,20 @@ Per lane (8 total) we need to run sample sheet generation for both:
 | 3 | 3 | 2 | scale kit | scale plate 1 | scale plate 1 |
 | 3 | 3 | 5 | scale kit | scale plate 2 | scale plate 2 |
 | 3 | 3 | 6 | homebrew | B | E |
-
 | 4 | 3 | 16 | homebrew | D | D |
 | 4 | prelim1 | 1 | scale kit | scale plate 1 | scale plate 1 |
 | 4 | prelim2 | 1 | scale kit | scale plate 2 | scale plate 2 |
-
 | 5 | 3 | 17 | homebrew | E | D |
 | 5 | prelim3 | 1 | scale kit | scale plate 1 | scale plate 1 |
 | 5 | prelim3 | 2 | scale kit | scale plate 2 | scale plate 2 |
-
 | 6 | 1 | 3 | homebrew | C | A |
 | 6 | 1 | 4 | homebrew | C | B |
 | 6 | 1 | 7 | homebrew | B | B |
 | 6 | 1 | 8 | homebrew | C | C |
-
 | 7 | 1 | 9 | homebrew | C | D |
 | 7 | 1 | 11 | homebrew | D | A |
 | 7 | 1 | 12 | homebrew | D | B |
 | 7 | 2 | 1 | homebrew | A | D |
-
 | 8 | 2 | 2 | homebrew | B | D |
 | 8 | 3 | 11 | homebrew | E | A |
 | 8 | 3 | 13 | homebrew | E | B |
