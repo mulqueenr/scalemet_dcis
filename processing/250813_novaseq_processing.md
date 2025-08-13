@@ -113,38 +113,38 @@ BCMDCIS124T,1B07-1B12;1H07-1H12;2B01-2B06;2H01-2H06;3B07-3B12;3H07-3H12,ScaleMet
 MAKE SAMPLE SHEETS FOR PCR
 
 Per lane (8 total) we need to run sample sheet generation for either:
-* 1. just scalebio indexes
-* 2. scalebio and homebrew indexes
+* just scalebio indexes
+* scalebio and homebrew indexes
 
-| Batch	Plate | Processing | i5 Index | i7 Index |
-|---|---|---|---|
-| 1 | 1 | scale kit | Scale bio Plate 1 | Scale bio Plate 1 |
-| 1 | 2 | homebrew | A | A |
-| 1 | 6 | scale kit | Scale bio Plate 2 | Scale bio Plate 2 |
-| 2 | 3 | scale kit | Scalebio Plate 1 | Scalebio Plate 1 |
-| 2 | 4 | scale kit | Scalebio Plate 2 | Scalebio Plate 2 |
-| 3 | 1 | homebrew | A | E |
-| 3 | 2 | scale kit | scale plate 1 | scale plate 1 |
-| 3 | 5 | scale kit | scale plate 2 | scale plate 2 |
-| 3 | 6 | homebrew | B | E |
-| 3 | 16 | homebrew | D | D |
-| 240202_prelim1 | 1 | scale kit | scale plate 1 | scale plate 1 |
-| 240523_prelim2 | 1 | scale kit | scale plate 2 | scale plate 2 |
-| 3 | 17 | homebrew | E | D |
-| 241007_prelim3 | 1 | scale kit | scale plate 1 | scale plate 1 |
-| 241007_prelim3 | 2 | scale kit | scale plate 2 | scale plate 2 |
-| 1 | 3 | homebrew | C | A |
-| 1 | 4 | homebrew | C | B |
-| 1 | 7 | homebrew | B | B |
-| 1 | 8 | homebrew | C | C |
-| 1 | 9 | homebrew | C | D |
-| 1 | 11 | homebrew | D | A |
-| 1 | 12 | homebrew | D | B |
-| 2 | 1 | homebrew | A | D |
-| 2 | 2 | homebrew | B | D |
-| 3 | 11 | homebrew | E | A |
-| 3 | 13 | homebrew | E | B |
-| 3 | 15 | homebrew | D | C |
+| NovaSeq Lane | Batch	Plate | Processing | i5 Index | i7 Index |
+|---|---|---|---|---|
+| 1 | 1 | 1 | scale kit | Scale bio Plate 1 | Scale bio Plate 1 |
+| 1 | 1 | 2 | homebrew | A | A |
+| 1 | 1 | 6 | scale kit | Scale bio Plate 2 | Scale bio Plate 2 |
+| 2 | 2 | 3 | scale kit | Scalebio Plate 1 | Scalebio Plate 1 |
+| 2 | 2 | 4 | scale kit | Scalebio Plate 2 | Scalebio Plate 2 |
+| 2 | 3 | 1 | homebrew | A | E |
+| 3 | 3 | 2 | scale kit | scale plate 1 | scale plate 1 |
+| 3 | 3 | 5 | scale kit | scale plate 2 | scale plate 2 |
+| 3 | 3 | 6 | homebrew | B | E |
+| 4 | 3 | 16 | homebrew | D | D |
+| 4 | prelim1 | 1 | scale kit | scale plate 1 | scale plate 1 |
+| 4 | prelim2 | 1 | scale kit | scale plate 2 | scale plate 2 |
+| 5 | 3 | 17 | homebrew | E | D |
+| 5 | prelim3 | 1 | scale kit | scale plate 1 | scale plate 1 |
+| 5 | prelim3 | 2 | scale kit | scale plate 2 | scale plate 2 |
+| 6 | 1 | 3 | homebrew | C | A |
+| 6 | 1 | 4 | homebrew | C | B |
+| 6 | 1 | 7 | homebrew | B | B |
+| 6 | 1 | 8 | homebrew | C | C |
+| 7 | 1 | 9 | homebrew | C | D |
+| 7 | 1 | 11 | homebrew | D | A |
+| 7 | 1 | 12 | homebrew | D | B |
+| 7 | 2 | 1 | homebrew | A | D |
+| 8 | 2 | 2 | homebrew | B | D |
+| 8 | 3 | 11 | homebrew | E | A |
+| 8 | 3 | 13 | homebrew | E | B |
+| 8 | 3 | 15 | homebrew | D | C |
 
 ```bash
 #generate sample sheet using a modified version of bcl_convert_sheet.py to allow for pcr plate specifications.
