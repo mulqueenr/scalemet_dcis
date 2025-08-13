@@ -112,12 +112,12 @@ BCMDCIS124T,1B07-1B12;1H07-1H12;2B01-2B06;2H01-2H06;3B07-3B12;3H07-3H12,ScaleMet
 
 MAKE SAMPLE SHEETS FOR PCR
 
-Per lane (8 total) we need to run sample sheet generation for either:
-* just scalebio indexes
-* scalebio and homebrew indexes
+Per lane (8 total) we need to run sample sheet generation for both:
+* scalebio
+* homebrew indexes
 
-| NovaSeq Lane | Batch	Plate | Processing | i5 Index | i7 Index |
-|---|---|---|---|---|
+| NovaSeq Lane | Batch	| Plate | Processing | i5 Index | i7 Index |
+|---|---|---|---|---|---|
 | 1 | 1 | 1 | scale kit | Scale bio Plate 1 | Scale bio Plate 1 |
 | 1 | 1 | 2 | homebrew | A | A |
 | 1 | 1 | 6 | scale kit | Scale bio Plate 2 | Scale bio Plate 2 |
@@ -127,60 +127,205 @@ Per lane (8 total) we need to run sample sheet generation for either:
 | 3 | 3 | 2 | scale kit | scale plate 1 | scale plate 1 |
 | 3 | 3 | 5 | scale kit | scale plate 2 | scale plate 2 |
 | 3 | 3 | 6 | homebrew | B | E |
+
 | 4 | 3 | 16 | homebrew | D | D |
 | 4 | prelim1 | 1 | scale kit | scale plate 1 | scale plate 1 |
 | 4 | prelim2 | 1 | scale kit | scale plate 2 | scale plate 2 |
+
 | 5 | 3 | 17 | homebrew | E | D |
 | 5 | prelim3 | 1 | scale kit | scale plate 1 | scale plate 1 |
 | 5 | prelim3 | 2 | scale kit | scale plate 2 | scale plate 2 |
+
 | 6 | 1 | 3 | homebrew | C | A |
 | 6 | 1 | 4 | homebrew | C | B |
 | 6 | 1 | 7 | homebrew | B | B |
 | 6 | 1 | 8 | homebrew | C | C |
+
 | 7 | 1 | 9 | homebrew | C | D |
 | 7 | 1 | 11 | homebrew | D | A |
 | 7 | 1 | 12 | homebrew | D | B |
 | 7 | 2 | 1 | homebrew | A | D |
+
 | 8 | 2 | 2 | homebrew | B | D |
 | 8 | 3 | 11 | homebrew | E | A |
 | 8 | 3 | 13 | homebrew | E | B |
 | 8 | 3 | 15 | homebrew | D | C |
 
+
+Lane 1
 ```bash
 #generate sample sheet using a modified version of bcl_convert_sheet.py to allow for pcr plate specifications.
+#scalebio indexes batch 1
 python ${projDir}/tools/ScaleMethyl/bin/bcl_convert_sheet.py \
-${runDir}/samplesheets/samples.csv \
-${projDir}/tools/ScaleMethyl/references/lib.json \
-${bclDir}/RunInfo.xml \
---splitFastq > ${runDir}/samplesheets/scalebio_batch2_plate3-4_samplesheet.csv
+${runDir}/samplesheets/samples.csv ${projDir}/tools/ScaleMethyl/references/lib.json ${bclDir}/RunInfo.xml \
+--splitFastq > ${runDir}/samplesheets/novaseq_lane1_batch1_scalebio_plate1-6.csv
 
 #sample sheets for homebrew plates, run one plate at a time and merge
+#batch 1 plate 2
 python ${projDir}/tools/scalemet_dcis/src/bcl_convert_sheet_pcr.py \
-${runDir}/samplesheets/samples.csv \
-${projDir}/tools/scalemet_dcis/ref/homebrew.lib.json \
-${bclDir}/RunInfo.xml \
---splitFastq \
---i7Set D \
---i5Set 1 > ${runDir}/samplesheets/homebrew_batch2_plate1_samplesheet.csv
+${runDir}/samplesheets/samples.csv ${projDir}/tools/scalemet_dcis/ref/homebrew.lib.json ${bclDir}/RunInfo.xml \
+--splitFastq --i7Set A --i5Set 1 > ${runDir}/samplesheets/novaseq_lane1_batch1_homebrew_plate2.csv
+```
+Lane 2
+```bash
+#scalebio indexes batch 2
+python ${projDir}/tools/ScaleMethyl/bin/bcl_convert_sheet.py \
+${runDir}/samplesheets/samples.csv ${projDir}/tools/ScaleMethyl/references/lib.json ${bclDir}/RunInfo.xml \
+--splitFastq > ${runDir}/samplesheets/novaseq_lane2_batch2_scalebio_plate3-4.csv
 
+#batch 3 plate 1
 python ${projDir}/tools/scalemet_dcis/src/bcl_convert_sheet_pcr.py \
-${runDir}/samplesheets/samples.csv \
-${projDir}/tools/scalemet_dcis/ref/homebrew.lib.json \
-${bclDir}/RunInfo.xml \
---splitFastq \
---i7Set D \
---i5Set 2 > ${runDir}/samplesheets/homebrew_batch2_plate2_samplesheet.csv
+${runDir}/samplesheets/samples.csv ${projDir}/tools/scalemet_dcis/ref/homebrew.lib.json ${bclDir}/RunInfo.xml \
+--splitFastq --i7Set E --i5Set 1 > ${runDir}/samplesheets/novaseq_lane2_batch3_homebrew_plate1.csv
+```
 
-cat ${runDir}/samplesheets/homebrew_batch2_plate1_samplesheet.csv > ${runDir}/samplesheets/homebrew_batch2_plate1-2_samplesheet.csv
-grep "^ScaleMethyl_" ${runDir}/samplesheets/homebrew_batch2_plate2_samplesheet.csv >> ${runDir}/samplesheets/homebrew_batch2_plate1-2_samplesheet.csv
+Lane 3
+```bash
+#scalebio indexes batch 3
+python ${projDir}/tools/ScaleMethyl/bin/bcl_convert_sheet.py \
+${runDir}/samplesheets/samples.csv ${projDir}/tools/ScaleMethyl/references/lib.json ${bclDir}/RunInfo.xml \
+--splitFastq > ${runDir}/samplesheets/novaseq_lane3_batch3_scalebio_plate2-5.csv
 
+#batch 3 plate 6
+python ${projDir}/tools/scalemet_dcis/src/bcl_convert_sheet_pcr.py \
+${runDir}/samplesheets/samples.csv ${projDir}/tools/scalemet_dcis/ref/homebrew.lib.json ${bclDir}/RunInfo.xml \
+--splitFastq --i7Set E --i5Set 2 > ${runDir}/samplesheets/novaseq_lane3_batch3_homebrew_plate6.csv
+```
+
+Lane 4
+```bash
+#scalebio indexes batch prelim1 and prelim2
+python ${projDir}/tools/ScaleMethyl/bin/bcl_convert_sheet.py \
+${runDir}/samplesheets/samples.csv ${projDir}/tools/ScaleMethyl/references/lib.json ${bclDir}/RunInfo.xml \
+--splitFastq > ${runDir}/samplesheets/novaseq_lane4_prelim1-2_scalebio_plate1-1.csv
+
+#batch 3 plate 16
+python ${projDir}/tools/scalemet_dcis/src/bcl_convert_sheet_pcr.py \
+${runDir}/samplesheets/samples.csv ${projDir}/tools/scalemet_dcis/ref/homebrew.lib.json ${bclDir}/RunInfo.xml \
+--splitFastq --i7Set D --i5Set 4 > ${runDir}/samplesheets/novaseq_lane4_batch3_homebrew_plate16.csv
+```
+
+Lane 5
+```bash
+#scalebio indexes batch prelim3
+python ${projDir}/tools/ScaleMethyl/bin/bcl_convert_sheet.py \
+${runDir}/samplesheets/samples.csv ${projDir}/tools/ScaleMethyl/references/lib.json ${bclDir}/RunInfo.xml \
+--splitFastq > ${runDir}/samplesheets/novaseq_lane5_prelim3_scalebio_plate1-2.csv
+
+#batch 3 plate 17
+python ${projDir}/tools/scalemet_dcis/src/bcl_convert_sheet_pcr.py \
+${runDir}/samplesheets/samples.csv ${projDir}/tools/scalemet_dcis/ref/homebrew.lib.json ${bclDir}/RunInfo.xml \
+--splitFastq --i7Set D --i5Set 5 > ${runDir}/samplesheets/novaseq_lane5_batch3_homebrew_plate17.csv
+```
+
+Lane 6
+```bash
+#batch 1 plate 3
+python ${projDir}/tools/scalemet_dcis/src/bcl_convert_sheet_pcr.py \
+${runDir}/samplesheets/samples.csv ${projDir}/tools/scalemet_dcis/ref/homebrew.lib.json ${bclDir}/RunInfo.xml \
+--splitFastq --i7Set 3 --i5Set A > ${runDir}/samplesheets/novaseq_lane6_batch1_homebrew_plate3.csv
+
+#batch 1 plate 4
+python ${projDir}/tools/scalemet_dcis/src/bcl_convert_sheet_pcr.py \
+${runDir}/samplesheets/samples.csv ${projDir}/tools/scalemet_dcis/ref/homebrew.lib.json ${bclDir}/RunInfo.xml \
+--splitFastq --i7Set 3 --i5Set B > ${runDir}/samplesheets/novaseq_lane6_batch1_homebrew_plate4.csv
+
+#batch 1 plate 7
+python ${projDir}/tools/scalemet_dcis/src/bcl_convert_sheet_pcr.py \
+${runDir}/samplesheets/samples.csv ${projDir}/tools/scalemet_dcis/ref/homebrew.lib.json ${bclDir}/RunInfo.xml \
+--splitFastq --i7Set 2 --i5Set B > ${runDir}/samplesheets/novaseq_lane6_batch1_homebrew_plate7.csv
+
+#batch 1 plate 8
+python ${projDir}/tools/scalemet_dcis/src/bcl_convert_sheet_pcr.py \
+${runDir}/samplesheets/samples.csv ${projDir}/tools/scalemet_dcis/ref/homebrew.lib.json ${bclDir}/RunInfo.xml \
+--splitFastq --i7Set 3 --i5Set C > ${runDir}/samplesheets/novaseq_lane6_batch1_homebrew_plate8.csv
+
+#if multiple homebrew plates, combine with this
+cat ${runDir}/samplesheets/novaseq_lane6_batch1_homebrew_plate3.csv > ${runDir}/samplesheets/novaseq_lane6_batch1_homebrew_plate3-4-7-8.csv
+grep "^ScaleMethyl_" ${runDir}/samplesheets/novaseq_lane6_batch1_homebrew_plate4.csv >> ${runDir}/samplesheets/novaseq_lane6_batch1_homebrew_plate3-4-7-8.csv
+grep "^ScaleMethyl_" ${runDir}/samplesheets/novaseq_lane6_batch1_homebrew_plate7.csv >> ${runDir}/samplesheets/novaseq_lane6_batch1_homebrew_plate3-4-7-8.csv
+grep "^ScaleMethyl_" ${runDir}/samplesheets/novaseq_lane6_batch1_homebrew_plate8.csv >> ${runDir}/samplesheets/novaseq_lane6_batch1_homebrew_plate3-4-7-8.csv
+```
+
+Lane 7
+```bash
+#batch 1 plate 9
+python ${projDir}/tools/scalemet_dcis/src/bcl_convert_sheet_pcr.py \
+${runDir}/samplesheets/samples.csv ${projDir}/tools/scalemet_dcis/ref/homebrew.lib.json ${bclDir}/RunInfo.xml \
+--splitFastq --i7Set 4 --i5Set C > ${runDir}/samplesheets/novaseq_lane7_batch1_homebrew_plate9.csv
+
+#batch 1 plate 11
+python ${projDir}/tools/scalemet_dcis/src/bcl_convert_sheet_pcr.py \
+${runDir}/samplesheets/samples.csv ${projDir}/tools/scalemet_dcis/ref/homebrew.lib.json ${bclDir}/RunInfo.xml \
+--splitFastq --i7Set 1 --i5Set D > ${runDir}/samplesheets/novaseq_lane7_batch1_homebrew_plate11.csv
+
+#batch 1 plate 12
+python ${projDir}/tools/scalemet_dcis/src/bcl_convert_sheet_pcr.py \
+${runDir}/samplesheets/samples.csv ${projDir}/tools/scalemet_dcis/ref/homebrew.lib.json ${bclDir}/RunInfo.xml \
+--splitFastq --i7Set 2 --i5Set D > ${runDir}/samplesheets/novaseq_lane7_batch1_homebrew_plate12.csv
+
+#batch 2 plate 1
+python ${projDir}/tools/scalemet_dcis/src/bcl_convert_sheet_pcr.py \
+${runDir}/samplesheets/samples.csv ${projDir}/tools/scalemet_dcis/ref/homebrew.lib.json ${bclDir}/RunInfo.xml \
+--splitFastq --i7Set 4 --i5Set A > ${runDir}/samplesheets/novaseq_lane7_batch2_homebrew_plate1.csv
+
+#if multiple homebrew plates, combine with this
+cat ${runDir}/samplesheets/novaseq_lane7_batch1_homebrew_plate9.csv > ${runDir}/samplesheets/novaseq_lane7_batch1-2_homebrew_plate9-11-12-1.csv
+grep "^ScaleMethyl_" ${runDir}/samplesheets/novaseq_lane7_batch1_homebrew_plate11.csv >> ${runDir}/samplesheets/novaseq_lane7_batch1-2_homebrew_plate9-11-12-1.csv
+grep "^ScaleMethyl_" ${runDir}/samplesheets/novaseq_lane7_batch1_homebrew_plate12.csv >> ${runDir}/samplesheets/novaseq_lane7_batch1-2_homebrew_plate9-11-12-1.csv
+grep "^ScaleMethyl_" ${runDir}/samplesheets/novaseq_lane7_batch2_homebrew_plate1.csv >> ${runDir}/samplesheets/novaseq_lane7_batch1-2_homebrew_plate9-11-12-1.csv
+```
+Lane 8
+```bash
+#batch 2 plate 2
+python ${projDir}/tools/scalemet_dcis/src/bcl_convert_sheet_pcr.py \
+${runDir}/samplesheets/samples.csv ${projDir}/tools/scalemet_dcis/ref/homebrew.lib.json ${bclDir}/RunInfo.xml \
+--splitFastq --i7Set 4 --i5Set B > ${runDir}/samplesheets/novaseq_lane8_batch2_homebrew_plate2.csv
+
+#batch 3 plate 11
+python ${projDir}/tools/scalemet_dcis/src/bcl_convert_sheet_pcr.py \
+${runDir}/samplesheets/samples.csv ${projDir}/tools/scalemet_dcis/ref/homebrew.lib.json ${bclDir}/RunInfo.xml \
+--splitFastq --i7Set 1 --i5Set E > ${runDir}/samplesheets/novaseq_lane8_batch3_homebrew_plate11.csv
+
+#batch 3 plate 13
+python ${projDir}/tools/scalemet_dcis/src/bcl_convert_sheet_pcr.py \
+${runDir}/samplesheets/samples.csv ${projDir}/tools/scalemet_dcis/ref/homebrew.lib.json ${bclDir}/RunInfo.xml \
+--splitFastq --i7Set 2 --i5Set E > ${runDir}/samplesheets/novaseq_lane8_batch3_homebrew_plate13.csv
+
+#batch 3 plate 15
+python ${projDir}/tools/scalemet_dcis/src/bcl_convert_sheet_pcr.py \
+${runDir}/samplesheets/samples.csv ${projDir}/tools/scalemet_dcis/ref/homebrew.lib.json ${bclDir}/RunInfo.xml \
+--splitFastq --i7Set 3 --i5Set D > ${runDir}/samplesheets/novaseq_lane8_batch3_homebrew_plate15.csv
+
+#if multiple homebrew plates, combine with this
+cat ${runDir}/samplesheets/novaseq_lane8_batch2_homebrew_plate2.csv > ${runDir}/samplesheets/novaseq_lane8_batch2-3_homebrew_plate2-11-13-15.csv
+grep "^ScaleMethyl_" ${runDir}/samplesheets/novaseq_lane8_batch3_homebrew_plate11.csv >> ${runDir}/samplesheets/novaseq_lane8_batch2-3_homebrew_plate2-11-13-15.csv
+grep "^ScaleMethyl_" ${runDir}/samplesheets/novaseq_lane8_batch3_homebrew_plate13.csv >> ${runDir}/samplesheets/novaseq_lane8_batch2-3_homebrew_plate2-11-13-15.csv
+grep "^ScaleMethyl_" ${runDir}/samplesheets/novaseq_lane8_batch3_homebrew_plate15.csv >> ${runDir}/samplesheets/novaseq_lane8_batch2-3_homebrew_plate2-11-13-15.csv
+```
+
+
+```bash
 #make nf-core input sheet
 cd $runDir
-echo """id,samplesheet,flowcell
-homebrew_batch2_plate1-2,${runDir}/samplesheets/homebrew_batch2_plate1-2_samplesheet.csv,${bclDir}
-scale_batch2_plate3-4,${runDir}/samplesheets/scalebio_batch2_plate3-4_samplesheet.csv,${bclDir}""" > pipeline_samplesheet.csv
+echo """id,samplesheet,lane,flowcell
+lane1_batch1_homebrew_plate2,${runDir}/samplesheets/novaseq_lane1_batch1_homebrew_plate2.csv,1,${bclDir}
+lane1_batch1_scalebio_plate1-6,${runDir}/samplesheets/novaseq_lane1_batch1_scalebio_plate1-6.csv,1,${bclDir}
+lane2_batch3_homebrew_plate1,${runDir}/samplesheets/novaseq_lane2_batch3_homebrew_plate1.csv,2,${bclDir}
+lane2_batch2_scalebio_plate3-4,${runDir}/samplesheets/novaseq_lane2_batch2_scalebio_plate3-4.csv,2,${bclDir}
+lane3_batch3_homebrew_plate6,${runDir}/samplesheets/novaseq_lane3_batch3_homebrew_plate6.csv,3,${bclDir}
+lane3_batch3_scalebio_plate2-5,${runDir}/samplesheets/novaseq_lane3_batch3_scalebio_plate2-5.csv,3,${bclDir}
+lane4_batch3_homebrew_plate16,${runDir}/samplesheets/novaseq_lane4_batch3_homebrew_plate16.csv,4,${bclDir}
+lane4_prelim1-2_scalebio_plate1-1.csv,${runDir}/samplesheets/novaseq_lane4_prelim1-2_scalebio_plate1-1.csv,4,${bclDir}
+lane5_batch3_homebrew_plate17,${runDir}/samplesheets/novaseq_lane5_batch3_homebrew_plate17.csv,5,${bclDir}
+lane5_prelim3_scalebio_plate1-2.csv,${runDir}/samplesheets/novaseq_lane4_prelim3_scalebio_plate1-2.csv,5,${bclDir}
+lane6_batch1_homebrew_plate3-4-7-8,${runDir}/samplesheets/novaseq_lane6_batch1_homebrew_plate3-4-7-8.csv,6,${bclDir}
+lane7_batch1-2_homebrew_plate9-11-12-1,${runDir}/samplesheets/novaseq_lane7_batch1-2_homebrew_plate9-11-12-1.csv,7,${bclDir}
+lane8_batch2-3_homebrew_plate2-11-13-15,${runDir}/samplesheets/novaseq_lane8_batch2-3_homebrew_plate2-11-13-15.csv,8,${bclDir}
+""" >> pipeline_samplesheet.csv
 
 ```
+########UP TO HERE JUST WAITING ON SEQUENCING##########
 
 BCL to FASTQ
 
