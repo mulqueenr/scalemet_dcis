@@ -75,7 +75,19 @@ sftp mulqueen@qcprpsysbio.mdanderson.edu
 #put -R 240523_VH00219_594_AAFLYGNM5 #high coverage first prelim run HBCA + DCIS 
 ```
 
-Just currently missing batch 1 nextseq run
+Novaseq run
+```bash
+#from seadragon to sysbio
+bsub -Is -W 12:00 -q transfer -n 10 -M 10 -R rusage[mem=100] /bin/bash #small interactive node for bcl-convert 
+cd /rsrch8/home/genetics/htep/PI/nnavin/20250808_LH00503_0129_A22WHTCLT4/
+sftp mulqueen@qcprpsysbio.mdanderson.edu
+cd /data/rmulqueen/projects/scalebio_dcis/seq
+#put -R 240523_VH00219_594_AAFLYGNM5 #high coverage first prelim run HBCA + DCIS 
+#mitchell did transfer to seq folder on geo
+#cp -R /geo_seq/flowcells/MDA/NovaSeqX/2025/20250808_LH00503_0129_A22WHTCLT4/ /data/rmulqueen/projects/scalebio_dcis/seq/20250808_LH00503_0129_A22WHTCLT4/
+
+```
+
 ```bash
 cd /data/rmulqueen/projects/scalebio_dcis/seq
 sftp mulqueen@qcprpneo.mdanderson.edu
