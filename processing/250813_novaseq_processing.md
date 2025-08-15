@@ -144,6 +144,13 @@ Per lane (8 total) we need to run sample sheet generation for both:
 
 
 ########Waiting for data to transfer########
+
+Pull git repo with code and homebrew indexes
+
+```bash
+cd ${projDir}/tools/scalemet_dcis/
+git clone https://github.com/mulqueenr/scalemet_dcis.git /data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis #this repo
+```
 Lane 1
 ```bash
 #generate sample sheet using a modified version of bcl_convert_sheet.py to allow for pcr plate specifications.
@@ -336,6 +343,7 @@ nextflow run nf-core/demultiplex \
     --remove_adapter false \
     --skip_tools fastp,fastqc,kraken,multiqc,checkqc,falco,md5sum,samshee \
     -profile singularity \
+    --first-tile-only true \
     -w ${SCRATCH}/scalemet_work
 
 
