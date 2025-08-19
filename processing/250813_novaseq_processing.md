@@ -425,3 +425,4 @@ nextflow run ${projDir}/tools/scalemet_dcis/src/scaleDCIS_postprocessing.nf.groo
 --outputPrefix scale \
 -w $SCRATCH/scalemet_batch2_scale \
 -resume
+

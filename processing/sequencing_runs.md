@@ -93,3 +93,32 @@ cd /data/rmulqueen/projects/scalebio_dcis/seq
 sftp mulqueen@qcprpneo.mdanderson.edu
 
 ```
+
+
+#can move data to /rsrch5/home/genetics/NAVIN_LAB/Ryan/projects/ if /data is still down
+
+mkdir /rsrch5/home/genetics/NAVIN_LAB/Ryan/projects/scale_dcis
+#cp -R /geo_seq/flowcells/MDA/NovaSeqX/2025/20250808_LH00503_0129_A22WHTCLT4/ /data/rmulqueen/projects/scalebio_dcis/seq/20250808_LH00503_0129_A22WHTCLT4/
+#get -R /volumes/seq/flowcells/MDA/nextseq2000/2024/240111_VH00219_563_AAFFFCCM5 #initial test on cell lines + HBCA
+#get -R /volumes/seq/flowcells/MDA/NovaSeq/2024/PM2517 #240202_A01819_0450_AHNTKYDMXY high coverage run on cell lines + HBCA
+#get -R /volumes/USR2/Ryan/projects/metact/241007_RM_scalebio_dcis2/241004_A01819_0637_BHY5MJDMXY #novaseq of additional samples (second prelim 
+
+
+/rsrch5/home/genetics/NAVIN_LAB/Ryan/projects/metact/20231202_RMMM_scalebio_celllines/231202_VH00219_541_AAF3KVTM5 #pre-prelim
+/rsrch5/home/genetics/NAVIN_LAB/Ryan/projects/metact/240115_RMMM_scalebiotest2/240111_VH00219_563_AAFFFCCM5 #pre-prelim
+
+/rsrch5/home/genetics/NAVIN_LAB/Ryan/projects/metact/240205_RMMM_scalebiotest2/PM2517 #prelim1
+/rsrch5/home/genetics/NAVIN_LAB/Ryan/projects/metact/240526_RMMM_scalebio_dcis/240523_VH00219_594_AAFLYGNM5 #prelim2
+/rsrch5/home/genetics/NAVIN_LAB/Ryan/projects/metact/241007_RM_scalebio_dcis2/241004_A01819_0637_BHY5MJDMXY #prelim3
+/geo_seq/flowcells/MDA/NovaSeqX/2025/20250808_LH00503_0129_A22WHTCLT4 #novaseq batch 1-2-3-prelim1-2-3
+
+#need to find
+bclDir_250325="/data/rmulqueen/projects/scalebio_dcis/seq/250325_VH01788_97_2227YC2NX" #batch1 plates 1-2-6-7
+bclDir_250424="/data/rmulqueen/projects/scalebio_dcis/seq/PM2563" #batch1 plates 3-8
+
+#have
+bclDir_240202="/data/rmulqueen/projects/scalebio_dcis/seq/PM2517/" #prelim1
+bclDir_240523="/data/rmulqueen/projects/scalebio_dcis/seq/240523_VH00219_594_AAFLYGNM5" #prelim2
+bclDir_241004="/data/rmulqueen/projects/scalebio_dcis/seq/241004_A01819_0637_BHY5MJDMXY" #prelim3
+bclDir_250506="/data/rmulqueen/projects/scalebio_dcis/seq/250506_VH01788_104_222CF7LNX" #batch 2
+bclDir_250808="/data/rmulqueen/projects/scalebio_dcis/seq/20250808_LH00503_0129_A22WHTCLT4" #novaseq batch 1-2-3-prelim1-2-3
