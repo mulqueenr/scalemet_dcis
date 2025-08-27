@@ -54,6 +54,8 @@ bclDir_250325="/data/rmulqueen/projects/scalebio_dcis/seq/250325_VH01788_97_2227
 bclDir_250424="/data/rmulqueen/projects/scalebio_dcis/seq/PM2563" #batch1 plates 3-8
 bclDir_250506="/data/rmulqueen/projects/scalebio_dcis/seq/250506_VH01788_104_222CF7LNX" #batch 2
 bclDir_250808="/data/rmulqueen/projects/scalebio_dcis/seq/20250808_LH00503_0129_A22WHTCLT4" #novaseq batch 1-2-3-prelim1-2-3
+
+#modified /data/rmulqueen/projects/scalebio_dcis/tools/ScaleMethyl/modules/input_reads.nf to decrease alignment thread usage
 ```
 
 
@@ -407,7 +409,7 @@ cd $runDir
 echo """id,samplesheet,lane,flowcell
 prelim1-2_scalebio_plate1-1,${runDir}/samplesheets/prelim1_scalebio_plate1_samplesheet.csv,,${bclDir_240202}
 prelim1-2_scalebio_plate1-1,${runDir}/samplesheets/prelim2_scalebio_plate1_samplesheet.csv,,${bclDir_240523}
-prelim3_scalebio_plate1,${runDir}/samplesheets/prelim3_scalebio_plate1_samplesheet.csv,,${bclDir_241004}
+prelim3_scalebio_plate1-2,${runDir}/samplesheets/prelim3_scalebio_plate1_samplesheet.csv,,${bclDir_241004}
 batch1_scalebio_plate1-6,${runDir}/samplesheets/batch1_scalebio_plate1-6_samplesheet.csv,,${bclDir_250325}
 batch1_homebrew_plate2,${runDir}/samplesheets/batch1_homebrew_plate2_samplesheet.csv,,${bclDir_250325}
 batch1_homebrew_plate7,${runDir}/samplesheets/batch1_homebrew_plate7_samplesheet.csv,,${bclDir_250325}
@@ -448,7 +450,6 @@ batch1_homebrew_plate9,${runDir}/samplesheets/novaseq_lane8_batch1_homebrew_plat
 """ > pipeline_samplesheet3.csv
 ```
 
-
 BCL to FASTQ
 
 Running in 3 batches to limit strain of I/O on server.
@@ -486,6 +487,9 @@ nextflow run nf-core/demultiplex \
     --skip_tools fastp,fastqc,kraken,multiqc,checkqc,falco,md5sum,samshee \
     -profile singularity \
     -w ${SCRATCH}/scalemet_work
+
+
+
 ```
 
 # Clean up FASTQ Files
@@ -508,7 +512,7 @@ concatenate_fastq() {
 }
 export -f concatenate_fastq
 
-for plate in prelim1-2_scalebio_plate1-1 prelim1-2_scalebio_plate1-1 prelim3_scalebio_plate1 batch1_scalebio_plate1-6 batch1_homebrew_plate2 batch1_homebrew_plate7 batch1_homebrew_plate3 batch1_homebrew_plate8 batch2_scalebio_plate3-4 batch2_homebrew_plate1 batch2_homebrew_plate2;
+for plate in prelim1-2_scalebio_plate1-1 prelim3_scalebio_plate1 batch1_scalebio_plate1-6 batch1_homebrew_plate2 batch1_homebrew_plate7 batch1_homebrew_plate3 batch1_homebrew_plate8 batch2_scalebio_plate3-4 batch2_homebrew_plate1 batch2_homebrew_plate2;
     do echo "Combing FASTQ for $plate..."
     mkdir -p ./fastq/$plate/merged_fq
     files_in=$(find ./fastq/$plate/ -name ScaleMethyl_*fastq.gz -exec basename {}  \; | sed 's/_L00[1-8]_/_L00*_/' | sort | uniq)
@@ -529,7 +533,7 @@ cd ${runDir}
 ```
 
 ## reseq plate, homebrew
-#### RUNNING
+DONE
 
 ```bash
 for plate in batch1_homebrew_plate2 batch1_homebrew_plate7 batch1_homebrew_plate3 batch1_homebrew_plate8 batch2_homebrew_plate1 batch2_homebrew_plate2;
@@ -538,81 +542,88 @@ mkdir -p ${runDir}/scalemethyl_pipeline_out/$plate
 batch=$(echo $plate | cut -d'_' -f1)
 sed 's/ScaleMethyl/ScaleMethylMerged/g' ${runDir}/samplesheets/samples.$batch.csv > ${runDir}/scalemethyl_pipeline_out/$plate/samples.$plate.csv
 
-nextflow run ${scalebio_nf} \
+nice nextflow run ${scalebio_nf} \
 --fastqDir ${runDir}/fastq/$plate/merged_fq \
 --samples ${runDir}/scalemethyl_pipeline_out/$plate/samples.$plate.csv \
 --outDir ${runDir}/scalemethyl_pipeline_out/$plate \
 --libStructure ${projDir}/tools/scalemet_dcis/ref/homebrew.lib.json \
---maxMemory 500.GB \
---maxCpus 300 \
+--maxMemory 100.GB \
+--maxCpus 20 \
 -profile singularity \
 -params-file ${params} \
--w ${SCRATCH}/scalemet_milestone_work;
+-w ${SCRATCH}/scalemet_milestone_work -resume -qs 50;
 done
 ```
 
 ## new plates, homebrew
-
+DONE
+ 
 ```bash
-for plate in batch1_homebrew_plate11 batch1_homebrew_plate4 batch1_homebrew_plate9 batch1_homebrew_plate12 batch3_homebrew_plate1 batch3_homebrew_plate11 batch3_homebrew_plate13 batch3_homebrew_plate15 batch3_homebrew_plate16 batch3_homebrew_plate17 batch3_homebrew_plate6;
+for plate in batch1_homebrew_plate11 batch1_homebrew_plate4 batch3_homebrew_plate1 batch3_homebrew_plate11 batch3_homebrew_plate13 batch3_homebrew_plate15 batch3_homebrew_plate16 batch3_homebrew_plate17 batch3_homebrew_plate6  batch1_homebrew_plate9 batch1_homebrew_plate12;
 do 
 mkdir -p ${runDir}/scalemethyl_pipeline_out/$plate
 batch=$(echo $plate | cut -d'_' -f1)
 lane=$(ls -d ${runDir}/fastq/$plate/L* | awk -F/ '{print $NF}')
 cp ${runDir}/samplesheets/samples.$batch.csv ${runDir}/scalemethyl_pipeline_out/$plate/samples.$plate.csv
 
-nextflow run ${scalebio_nf} \
+nice nextflow run ${scalebio_nf} \
 --fastqDir ${runDir}/fastq/$plate/$lane \
 --samples ${runDir}/scalemethyl_pipeline_out/$plate/samples.$plate.csv \
 --outDir ${runDir}/scalemethyl_pipeline_out/$plate \
 --libStructure ${projDir}/tools/scalemet_dcis/ref/homebrew.lib.json \
---maxMemory 500.GB \
---maxCpus 300 \
+--maxMemory 100.GB \
+--maxCpus 1 \
 -profile singularity \
 -params-file ${params} \
--w ${SCRATCH}/scalemet_milestone_work;
+-w ${SCRATCH}/scalemet_milestone_work -resume;
+done
+```
+
+## new plate, scale
+DONE
+
+```bash
+plate="batch3_scalebio_plate2-5"
+batch=$(echo $plate | cut -d'_' -f1)
+lane="L003"
+mkdir -p ${runDir}/scalemethyl_pipeline_out/$plate
+cp ${runDir}/samplesheets/samples.$batch.csv ${runDir}/scalemethyl_pipeline_out/$plate/samples.$plate.csv
+
+nice nextflow run ${scalebio_nf} \
+--fastqDir ${runDir}/fastq/$plate/$lane \
+--samples ${runDir}/scalemethyl_pipeline_out/$plate/samples.$plate.csv \
+--outDir ${runDir}/scalemethyl_pipeline_out/$plate \
+--maxMemory 100.GB \
+--maxCpus 20 \
+-profile singularity \
+-params-file ${params} \
+-w ${SCRATCH}/scalemet_milestone_work -resume;
 done
 ```
 
 ## reseq plate, scale
 
 ```bash
-for plate in prelim1-2_scalebio_plate1-1 prelim1-2_scalebio_plate1-1 prelim3_scalebio_plate1 batch1_scalebio_plate1-6 batch2_scalebio_plate3-4;
-do
-batch=$(echo $plate | cut -d'_' -f1)
+for plate in batch2_scalebio_plate3-4 prelim3_scalebio_plate1-2; 
+do batch=$(echo $plate | cut -d'_' -f1)
 mkdir -p ${runDir}/scalemethyl_pipeline_out/$plate
 sed 's/ScaleMethyl/ScaleMethylMerged/g' ${runDir}/samplesheets/samples.$batch.csv > ${runDir}/scalemethyl_pipeline_out/$plate/samples.$plate.csv
 
-nextflow run ${scalebio_nf} \
+nice nextflow run ${scalebio_nf} \
 --fastqDir ${runDir}/fastq/$plate/merged_fq \
 --samples ${runDir}/scalemethyl_pipeline_out/$plate/samples.$plate.csv \
 --outDir ${runDir}/scalemethyl_pipeline_out/$plate \
---maxMemory 500.GB \
---maxCpus 300 \
+--maxMemory 100.GB \
+--maxCpus 4 \
 -profile singularity \
 -params-file ${params} \
--w ${SCRATCH}/scalemet_milestone_work;
+-w ${SCRATCH}/scalemet_milestone_work -resume;
 done
 ```
 
-## new plate, scale
-
-```bash
-plate="batch3_scalebio_plate2-5"
-batch=$(echo $plate | cut -d'_' -f1)
-mkdir -p ${runDir}/scalemethyl_pipeline_out/$plate
-cp ${runDir}/samplesheets/samples.$batch.csv ${runDir}/scalemethyl_pipeline_out/$plate/samples.$plate.csv
-
-nextflow run ${scalebio_nf} \
---fastqDir ${runDir}/fastq/$plate/$lane \
---samples ${runDir}/scalemethyl_pipeline_out/$plate/samples.$plate.csv \
---outDir ${runDir}/scalemethyl_pipeline_out/$plate \
---maxMemory 500.GB \
---maxCpus 300 \
--profile singularity \
--params-file ${params} \
--w ${SCRATCH}/scalemet_milestone_work
-```
+#### TODO
+# RUNNING prelim3_scalebio_plate1-2 bcl-convert and merge fastq again
+# fix fastq for prelim1-2_scalebio_plate1-1 batch1_scalebio_plate1-6 
 
 Correct all symlink with actual links and split out merged bam files into single-cell bam files.
 
