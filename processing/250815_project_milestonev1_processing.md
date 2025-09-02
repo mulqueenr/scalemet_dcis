@@ -15,8 +15,8 @@ All processed plates
 | 3 | 2 | scale kit | scale plate 1 | scale plate 1 | 3 |
 | 3 | 5 | scale kit | scale plate 2 | scale plate 2 | 3 |
 | 3 | 11 | homebrew | E (5) | A | 3 |
-| prelim1 | 1 | scale kit | scale plate 1 | scale plate 1 | 4 |
-| prelim2 | 1 | scale kit | scale plate 2 | scale plate 2 | 4 |
+| prelim1-2 | 1 | scale kit | scale plate 1 | scale plate 1 | 4 |
+| prelim1-2 | 2 | scale kit | scale plate 2 | scale plate 2 | 4 |
 | 1 | 3 | homebrew | C (3) | A | 4 |
 | prelim3 | 1 | scale kit | scale plate 1 | scale plate 1 | 5 |
 | prelim3 | 2 | scale kit | scale plate 2 | scale plate 2 | 5 |
@@ -157,7 +157,7 @@ python ${projDir}/tools/ScaleMethyl/bin/bcl_convert_sheet.py \
 ${runDir}/samplesheets/samples.prelim1-2.csv \
 ${projDir}/tools/ScaleMethyl/references/lib.json \
 ${bclDir_240202}/RunInfo.xml \
---splitFastq > ${runDir}/samplesheets/prelim1_scalebio_plate1_samplesheet.csv
+--splitFastq > ${runDir}/samplesheets/prelim1-2_scalebio_plate1_samplesheet.csv
 ```
 
 ## Nextseq 240523
@@ -166,7 +166,7 @@ python ${projDir}/tools/ScaleMethyl/bin/bcl_convert_sheet.py \
 ${runDir}/samplesheets/samples.prelim1-2.csv \
 ${projDir}/tools/ScaleMethyl/references/lib.json \
 ${bclDir_240523}/RunInfo.xml \
---splitFastq > ${runDir}/samplesheets/prelim2_scalebio_plate1_samplesheet.csv
+--splitFastq > ${runDir}/samplesheets/prelim1-2_scalebio_plate2_samplesheet.csv
 ```
 
 ## Novaseq 241004
@@ -310,7 +310,7 @@ Lane 4
 #scalebio indexes batch prelim1 and prelim2
 python ${projDir}/tools/ScaleMethyl/bin/bcl_convert_sheet.py \
 ${runDir}/samplesheets/samples.prelim1-2.csv ${projDir}/tools/ScaleMethyl/references/lib.json ${bclDir_250808}/RunInfo.xml \
---splitFastq > ${runDir}/samplesheets/novaseq_lane4_prelim1-2_scalebio_plate1-1.csv
+--splitFastq > ${runDir}/samplesheets/novaseq_lane4_prelim1-2_scalebio_plate1-2.csv
 
 #batch 1 plate 3
 python ${projDir}/tools/scalemet_dcis/src/bcl_convert_sheet_pcr.py \
@@ -373,7 +373,7 @@ ${runDir}/samplesheets/samples.batch1.csv ${projDir}/tools/scalemet_dcis/ref/hom
 
 #batch 1 plate 11
 python ${projDir}/tools/scalemet_dcis/src/bcl_convert_sheet_pcr.py \
-${runDir}/samplesheets/samples.batch2.csv ${projDir}/tools/scalemet_dcis/ref/homebrew.lib.json ${bclDir_250808}/RunInfo.xml \
+${runDir}/samplesheets/samples.batch1.csv ${projDir}/tools/scalemet_dcis/ref/homebrew.lib.json ${bclDir_250808}/RunInfo.xml \
 --splitFastq --i7Set A --i5Set 4 > ${runDir}/samplesheets/novaseq_lane7_batch1_homebrew_plate11.csv
 ```
 
@@ -397,7 +397,7 @@ ${runDir}/samplesheets/samples.batch3.csv ${projDir}/tools/scalemet_dcis/ref/hom
 #batch 1 plate 9
 python ${projDir}/tools/scalemet_dcis/src/bcl_convert_sheet_pcr.py \
 ${runDir}/samplesheets/samples.batch3.csv ${projDir}/tools/scalemet_dcis/ref/homebrew.lib.json ${bclDir_250808}/RunInfo.xml \
---splitFastq --i7Set C --i5Set 3 > ${runDir}/samplesheets/novaseq_lane8_batch1_homebrew_plate9.csv
+--splitFastq --i7Set D --i5Set 3 > ${runDir}/samplesheets/novaseq_lane8_batch1_homebrew_plate9.csv
 ```
 
 
@@ -407,9 +407,8 @@ cd $runDir
 
 #make nf-core input sheet
 echo """id,samplesheet,lane,flowcell
-prelim1-2_scalebio_plate1-1,${runDir}/samplesheets/prelim1_scalebio_plate1_samplesheet.csv,,${bclDir_240202}
-prelim1-2_scalebio_plate1-1,${runDir}/samplesheets/prelim2_scalebio_plate1_samplesheet.csv,,${bclDir_240523}
-prelim3_scalebio_plate1-2,${runDir}/samplesheets/prelim3_scalebio_plate1_samplesheet.csv,,${bclDir_241004}
+prelim1-2_scalebio_plate1,${runDir}/samplesheets/prelim1-2_scalebio_plate1_samplesheet.csv,,${bclDir_240202}
+prelim1-2_scalebio_plate2,${runDir}/samplesheets/prelim1-2_scalebio_plate2_samplesheet.csv,,${bclDir_240523}
 batch1_scalebio_plate1-6,${runDir}/samplesheets/batch1_scalebio_plate1-6_samplesheet.csv,,${bclDir_250325}
 batch1_homebrew_plate2,${runDir}/samplesheets/batch1_homebrew_plate2_samplesheet.csv,,${bclDir_250325}
 batch1_homebrew_plate7,${runDir}/samplesheets/batch1_homebrew_plate7_samplesheet.csv,,${bclDir_250325}
@@ -448,6 +447,11 @@ batch1_homebrew_plate4,${runDir}/samplesheets/novaseq_lane8_batch1_homebrew_plat
 batch1_homebrew_plate7,${runDir}/samplesheets/novaseq_lane8_batch1_homebrew_plate7.csv,8,${bclDir_250808}
 batch1_homebrew_plate9,${runDir}/samplesheets/novaseq_lane8_batch1_homebrew_plate9.csv,8,${bclDir_250808}
 """ > pipeline_samplesheet3.csv
+
+echo """id,samplesheet,lane,flowcell
+batch1_homebrew_plate9,${runDir}/samplesheets/novaseq_lane8_batch1_homebrew_plate9.csv,8,${bclDir_250808}
+batch1_homebrew_plate11,${runDir}/samplesheets/novaseq_lane7_batch1_homebrew_plate11.csv,7,${bclDir_250808}
+""" > pipeline_rerun.csv
 ```
 
 BCL to FASTQ
@@ -460,7 +464,7 @@ cd $runDir
 
 #use nf-core to split out fastqs
 nextflow run nf-core/demultiplex \
-    --input pipeline_samplesheet1.csv \
+    --input pipeline_rerun.csv \
     --outdir fastq \
     --trim_fastq false \
     --remove_adapter false \
@@ -487,8 +491,6 @@ nextflow run nf-core/demultiplex \
     --skip_tools fastp,fastqc,kraken,multiqc,checkqc,falco,md5sum,samshee \
     -profile singularity \
     -w ${SCRATCH}/scalemet_work
-
-
 
 ```
 
@@ -556,7 +558,6 @@ done
 ```
 
 ## new plates, homebrew
-DONE
  
 ```bash
 for plate in batch1_homebrew_plate11 batch1_homebrew_plate4 batch3_homebrew_plate1 batch3_homebrew_plate11 batch3_homebrew_plate13 batch3_homebrew_plate15 batch3_homebrew_plate16 batch3_homebrew_plate17 batch3_homebrew_plate6  batch1_homebrew_plate9 batch1_homebrew_plate12;
@@ -580,7 +581,6 @@ done
 ```
 
 ## new plate, scale
-DONE
 
 ```bash
 plate="batch3_scalebio_plate2-5"
@@ -598,11 +598,9 @@ nice nextflow run ${scalebio_nf} \
 -profile singularity \
 -params-file ${params} \
 -w ${SCRATCH}/scalemet_milestone_work -resume;
-done
 ```
 
 ## reseq plate, scale
-
 ```bash
 for plate in batch2_scalebio_plate3-4 prelim3_scalebio_plate1-2; 
 do batch=$(echo $plate | cut -d'_' -f1)
@@ -613,17 +611,64 @@ nice nextflow run ${scalebio_nf} \
 --fastqDir ${runDir}/fastq/$plate/merged_fq \
 --samples ${runDir}/scalemethyl_pipeline_out/$plate/samples.$plate.csv \
 --outDir ${runDir}/scalemethyl_pipeline_out/$plate \
---maxMemory 100.GB \
---maxCpus 4 \
 -profile singularity \
 -params-file ${params} \
 -w ${SCRATCH}/scalemet_milestone_work -resume;
 done
 ```
 
-#### TODO
-# RUNNING prelim3_scalebio_plate1-2 bcl-convert and merge fastq again
-# fix fastq for prelim1-2_scalebio_plate1-1 batch1_scalebio_plate1-6 
+# fix fastq for 
+#prelim1-2_scalebio_plate1-2
+#prelim3_scalebio_plate1-2
+#batch1_scalebio_plate1-6
+#batch1_homebrew_plate9
+#batch1_homebrew_plate11
+
+```bash
+
+# DONE
+plate="prelim3_scalebio_plate1-2"; batch=$(echo $plate | cut -d'_' -f1); lane="L005"
+mkdir -p ${runDir}/scalemethyl_pipeline_out/$plate
+cp ${runDir}/samplesheets/samples.$batch.csv ${runDir}/scalemethyl_pipeline_out/$plate/samples.$plate.csv
+nice nextflow run ${scalebio_nf} --fastqDir ${runDir}/fastq/$plate/$lane --samples ${runDir}/scalemethyl_pipeline_out/$plate/samples.$plate.csv \
+--outDir ${runDir}/scalemethyl_pipeline_out/$plate -profile singularity -params-file ${params} -w ${SCRATCH}/scalemet_milestone_work -resume
+
+#DONE
+plate="batch1_scalebio_plate1-6"; batch=$(echo $plate | cut -d'_' -f1); lane="L001"
+mkdir -p ${runDir}/scalemethyl_pipeline_out/$plate
+cp ${runDir}/samplesheets/samples.$batch.csv ${runDir}/scalemethyl_pipeline_out/$plate/samples.$plate.csv
+nice nextflow run ${scalebio_nf} --fastqDir ${runDir}/fastq/$plate/$lane --samples ${runDir}/scalemethyl_pipeline_out/$plate/samples.$plate.csv \
+--outDir ${runDir}/scalemethyl_pipeline_out/$plate -profile singularity -params-file ${params} -w ${SCRATCH}/scalemet_milestone_work -resume
+
+#DONE
+plate="prelim1-2_scalebio_plate1-1"; batch=$(echo $plate | cut -d'_' -f1); lane="L004"
+mkdir -p ${runDir}/scalemethyl_pipeline_out/$plate
+cp ${runDir}/samplesheets/samples.$batch.csv ${runDir}/scalemethyl_pipeline_out/$plate/samples.$plate.csv
+nice nextflow run ${scalebio_nf} --fastqDir ${runDir}/fastq/$plate/$lane --samples ${runDir}/scalemethyl_pipeline_out/$plate/samples.$plate.csv \
+--outDir ${runDir}/scalemethyl_pipeline_out/$plate -profile singularity -params-file ${params} -w ${SCRATCH}/scalemet_milestone_work -resume
+
+#RERUNNING FASTQ didnt work
+plate="batch1_homebrew_plate9"; batch=$(echo $plate | cut -d'_' -f1); lane="L008"
+mkdir -p ${runDir}/scalemethyl_pipeline_out/$plate
+cp ${runDir}/samplesheets/samples.$batch.csv ${runDir}/scalemethyl_pipeline_out/$plate/samples.$plate.csv
+nice nextflow run ${scalebio_nf} --fastqDir ${runDir}/fastq/$plate/$lane --samples ${runDir}/scalemethyl_pipeline_out/$plate/samples.$plate.csv \
+--outDir ${runDir}/scalemethyl_pipeline_out/$plate -profile singularity -params-file ${params} -w ${SCRATCH}/scalemet_milestone_work
+
+#TO RUN FASTQ
+plate="batch1_homebrew_plate11"; batch=$(echo $plate | cut -d'_' -f1); lane="L007"
+mkdir -p ${runDir}/scalemethyl_pipeline_out/$plate
+cp ${runDir}/samplesheets/samples.$batch.csv ${runDir}/scalemethyl_pipeline_out/$plate/samples.$plate.csv
+#remove small fastq files
+rm -rf ${runDir}/fastq/$plate/$lane/*E04*gz ${runDir}/fastq/$plate/$lane/*G04*gz
+nice nextflow run ${scalebio_nf} \
+--fastqDir ${runDir}/fastq/$plate/$lane \
+--samples ${runDir}/scalemethyl_pipeline_out/$plate/samples.$plate.csv \
+--outDir ${runDir}/scalemethyl_pipeline_out/$plate \
+-profile singularity -params-file ${params} -w ${SCRATCH}/scalemet_milestone_work
+
+
+
+```
 
 Correct all symlink with actual links and split out merged bam files into single-cell bam files.
 
@@ -633,6 +678,7 @@ Correct all symlink with actual links and split out merged bam files into single
 find ${runDir}/scalemethyl_pipeline_out/ -maxdepth 7 -type l -exec bash -c 'cp -L -R "$(readlink -m "$0")" "$0".dereferenced' {} \; #copy files
 find ${runDir}/scalemethyl_pipeline_out/ -maxdepth 7 -name "*.dereferenced" -type f -exec bash -c 'mv $0 $(echo $0 | sed -e 's/".dereferenced"//g' -)' {} \; #move to old file names
 
+
 ```
 
 
@@ -640,14 +686,15 @@ Run initial postprocessing to fit into amethyst object for future merging.
 
 ```bash
 cd ${runDir}
+mkdir -p $SCRATCH/scalemet_postprocessing
 
 nextflow run ${projDir}/tools/scalemet_dcis/src/scaleDCIS_postprocessing.nf.groovy \
 --runDir ${runDir}/scale_dat \
 --maxMemory 300.GB \
 --maxForks 100 \
 --maxCpus 200 \
---outputPrefix scale \
--w $SCRATCH/scalemet_prelim3 \
+--outputPrefix scaledcis \
+-w $SCRATCH/scalemet_postprocessing \
 -resume
 
 ```
