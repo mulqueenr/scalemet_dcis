@@ -396,12 +396,12 @@ ${runDir}/samplesheets/samples.batch3.csv ${projDir}/tools/scalemet_dcis/ref/hom
 
 #batch 1 plate 9
 python ${projDir}/tools/scalemet_dcis/src/bcl_convert_sheet_pcr.py \
-${runDir}/samplesheets/samples.batch3.csv ${projDir}/tools/scalemet_dcis/ref/homebrew.lib.json ${bclDir_250808}/RunInfo.xml \
+${runDir}/samplesheets/samples.batch1.csv ${projDir}/tools/scalemet_dcis/ref/homebrew.lib.json ${bclDir_250808}/RunInfo.xml \
 --splitFastq --i7Set D --i5Set 3 > ${runDir}/samplesheets/novaseq_lane8_batch1_homebrew_plate9.csv
 ```
 
-
 Novaseq 250808 is the only instance samples are sequenced again, so samplesheets for novaseq have a "novaseq" prefix (to account for proper index complementing etc.)
+
 ```bash
 cd $runDir
 
@@ -465,6 +465,16 @@ cd $runDir
 #use nf-core to split out fastqs
 nextflow run nf-core/demultiplex \
     --input pipeline_rerun.csv \
+    --outdir fastq \
+    --trim_fastq false \
+    --remove_adapter false \
+    --skip_tools fastp,fastqc,kraken,multiqc,checkqc,falco,md5sum,samshee \
+    -profile singularity \
+    -w ${SCRATCH}/scalemet_work
+
+#use nf-core to split out fastqs
+nextflow run nf-core/demultiplex \
+    --input pipeline_samplesheet1.csv \
     --outdir fastq \
     --trim_fastq false \
     --remove_adapter false \
@@ -560,7 +570,7 @@ done
 ## new plates, homebrew
  
 ```bash
-for plate in batch1_homebrew_plate11 batch1_homebrew_plate4 batch3_homebrew_plate1 batch3_homebrew_plate11 batch3_homebrew_plate13 batch3_homebrew_plate15 batch3_homebrew_plate16 batch3_homebrew_plate17 batch3_homebrew_plate6  batch1_homebrew_plate9 batch1_homebrew_plate12;
+for plate in batch1_homebrew_plate11 batch1_homebrew_plate4 batch3_homebrew_plate1 batch3_homebrew_plate11 batch3_homebrew_plate13 batch3_homebrew_plate15 batch3_homebrew_plate16 batch3_homebrew_plate17 batch3_homebrew_plate6 batch1_homebrew_plate9 batch1_homebrew_plate12;
 do 
 mkdir -p ${runDir}/scalemethyl_pipeline_out/$plate
 batch=$(echo $plate | cut -d'_' -f1)
@@ -647,24 +657,28 @@ cp ${runDir}/samplesheets/samples.$batch.csv ${runDir}/scalemethyl_pipeline_out/
 nice nextflow run ${scalebio_nf} --fastqDir ${runDir}/fastq/$plate/$lane --samples ${runDir}/scalemethyl_pipeline_out/$plate/samples.$plate.csv \
 --outDir ${runDir}/scalemethyl_pipeline_out/$plate -profile singularity -params-file ${params} -w ${SCRATCH}/scalemet_milestone_work -resume
 
-#RERUNNING FASTQ didnt work
-plate="batch1_homebrew_plate9"; batch=$(echo $plate | cut -d'_' -f1); lane="L008"
-mkdir -p ${runDir}/scalemethyl_pipeline_out/$plate
-cp ${runDir}/samplesheets/samples.$batch.csv ${runDir}/scalemethyl_pipeline_out/$plate/samples.$plate.csv
-nice nextflow run ${scalebio_nf} --fastqDir ${runDir}/fastq/$plate/$lane --samples ${runDir}/scalemethyl_pipeline_out/$plate/samples.$plate.csv \
---outDir ${runDir}/scalemethyl_pipeline_out/$plate -profile singularity -params-file ${params} -w ${SCRATCH}/scalemet_milestone_work
 
-#TO RUN FASTQ
-plate="batch1_homebrew_plate11"; batch=$(echo $plate | cut -d'_' -f1); lane="L007"
+#expecting 25G of R1 per lane. Getting 3-9G instead
+#problem with splitting, not pipeline
+
+for plate in batch1_homebrew_plate9 batch1_homebrew_plate11;
+do 
 mkdir -p ${runDir}/scalemethyl_pipeline_out/$plate
+batch=$(echo $plate | cut -d'_' -f1)
+lane=$(ls -d ${runDir}/fastq/$plate/L* | awk -F/ '{print $NF}')
 cp ${runDir}/samplesheets/samples.$batch.csv ${runDir}/scalemethyl_pipeline_out/$plate/samples.$plate.csv
-#remove small fastq files
-rm -rf ${runDir}/fastq/$plate/$lane/*E04*gz ${runDir}/fastq/$plate/$lane/*G04*gz
+
 nice nextflow run ${scalebio_nf} \
 --fastqDir ${runDir}/fastq/$plate/$lane \
 --samples ${runDir}/scalemethyl_pipeline_out/$plate/samples.$plate.csv \
 --outDir ${runDir}/scalemethyl_pipeline_out/$plate \
--profile singularity -params-file ${params} -w ${SCRATCH}/scalemet_milestone_work
+--libStructure ${projDir}/tools/scalemet_dcis/ref/homebrew.lib.json \
+--maxMemory 100.GB \
+--maxCpus 1 \
+-profile singularity \
+-params-file ${params} \
+-w ${SCRATCH}/scalemet_milestone_work;
+done
 
 
 
@@ -681,20 +695,15 @@ find ${runDir}/scalemethyl_pipeline_out/ -maxdepth 7 -name "*.dereferenced" -typ
 
 ```
 
+- Run a per-plate amethyst object generation via /src/amethyst_initial_processing.R
+- Run merged processing via /src/merged_amethyst_processing.md
 
-Run initial postprocessing to fit into amethyst object for future merging.
 
-```bash
-cd ${runDir}
-mkdir -p $SCRATCH/scalemet_postprocessing
+Add 10x RNA seurat objects to directory for processing
+Generating a merged seurat object from the cellranger output
 
-nextflow run ${projDir}/tools/scalemet_dcis/src/scaleDCIS_postprocessing.nf.groovy \
---runDir ${runDir}/scale_dat \
---maxMemory 300.GB \
---maxForks 100 \
---maxCpus 200 \
---outputPrefix scaledcis \
--w $SCRATCH/scalemet_postprocessing \
--resume
+
+```R
+
 
 ```

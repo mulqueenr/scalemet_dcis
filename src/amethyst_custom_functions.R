@@ -8,18 +8,18 @@ library(amethyst)
 library(rhdf5)
 library(data.table)
 library(ggplot2)
-library(dplyr)
+library(patchwork)
 library(tibble)
 library(tidyr)
-library(plyr)
+library(plyr); library(dplyr)
 library(future)
 library(furrr)
 library(purrr)
 library(cowplot)
 library(pheatmap)
-library(plyr)
 library(parallel)
 library(rtracklayer)
+library(gridExtra)
 library(tidyverse)
 library(colorspace)
 library(GeneNMF) #new from here down
@@ -37,140 +37,58 @@ library(SummarizedExperiment)
 library(ggseqlogo)
 library(patchwork)
 
-#source("~/projects/metact/src/amethyst_custom_functions.R") to load in
 
-#promoter extension
-extend <- function(x, upstream=0, downstream=0)     
-{
-    if (any(strand(x) == "*"))
-        warning("'*' ranges were treated as '+'")
-    on_plus <- strand(x) == "+" | strand(x) == "*"
-    new_start <- start(x) - ifelse(on_plus, upstream, downstream)
-    new_end <- end(x) + ifelse(on_plus, downstream, upstream)
-    ranges(x) <- IRanges(new_start, new_end)
-    trim(x)
-}
+#source("/data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/amethyst_custom_functions.R") #to load in
 
-#read in metadata, if else for alpha vs new file
-setup_amethyst_metadata<-function(
-    in_dir="/volumes/USR2/Ryan/projects/metact/240526_RMMM_scalebio_dcis/transfer_dat/", #sample directory
-    sample_list=c("hbca-83l","hbca-16r","DCIS-41T","DCIS-66T"), #list of sample names
-    runid=1,
-    cg_cov_filter=10000
-    ){
-
-    if(endsWith(in_dir,suffix="/transfer_dat/")){ #processing of earlier scalebio pipeline output (alpha kit), to be deprocated in future
-        samp_dir=list.files(path=paste0(in_dir,"/report/"))
-
-        met<-lapply(samp_dir,function(i){
-            samp_met<-read.csv(paste0(in_dir,"/report/",i,"/csv/",i,".passingCellsMapMethylStats.csv"))
-            row.names(samp_met)<-samp_met$BC
-            return(samp_met)
-        })
-        metadat<-do.call("rbind",met)
-        metadat$run<-runid
-        metadat<-metadat[metadat$CG_Cov>cg_cov_filter,]
-        metadat<-metadat[toupper(metadat$sampleName) %in% toupper(sample_list),]
-        colnames(metadat)<-c("cell_id","cov","cg_cov","mcg_pct","ch_cov","mch_pct","sample","total_reads",
-        "passing_reads","unique_reads","mito_reads","percent","pct_uniq_pass","pct_pass_total","pct_pass_cell",
-        "pass","threshold","tgmt","tgmt_well","i5","i5_well","i7","i7_well","cg_total_ratio","run") #matching to newer metadata outputs
-
-    } else {
-        samp_dir=list.files(path=in_dir,pattern="*csv",full.names=T)
-        met<-lapply(samp_dir,function(i){
-            samp_met<-read.csv(i)
-            row.names(samp_met)<-samp_met$cell_id
-            return(samp_met)
-        })
-        metadat<-do.call("rbind",met)
-        metadat$run<-runid
-        metadat<-metadat[metadat$cg_cov>cg_cov_filter,]
-        metadat<-metadat[complete.cases(metadat),]
-        metadat<-metadat[toupper(metadat$sample) %in% toupper(sample_list),]
-    }
-    return(metadat)
-    }
-
-correct_h5_cellnames<-function(h5,runid){
-    print(paste("Correcting names for...", basename(h5)))
-    run_number=as.character(runid)
-    h5list = h5ls(h5)
-    for (i in 1:nrow(h5list)){
-        tryCatch({if(endsWith(h5list[i,"group"],"CG")){
-            if( !(paste0(h5list[i,"name"],"_",run_number) %in% h5list$name) &&
-              !endsWith(h5list[i,"name"],run_number)){
-                celldat<-h5read(h5,paste0("CG/",h5list[i,"name"]))
-                h5write(celldat, file=h5, name=paste0("CG/",h5list[i,"name"],"_",run_number))
-            }
-        }
-        },error =function(e) { cat("Proceeding past line",i,"for",basename(h5),"\n")} )
-    }
- }
-
-
-#clustering function, supply a bed file or arguments for stepsize windows
-cluster_by_windows<-function(
-    obj,
+cluster_by_windows<-function(obj,
     window_name,
-    prefix,
-    stepsize=NULL,
-    bed=NULL,
     metric="score",
-    threads=200,
+    threads=100,
     neighbors=50,
-    distance=0.2,
-    genes=NULL,
-    promoter=FALSE,
-    overwrite_windows=TRUE,
-    k_phenograph=175){
-    if(!(window_name %in% names(obj@genomeMatrices)) || overwrite_windows){
-    print(paste("Making window summaries for ",window_name))
-    obj@genomeMatrices[[window_name]] <- makeWindows(obj,
-                                                      stepsize = stepsize, 
-                                                      type = "CG", 
-                                                      metric = metric, 
-                                                      bed = bed, genes=genes, promoter=promoter,
-                                                      threads = threads, 
-                                                      index = "chr_cg", 
-                                                      nmin = 2) 
-    }
+    est_dim=10,
+    k_pheno=15,
+    dist=0.1,
+    outname="clustering"){
   print(paste("Estimating dimensions..."))                                           
   #filter windows by cell coverage
   obj@genomeMatrices[[window_name]] <- obj@genomeMatrices[[window_name]][rowSums(!is.na(obj@genomeMatrices[[window_name]])) >= 45, ]
-  est_dim<-dimEstimate(obj, genomeMatrices = c(window_name), dims = c(10), threshold = 0.95)
-  print(est_dim)
-  set.seed(123)
+  #est_dim<-dimEstimate(obj, genomeMatrices = c(window_name), dims = c(10), threshold = 0.95)
+  #print(est_dim)
+
   print("Running IRLBA reduction...")
   obj@reductions[[paste(window_name,"irlba",sep="_")]] <- runIrlba(obj, genomeMatrices = c(window_name), dims = est_dim, replaceNA = c(0))
-  obj@reductions[[paste(window_name,"irlba_regressed",sep="_")]] <- regressCovBias(obj, reduction = paste(window_name,"irlba",sep="_")) # Optional; helps reduce coverage bias
+
+  obj@reductions[[paste(window_name,"irlba_regressed",sep="_")]] <- regressCovBias(obj, reduction = paste(window_name,"irlba",sep="_")) 
+  # Optional; helps reduce coverage bias
   print("Clustering on coverage regressed reduction...")
 
-  obj <- runCluster(obj, k_phenograph = k_phenograph, reduction = paste(window_name,"irlba_regressed",sep="_")) # consider increasing k_phenograph to 50 for larger datasets
-  obj <- runUmap(obj, neighbors = neighbors, dist = distance, method = "euclidean", reduction = paste(window_name,"irlba_regressed",sep="_")) 
-    
-  print("Plotting...")
+  #obj <- runCluster(obj, k_phenograph = 25, reduction = paste(window_name,"irlba_regressed",sep="_")) 
+    obj <- runCluster(obj, k_phenograph = k_pheno, reduction = paste(window_name,"irlba_regressed",sep="_")) 
+  # consider increasing k_phenograph to 50 for larger datasets
 
+  obj <- runUmap(obj, neighbors = neighbors, dist = dist, method = "euclidean", reduction = paste(window_name,"irlba_regressed",sep="_")) 
+  
+  print("Plotting...")
   p1 <- dimFeature(obj, colorBy = cluster_id, reduction = "umap") + ggtitle(paste(window_name,"Clusters"))
   p2 <- dimFeature(obj, colorBy = sample, reduction = "umap") + ggtitle(paste(window_name,"Samples"))
-  p3 <- dimFeature(obj, colorBy = log10(cov), pointSize = 1) + scale_color_gradientn(colors = c("black", "turquoise", "gold", "red")) + ggtitle("Coverage distribution")
+  p3 <- dimFeature(obj, colorBy = log10(cov), pointSize = 1) + scale_color_gradientn(colors = c("black", "turquoise", "gold", "red"),guide="colourbar") + ggtitle("Coverage distribution")
   p4 <- dimFeature(obj, colorBy = mcg_pct, pointSize = 1) + scale_color_gradientn(colors = c("black", "turquoise", "gold", "red")) + ggtitle("Global %mCG distribution")
-  
   plt<-plot_grid(p1, p2,p3, p4,ncol=2)
-  ggsave(plt,file=paste(prefix,window_name,"umap.pdf",sep="."))     
+  ggsave(plt,file=paste0(outname,"_umap.pdf"),width=20,height=20)  
+
   return(obj)                                             
 }
 
-
-
-###### 1kb window generation, and DMR Calculation ####
 dmr_and_1kb_window_gen<-function(
-    obj=hbca,
-    prefix="hbca",
-    groupBy="cluster_id"){
+    obj=dat,
+    prefix="nakshatri_peaks",
+    groupBy="cluster_id",
+    threads=20,
+    step=1000){
     cluster1kbwindows <- calcSmoothedWindows(obj, 
                                             type = "CG", 
-                                            threads = 300,
-                                            step = 1000,
+                                            threads = threads,
+                                            step = step,
                                             smooth = 3,
                                             index = "chr_cg",
                                             groupBy = groupBy, 
@@ -180,7 +98,7 @@ dmr_and_1kb_window_gen<-function(
 
     pal=c("#E5E6E4","#CFD2CD","#A6A2A2","#847577","#6E44FF")
     dmrs<-testDMR(cluster1kbwindows[["sum_matrix"]], eachVsAll = TRUE, nminTotal = 0, nminGroup = 0) 
-    dmrs2<-filterDMR(dmrs, method = "bonferroni", filter = TRUE,pThreshold=0.05,logThreshold=0.5) #add additional columns direction column
+    dmrs2<-filterDMR(dmrs, method = "bonferroni", filter = TRUE, pThreshold=0.05,logThreshold=0.5) #add additional columns direction column
     celltype_test<-setNames(nm=unique(dmrs2$test), gsub("_c$","",colnames(cluster1kbwindows[["sum_matrix"]])[grepl(pattern="_c$",colnames(cluster1kbwindows[["sum_matrix"]]))]))
     dmrs2$celltype<-celltype_test[dmrs2$test]
     saveRDS(dmrs2,file=paste0(prefix,".dmr.",groupBy,".rds"))
@@ -210,8 +128,127 @@ dmr_and_1kb_window_gen<-function(
 }
 
 
-#bigwig output
+#modified from histograM
+histograModified <- function(obj,
+    genes = NULL,
+    matrix,colors = NULL,
+    ncol = length(genes),
+    trackOverhang = 5000,arrowOverhang = 3000,trackScale = 1.5,arrowScale = 0.025,colorMax = 100,
+    legend = TRUE,removeNA = TRUE,
+    order = NULL,baseline = "mean",
+    cgisland=NULL) {
 
+    if (!is.null(colors)) {pal <- colors} else {pal <- c("#FF0082", "#dbdbdb", "#cccccc", "#999999")}
+    
+    genes<-genes[genes %in% obj@ref$gene_name] #ensure genes are in ref
+    p <- vector("list", length(genes)) # empty plot list
+
+    for (i in 1:length(genes)) {
+            group_count<-ncol(obj@genomeMatrices[[matrix]])-3 #-3 for chr start end
+            ngroup<-vector("list",group_count+1)  #+1 for gene track
+            if (!is.null(order)) {
+                names(ngroup)<-c("gene_track",order)
+            }else{
+                names(ngroup)<-c("gene_track",colnames(obj@genomeMatrices[[matrix]])[4:ncol(obj@genomeMatrices[[matrix]])])
+            }
+
+            ref <- obj@ref |> dplyr::filter(gene_name == genes[i])
+            aggregated <- obj@genomeMatrices[[matrix]]
+            toplot <- aggregated[c((aggregated$chr == ref$seqid[ref$type == "gene"] &
+                                aggregated$start > (ref$start[ref$type == "gene"] - trackOverhang) &
+                                aggregated$end < (ref$end[ref$type == "gene"] + trackOverhang))), ]
+
+            trackHeight <- group_count * trackScale
+            toplot <- tidyr::pivot_longer(toplot, cols = c(4:ncol(toplot)), names_to = "group", values_to = "pct_m") |> dplyr::rowwise() |> dplyr::mutate(middle = mean(c(start, end), na.rm = TRUE))
+        
+        if (removeNA) {toplot <- toplot |> dplyr::filter(!is.na(pct_m))}
+
+        if (baseline == "mean") {
+        glob_m <- data.frame(group = colnames(aggregated[, 4:ncol(aggregated)]),glob_m = colMeans(aggregated[, 4:ncol(aggregated)], na.rm = T))
+        toplot <- dplyr::left_join(toplot, glob_m, by = "group")}
+
+        if (!is.null(order)) {toplot$group <- factor(toplot$group, levels = order)}
+        
+        if(!is.null(cgisland)) {cgi <- cgisland[cgisland$chr == as.character(toplot$chr[1]) &
+                            cgisland$start > min(toplot$start) &
+                            cgisland$end < max(toplot$end),]}
+
+        for (j in names(ngroup)[2:length(ngroup)]){
+            toplot_sub<-toplot[toplot$group==j,]
+            # plotting histogram
+            p[[i]][[j]] <- ggplot2::ggplot() +
+            {if (baseline == 0) ggplot2::geom_col(data = toplot_sub, ggplot2::aes(x = middle, y = pct_m, fill = pct_m), width = mean(toplot_sub$end - toplot_sub$start))} +
+            {if (baseline == "mean")ggplot2::geom_rect(data = toplot_sub, ggplot2::aes(xmin = start, xmax = end, ymin = glob_m, ymax = pct_m, fill = pct_m))} + 
+            ggplot2::scale_fill_gradientn(colors = pal, limits = c(0,colorMax), oob = scales::squish) + theme_minimal()+ ylab(j) + ggplot2::theme(legend.position="none") +
+            ylim(c(0,100))+
+            ggplot2::theme(panel.background = element_blank(), axis.ticks = element_blank(), panel.grid.major.y = element_line(color = "#dbdbdb", linetype = "dashed"))
+            }
+
+        #first track is annot
+        p[[i]][["gene_track"]] <-ggplot()+
+        ggplot2::geom_rect(fill = "pink",alpha=0.8, data = ref |> dplyr::filter(type == "gene") |>
+                            dplyr::mutate(promoter_start = ifelse(strand == "+", (start - 1500), (end + 1500)),
+                            promoter_end = ifelse(strand == "+", (promoter_start+3000), (promoter_start-3000))),
+                            ggplot2::aes(xmin = promoter_start, xmax = promoter_end, ymin = 0, ymax = trackHeight/4)) +
+        ggplot2::geom_rect(alpha=0.8,fill = "black", data = ref |> dplyr::filter(type == "exon"),ggplot2::aes(xmin = start, xmax = end, ymin = 0, ymax = trackHeight/4)) +
+        ggplot2::geom_rect(alpha=0.8,fill = "green", data = cgi, ggplot2::aes(xmin = start, xmax = end, ymin = 0, ymax = trackHeight/4)) +
+        ggplot2::geom_segment(data = ref, color="gray",
+                            aes(x = ifelse(strand == "+", (min(start) - arrowOverhang), (max(end)) + arrowOverhang),
+                            y = trackHeight/8,
+                            xend = ifelse(strand == "+", (max(end) + arrowOverhang), (min(start)) - arrowOverhang),
+                            yend = trackHeight/8), arrow = arrow(length = unit(trackHeight/40, "cm"))) + 
+                            labs(title=paste(genes[i]),subtitle=paste(toplot$chr[1],toplot$start[1],"-",toplot$end[nrow(toplot)]),size=3) +
+                            theme(axis.title.x = element_blank(),
+                            axis.ticks.y = element_blank(),
+                            axis.title.y = element_blank(),
+                            axis.text.y = element_blank(),
+                            panel.grid.major = element_blank(),
+                            panel.grid.minor = element_blank(),
+                            panel.border = element_blank(),
+                            panel.background = element_blank(),
+                            title=element_text(size=8))+
+                            theme(legend.position="none") #+xlim(c(xmin_pos,xmax_pos))
+    p[[i]]<-wrap_plots(p[[i]],guides='collect')+plot_layout(ncol=1)
+    }
+    all_genes_plot<-wrap_plots(p)+plot_layout(nrow=1)
+    return(all_genes_plot)
+}
+
+
+################################################
+################################################
+################################################
+################################################
+
+#promoter extension
+extend <- function(x, upstream=0, downstream=0)     
+{
+    if (any(strand(x) == "*"))
+        warning("'*' ranges were treated as '+'")
+    on_plus <- strand(x) == "+" | strand(x) == "*"
+    new_start <- start(x) - ifelse(on_plus, upstream, downstream)
+    new_end <- end(x) + ifelse(on_plus, downstream, upstream)
+    ranges(x) <- IRanges(new_start, new_end)
+    trim(x)
+}
+
+correct_h5_cellnames<-function(h5,runid){
+    print(paste("Correcting names for...", basename(h5)))
+    run_number=as.character(runid)
+    h5list = h5ls(h5)
+    for (i in 1:nrow(h5list)){
+        tryCatch({if(endsWith(h5list[i,"group"],"CG")){
+            if( !(paste0(h5list[i,"name"],"_",run_number) %in% h5list$name) &&
+              !endsWith(h5list[i,"name"],run_number)){
+                celldat<-h5read(h5,paste0("CG/",h5list[i,"name"]))
+                h5write(celldat, file=h5, name=paste0("CG/",h5list[i,"name"],"_",run_number))
+            }
+        }
+        },error =function(e) { cat("Proceeding past line",i,"for",basename(h5),"\n")} )
+    }
+ }
+
+#bigwig output
 bigwig_output<-function(
     obj,
     tracks="cg_cluster_tracks"){
@@ -289,8 +326,6 @@ clone_dmr<-function(obj=obj,sample=c("DCIS-41T"),prefix="DCIS-41T",k_phenograph=
   category="H",subcategory=NULL,out_setname="hallmark") #find cancer hallmark signatures
 
 }
-
-
 
 
 ##############CHROMVAR BLOCK################
@@ -450,133 +485,3 @@ library(ggplotify)
     ggsave(plt,file=paste0(prefix,".tf.heatmap.motif.pdf"),height=100,width=2,limitsize=F)
   saveRDS(dev,file=paste0(prefix,".chromvar.rds"))
 }
-
-
-###############################################################################################################
-########################################HYPOMETHYLATION PLOT###################################################
-###############################################################################################################
-
-
-col_celltype=c(
-"Tcell_1"="#00ffff",
-"Tcell_2"="#3399cc",
-"Tcell_3"="#0099ff",
-"Myeloid"="#66cc99",
-"Endo"="#ffcc00",
-"Fibro"="#cc3366",
-"LumHRCancer_1"="#ff3399",
-"LumHRCancer_2"="#993399",
-"LumHRCancer_3"="#cc3399",
-"LumHRCancer_4"="#ff6666",
-"LumHRNormal"="#cc3399",
-"LumSec_1"="#99cc99",
-"LumSec_2"="#66cc66",
-"Basal_1"="#993399",
-"Basal_2"="#9966ff")
-
-
-
-# #set colors for each facet and use greyscaling for higher met levels
-# #https://stackoverflow.com/questions/33221794/separate-palettes-for-facets-in-ggplot-facet-grid
-# #histograM <- function(obj,
-
-hypoM<-function(obj=obj,genes=c("KIT"),prefix="hbca_dcis",matrix = "cg_celltype_tracks",colors=col_celltype,
-                trackOverhang = 3000,arrowOverhang = 0,ncol = length(genes),
-                invert_met = TRUE,legend = TRUE,removeNA = TRUE,
-                width = 500,trackScale = 1.5,colorMax = 100,
-                cgisland="/volumes/USR2/Ryan/projects/metact/ref/cpgIslandExt.bed"){
-    #prepare cgi
-    cgi<-rtracklayer::import(cgisland)
-    cgi<-as.data.frame(cgi)
-    colnames(cgi)<-c("chr","start","end","strand")
-    #use named list for colors
-    if (!is.null(colors)) {
-    pal <- colors
-    } else {
-    pal <- rev(c("#FF0082", "#dbdbdb", "#cccccc", "#999999"))
-    }
-    #req ref
-    if (is.null(obj@ref)) {
-    stop("Please make sure a genome annotation file has been added to the obj@ref slot with makeRef().")
-    }
-    p <- vector("list", length(genes)) # empty plot list
-    for (i in 1:length(genes)) { #make a plot per gene
-        print(paste("Plotting gene:",genes[i]))
-        ref <- obj@ref |> dplyr::filter(gene_name == genes[i])
-        aggregated <- obj@genomeMatrices[[matrix]]
-
-        toplot <- aggregated[c((aggregated$chr == ref$seqid[ref$type == "gene"] &
-                                    aggregated$start > (ref$start[ref$type == "gene"] - trackOverhang) &
-                                    aggregated$end < (ref$end[ref$type == "gene"] + trackOverhang))), ]
-        cgi <- cgi[cgi$chr == as.character(toplot$chr[1]) &
-                            cgi$start > min(toplot$start) &
-                            cgi$end < max(toplot$end),]
-                                
-        ngroups <- ncol(toplot) - 3 #subtract chr start end
-        trackHeight <- ngroups * trackScale
-        toplot <- tidyr::pivot_longer(toplot, cols = c(4:ncol(toplot)), names_to = "group", values_to = "pct_m") |> 
-        dplyr::rowwise() |> 
-        dplyr::mutate(middle = mean(c(start, end), na.rm = TRUE))
-        toplot <- toplot |> dplyr::filter(!is.na(pct_m))
-
-        if (invert_met){
-            toplot$pct_m<-toplot$pct_m-100
-            colorMax=-100
-        }
-        #initialize first row
-        p[[i]] <- vector("list", length(colors)+1) # empty plot list
-        #plot group tracks
-        xmin_pos<-NA
-        xmax_pos<-NA
-        for (j in names(colors)){
-            toplot_sub<-toplot[toplot$group==j,]
-            j_panel=which(j==names(colors))+1
-            p[[i]][[j_panel]] <- ggplot2::ggplot() + 
-                ggplot2::geom_col(data = toplot_sub, 
-                ggplot2::aes(x = middle, y = pct_m, fill = pct_m), width = width) + 
-                scale_fill_gradient2(high="black",mid="grey",low=colors[j],midpoint=-60) + 
-                ylab(j) +
-                theme(axis.text.x = element_blank(),
-                axis.ticks.x = element_blank(),
-                axis.title.x = element_blank(),
-                axis.text.y=element_text(size=3),
-                axis.title.y=element_text(angle=90, vjust=1,size=4,color=colors[j]),
-                panel.grid.major = element_blank(),
-                panel.grid.minor = element_blank(),
-                panel.border = element_blank(),
-                panel.background = element_blank())+
-                scale_y_continuous(limits = c(-100,0),labels=rev(c("100", "75","50","25","0")))+
-                theme(legend.position="none")
-            xmin_pos=min(toplot_sub$middle)-width/2
-            xmax_pos=max(toplot_sub$middle)-width/2
-            }
-        #first track is annot
-        p[[i]][[1]] <-ggplot()+
-        ggplot2::geom_rect(fill = "pink",alpha=0.8, data = ref |> dplyr::filter(type == "gene") |>
-                            dplyr::mutate(promoter_start = ifelse(strand == "+", (start - 1500), (end + 1500)),
-                            promoter_end = ifelse(strand == "+", (promoter_start+3000), (promoter_start-3000))),
-                            ggplot2::aes(xmin = promoter_start, xmax = promoter_end, ymin = 0, ymax = trackHeight/4)) +
-        ggplot2::geom_rect(alpha=0.8,fill = "black", data = ref |> dplyr::filter(type == "exon"),ggplot2::aes(xmin = start, xmax = end, ymin = 0, ymax = trackHeight/4)) +
-        ggplot2::geom_rect(alpha=0.8,fill = "green", data = cgi, ggplot2::aes(xmin = start, xmax = end, ymin = 0, ymax = trackHeight/4)) +
-        ggplot2::geom_segment(data = ref, color="gray",
-                            aes(x = ifelse(strand == "+", (min(start) - arrowOverhang), (max(end)) + arrowOverhang),
-                            y = trackHeight/8,
-                            xend = ifelse(strand == "+", (max(end) + arrowOverhang), (min(start)) - arrowOverhang),
-                            yend = trackHeight/8), arrow = arrow(length = unit(trackHeight/40, "cm"))) + 
-                            labs(title=paste(genes[i]),subtitle=paste(toplot$chr[1],toplot$start[1],"-",toplot$end[nrow(toplot)]),size=3) +
-                            theme(axis.title.x = element_blank(),
-                            axis.ticks.y = element_blank(),
-                            axis.title.y = element_blank(),
-                            axis.text.y = element_blank(),
-                            panel.grid.major = element_blank(),
-                            panel.grid.minor = element_blank(),
-                            panel.border = element_blank(),
-                            panel.background = element_blank(),
-                            title=element_text(size=4))+
-                            theme(legend.position="none") +xlim(c(xmin_pos,xmax_pos))
-    ggsave(wrap_plots(p[[i]])+plot_layout(ncol=1),file=paste(prefix,genes[i],"hypoM.pdf",sep="."),limitsize=F,height=10)
-    }
-}
-
-#hypoM(obj=obj,genes=c("KIT","COL1A1","ESR1"),prefix="hbca_dcis.celltype")
-

@@ -3,16 +3,32 @@
 # Checking bins against a dataset of normal cells
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-# the following datasets include are composed of normal, diploid cells (all HBCA samples):
-/data/rmulqueen/projects/scalebio_dcis/data/240202_prelim1/scale_dat/sc_bams
-/data/rmulqueen/projects/scalebio_dcis/data/240523_prelim2/scale_dat/sc_bams
-/data/rmulqueen/projects/scalebio_dcis/data/241007_prelim3/scale_dat/sc_bams
-/data/rmulqueen/projects/scalebio_dcis/data/250329_RM_scalebio_batch1_initseq/homebrew_dat/sc_bams
-/data/rmulqueen/projects/scalebio_dcis/data/250329_RM_scalebio_batch1_initseq/scale_dat/sc_bams
-
+# singularity shell --bind /data/rmulqueen/projects/scalebio_dcis ~/singularity/amethyst.sif
+# use HBCA cells to define regular coverage per bin for BS conversion
 # Rsubread was used to count reads into the bins
 
+
+library(amethyst)
+library(rhdf5)
+library(data.table)
+library(ggplot2)
+library(patchwork)
+library(tibble)
+library(tidyr)
+library(plyr); library(dplyr)
+library(future)
+library(furrr)
+library(purrr)
+library(cowplot)
+library(pheatmap)
+library(optparse,lib.loc="/home/rmulqueen/R/x86_64-conda-linux-gnu-library/4.4") #add this
+
+#BiocManager::install("Rsubread")
 library(Rsubread)
+#devtools::install_github("navinlabcode/copykit")
+library(copykit)
+
+obj<-readRDS("batch1_homebrew_plate11.amethyst.rds")
 
 # annotation for Rsubread with a pseudogeneID
 ann <- as.data.frame(hg38_scaffold_200k_gr)
@@ -20,10 +36,8 @@ ann <- as.data.frame(hg38_scaffold_200k_gr)
 names(ann)[1] <- c("chr")
 
 ann <- ann %>%
-    mutate(
-        geneID = 1:nrow(ann),
-        strand = "*"
-    ) %>%
+    mutate(geneID = 1:nrow(ann),
+        strand = "*") %>%
     dplyr::rename(
         Chr = "chr",
         Start = "start",
