@@ -121,9 +121,12 @@ dat@genomeMatrices[["nakshatri_dmr_sites"]] <- makeWindows(dat,
                                                      bed = dmr_bed,
                                                      type = "CG", 
                                                      metric = "score", 
-                                                     threads = 20, 
+                                                     threads = 50, 
                                                      index = "chr_cg", 
                                                      nmin = 2) 
+
+dim(dat@genomeMatrices[["nakshatri_dmr_sites"]])
+saveRDS(dat,file="03_scaledcis.dmr_cluster.amethyst.rds")
 
 # Using Nakshatri initial clusters, define DMRs to recluster.
 
@@ -136,139 +139,125 @@ dat<-cluster_by_windows(
     obj=dat,
     window_name="nakshatri_dmr_sites",
     outname=paste("dmr_sites_initial_clustering",neigh,sep="."),
-    threads=task_cpus,est_dim=d,neighbors=neigh,dist=q,
-    k_pheno=neigh)
+    threads=task_cpus,est_dim=d,neighbors=neigh,dist=q,k_pheno=60)
+
+table(dat@metadata$cluster_id)
 
  dat@metadata$nakshatri_clusters<-dat@metadata$cluster_id
 
  saveRDS(dat,file="03_scaledcis.dmr_cluster.amethyst.rds")
 
-#summarize clusters and find DMRs per cluster to help with celltyping
- out<-dmr_and_1kb_window_gen(obj=dat,prefix="03_scaledcis.dmr_cluster",groupBy = "nakshatri_clusters",threads=40)
- #saves DMRs as separate file, returns updated object with smoothed windows
- saveRDS(out,file="03_scaledcis.dmr_cluster.amethyst.rds")
+dat<-readRDS(file="03_scaledcis.dmr_cluster.amethyst.rds")
 
-# #read from [prefix].dmr.[group_by].collapsed.rdsa
-# dmr_out<-readRDS("dmr_clusters.dmr.cluster_id.collapsed.rds")
-# dat<-readRDS(file="03_scaledcis.dmr_cluster.amethyst.rds")
-# ```
+#down to 21 clusters
+out<-dmr_and_1kb_window_gen(obj=dat,prefix="03_scaledcis.dmr_cluster",groupBy = "nakshatri_clusters",threads=40) 
+#saves DMRs as separate file, returns updated object with smoothed windows
+saveRDS(out,file="03_scaledcis.dmr_cluster.1kb.amethyst.rds")
 
-# ########################################
-# ## Broad cell typing through marker genes
-# ########################################
+#read from [prefix].dmr.[group_by].collapsed.rdsa
+dmr_out<-readRDS("dmr_clusters.dmr.cluster_id.collapsed.rds")
+dat<-readRDS(file="03_scaledcis.dmr_cluster.1kb.amethyst.rds")
+```
 
-# ```R
+########################################
+## Broad cell typing through marker genes
+########################################
 
-# cell_markers<-list()
-# cell_markers[["basal"]]<-c("CARMN","ACTA2","KRT17","KRT14","DST","KRT5")
-# cell_markers[["lumhr"]]<-c("AREG","AZGP1","KRT18","AGR2","PIP","ANKRD30A")
-# cell_markers[["lumsec"]]<-c("GABRP","ELF5","CCL28","KRT15","KIT","MMP7","LTF","SLPI")
+```R
 
-# cell_markers[["fibro"]]<-c("DCN","APOD","LUM","COL1A2","COL1A1","FAP")
-# cell_markers[["endo"]]=c("CCL21","TFF3","MMRN1","CLDN5","AL357507.1","PKHD1L1","KLHL4","LINC02147","RHOJ","ST6GALNAC3","MMRN1","MECOM","BTNL9","MCTP1","PTPRB","VWF","ADGRL4","LDB2")
-# cell_markers[["perivasc"]]=c("RGS6","KCNAB1","COL25A1","ADGRL3","PRKG1","MYL9","ADIRF","NR2F2-AS1","AC012409.2")
+cell_markers<-list()
+cell_markers[["basal"]]<-c("CARMN","ACTA2","KRT17","KRT14","DST","KRT5")
+cell_markers[["lumhr"]]<-c("AREG","AZGP1","KRT18","AGR2","PIP","ANKRD30A")
+cell_markers[["lumsec"]]<-c("GABRP","ELF5","CCL28","KRT15","KIT","MMP7","LTF","SLPI")
+cell_markers[["fibro"]]<-c("DCN","APOD","LUM","COL1A2","COL1A1","FAP")
+cell_markers[["endo"]]=c("CCL21","TFF3","MMRN1","CLDN5","AL357507.1","PKHD1L1","KLHL4","LINC02147","RHOJ","ST6GALNAC3","MMRN1","MECOM","BTNL9","MCTP1","PTPRB","VWF","ADGRL4","LDB2")
+cell_markers[["perivasc"]]=c("RGS6","KCNAB1","COL25A1","ADGRL3","PRKG1","MYL9","ADIRF","NR2F2-AS1","AC012409.2")
+cell_markers[["myeloid"]]<-c("HLA-DRA","HLA-DPA1","CD74")
+cell_markers[["tcell"]]<-c("PTPRC","IKZF1","IL7R","GNLY")
+cell_markers[["mast"]]<-c("NTM","SYTL3","SLC24A3","TPSB2","HDC")
+cell_markers[["bcell"]]=c("CD37","TCL1A","LTB","HLA-DPB1","HLA-DRA","HLA-DPA1")
+cell_markers[["plasma"]]=c("IGHA2","IGHA1","JCHAIN","IGHM","IGHG1","IGHG4","IGHG3","IGHG2")
+cell_markers[["adipo"]]=c("PDE3B","ACACB","WDPCP","PCDH9","CLSTN2","ADIPOQ","TRHDE")
 
-# cell_markers[["myeloid"]]<-c("HLA-DRA","HLA-DPA1","CD74")
-# cell_markers[["tcell"]]<-c("PTPRC","IKZF1","IL7R","GNLY")
-# cell_markers[["mast"]]<-c("NTM","SYTL3","SLC24A3","TPSB2","HDC")
-# cell_markers[["bcell"]]=c("CD37","TCL1A","LTB","HLA-DPB1","HLA-DRA","HLA-DPA1")
-# cell_markers[["plasma"]]=c("IGHA2","IGHA1","JCHAIN","IGHM","IGHG1","IGHG4","IGHG3","IGHG2")
+cell_colors=c(
+"basal"="#844c9d",
+"lumhr"="#e23e96",
+"lumsec"="#ff6498",
+"fibro"="#f58e90",
+"lymphatic"="#b5d564",
+"vascular"="#5bbb5a",
+"perivasc"="#eaba67",
+"myeloid"="#8088c2",
+"tcell"="#1d87c8",
+"mast"="#dcd0ff",
+"bcell"="#65cbe4",
+"plasma"="#7ecdc2",
+"adipo"="#b48454")
 
-# cell_markers[["adipo"]]=c("PDE3B","ACACB","WDPCP","PCDH9","CLSTN2","ADIPOQ","TRHDE")
+nakshatri<-list()
+nakshatri[["basal"]]<-c("CELSR2","TP73","UQCRC1")
+nakshatri[["lumhr"]]<-c("ANKRD30A","CELSR1","STC2","FOXA1")
+nakshatri[["lumsec"]]<-c("TFAP2C","EPB41L1","ZMYND8","SLC52A3","WFDC3")
+nakshatri[["fibro"]]<-c("GAS7","SH3PXD2B","COL5A1","TWIST2","ISLR","GABRB3")
+nakshatri[["adipo"]]=c("PPARG","TMEM100","C14orf180","PCK1","ACACB")
+nakshatri[["endothelial"]]=c("CLEC14A")
+nakshatri[["macrophage"]]=c("HHEX","LYL1","CD300LB","C1QB","TYROBP","FPR3")
+nakshatri[["tcell"]]=c("SCML4","FYN","BCL11B","RUNX3")
 
-# cell_markers[["dcis_diff"]]=c("HOBX13","EN1","TBX15","DLX4")
+nakshatri_cell_colors=c(
+"basal"="#844c9d",
+"lumhr"="#e23e96",
+"lumsec"="#ff6498",
+"fibro"="#f58e90",
+"endothelial"="#b5d564",
+"macrophage"="#8088c2",
+"tcell"="#1d87c8",
+"adipo"="#b48454")
 
-# cell_colors=c(
-# "basal"="#844c9d",
-# "lumhr"="#e23e96",
-# "lumsec"="#ff6498",
-# "fibro"="#f58e90",
-# "lymphatic"="#b5d564",
-# "vascular"="#5bbb5a",
-# "perivasc"="#eaba67",
-# "myeloid"="#8088c2",
-# "tcell"="#1d87c8",
-# "mast"="#dcd0ff",
-# "bcell"="#65cbe4",
-# "plasma"="#7ecdc2",
-# "adipo"="#b48454")
+#prepare cgi
+cgisland="/data/rmulqueen/projects/scalebio_dcis/ref/cpgIslandExt.bed"
+cgi<-rtracklayer::import(cgisland)
+cgi<-as.data.frame(cgi)
+colnames(cgi)<-c("chr","start","end","strand")
 
-# nakshatri<-list()
-# nakshatri[["basal"]]<-c("CELSR2","TP73","UQCRC1")
-# nakshatri[["lumhr"]]<-c("ANKRD30A","CELSR1","STC2","FOXA1")
-# nakshatri[["lumsec"]]<-c("TFAP2C","EPB41L1","ZMYND8","SLC52A3","WFDC3")
-# nakshatri[["fibro"]]<-c("GAS7","SH3PXD2B","COL5A1","TWIST2","ISLR","GABRB3")
-# nakshatri[["adipo"]]=c("PPARG","TMEM100","C14orf180","PCK1","ACACB")
-# nakshatri[["endothelial"]]=c("CLEC14A")
-# nakshatri[["macrophage"]]=c("HHEX","LYL1","CD300LB","C1QB","TYROBP","FPR3")
-# nakshatri[["tcell"]]=c("SCML4","FYN","BCL11B","RUNX3")
+plot_histogram_page<-function(celltype){
+    plt<-histograModified(dat, 
+        baseline="mean",
+        genes = unlist(cell_markers[celltype]),
+        colors= c(cell_colors[celltype], "#dbdbdb","#cccccc", "#999999"),
+        matrix = "cg_cluster_id_tracks", arrowScale = .03, trackScale = .5,
+        legend = F, cgisland=cgi)
+    return(plt)
+}
 
-
-# nakshatri_cell_colors=c(
-# "basal"="#844c9d",
-# "lumhr"="#e23e96",
-# "lumsec"="#ff6498",
-# "fibro"="#f58e90",
-# "endothelial"="#b5d564",
-# "macrophage"="#8088c2",
-# "tcell"="#1d87c8",
-# "adipo"="#b48454")
-
-
-# print("Plotting...")
-# p1 <- dimFeature(dat, colorBy = cluster_id, reduction = "umap") + ggtitle("Clusters")
-# p2 <- dimFeature(dat, colorBy = sample, reduction = "umap") + ggtitle("Samples")
-# p3 <- dimFeature(dat, colorBy = log10(cov), pointSize = 1) + scale_color_gradientn(colors = c("black", "turquoise", "gold", "red"),guide="colourbar") + ggtitle("Coverage distribution")
-# p4 <- dimFeature(dat, colorBy = mcg_pct, pointSize = 1) + scale_color_gradientn(colors = c("black", "turquoise", "gold", "red")) + ggtitle("Global %mCG distribution")
-# p5 <- dimFeature(dat, colorBy = Group, reduction = "umap") + ggtitle("Group")
-# p6 <- dimFeature(dat, colorBy = batch, reduction = "umap") + ggtitle("Batch")
-
-# plt<-plot_grid(p1, p2,p3, p4,p5,p6,ncol=2)
-# ggsave(plt,file="03_scaledcis.dmr_cluster.umap.pdf",width=20,height=30)  
-
-
-# #prepare cgi
-# cgisland="/data/rmulqueen/projects/scalebio_dcis/ref/cpgIslandExt.bed"
-# cgi<-rtracklayer::import(cgisland)
-# cgi<-as.data.frame(cgi)
-# colnames(cgi)<-c("chr","start","end","strand")
-
-# plot_histogram_page<-function(celltype){
-#     plt<-histograModified(dat, 
-#         baseline="mean",
-#         genes = unlist(cell_markers[celltype]),
-#         colors= c(cell_colors[celltype], "#dbdbdb","#cccccc", "#999999"),
-#         matrix = "cg_cluster_id_tracks", arrowScale = .03, trackScale = .5,
-#         legend = F, cgisland=cgi)
-#     return(plt)
-# }
-
-# #rough ordering by what clustered together
-# order<-c(
-# "29","14","15","9","1",
-# "24","8","35","2","16","30","17","7",
-# "21","27","32","3","34","13","18",
-# "19","11","4","22","5","25",
-# "33","23","26","20","31",
-# "6","12","28","10")
+#rough ordering by what clustered together
+order<-c(
+"9","10","1",
+"15","3","12",
+"8","2",
+"20",
+"7","18",
+"14","4","5","11","16","13","17",
+"6",
+"19")
     
-# plt_list<-lapply(names(cell_colors),
-# function(celltype){
-#     genes<-unlist(cell_markers[celltype])
-#     genes<-genes[genes %in% dat@ref$gene_name]
-#     print(paste("Plotting:",celltype))
-#     print(paste("Genes to plot:",genes))
-#     plt<-histograModified(dat, 
-#         baseline="mean",
-#         genes = unlist(cell_markers[celltype]),
-#         colors= c(cell_colors[celltype], "#dbdbdb","#cccccc", "#999999"),
-#         matrix = "cg_cluster_id_tracks", arrowScale = .03, trackScale = .5,
-#         legend = F, cgisland=cgi,order=order) + ggtitle(celltype)
-#     return(plt)
-# })
+plt_list<-lapply(names(cell_colors),
+function(celltype){
+    genes<-unlist(cell_markers[celltype])
+    genes<-genes[genes %in% dat@ref$gene_name]
+    print(paste("Plotting:",celltype))
+    print(paste("Genes to plot:",genes))
+    plt<-histograModified(dat, 
+        baseline="mean",
+        genes = unlist(cell_markers[celltype]),
+        colors= c(cell_colors[celltype], "#dbdbdb","#cccccc", "#999999"),
+        matrix = "cg_cluster_id_tracks", arrowScale = .03, trackScale = .5,
+        legend = F, cgisland=cgi,order=order) + ggtitle(celltype)
+    return(plt)
+})
 
-# plt_out<-wrap_plots(plt_list,ncol=1) 
-# ggsave(plt_out ,file="test.marker.pdf",width=30,height=length(cell_colors)*30,limitsize=F)
+plt_out<-wrap_plots(plt_list,ncol=1) 
+ggsave(plt_out ,file="03_scaledcis.dmr_cluster.test.marker.pdf",width=30,height=length(cell_colors)*30,limitsize=F)
 
 # plt_list<-lapply(names(nakshatri_cell_colors),
 # function(celltype){
