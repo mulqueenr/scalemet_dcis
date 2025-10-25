@@ -694,16 +694,3 @@ find ${runDir}/scalemethyl_pipeline_out/ -maxdepth 7 -name "*.dereferenced" -typ
 
 
 ```
-
-- Run a per-plate amethyst object generation via /src/amethyst_initial_processing.R
-- Run merged processing via /src/merged_amethyst_processing.md
-
-
-Add 10x RNA seurat objects to directory for processing
-Generating a merged seurat object from the cellranger output
-
-
-```R
-
-
-```

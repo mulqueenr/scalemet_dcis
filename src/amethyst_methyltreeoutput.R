@@ -35,7 +35,6 @@ option_list = list(
               help="Integer number of cpus")
 );
 
-
 opt_parser = OptionParser(option_list=option_list);
 opt = parse_args(opt_parser);
 cpu_count=opt$task_cpus
@@ -74,10 +73,10 @@ methyltree_output<-function(obj=obj,prefix="DCIS-41T",sample="DCIS-41T",filt_min
       print(paste("Mean percent cells covered per window:",
             mean((rowSums(!is.na(methyltreeoutput))/ncol(methyltreeoutput))*100)))
       print("Filtering to windows with >10% of cells with coverage")
-      methyltreeoutput<-methyltreeoutput[(rowSums(!is.na(methyltreeoutput))/ncol(methyltreeoutput)*100)>=10,]
-      methyltreewindows<-data.frame(do.call("rbind",strsplit(row.names(methyltreeoutput),"_")))
+            methyltreeoutput<-methyltreeoutput[(rowSums(!is.na(methyltreeoutput))/ncol(methyltreeoutput)*100)>=10,]
+            methyltreewindows<-data.frame(do.call("rbind",strsplit(row.names(methyltreeoutput),"_")))
       colnames(methyltreewindows)<-c("chr","start","end")
-      methyltreewindows<-GenomicRanges::makeGRangesFromDataFrame(methyltreewindows)
+            methyltreewindows<-GenomicRanges::makeGRangesFromDataFrame(methyltreewindows)
       print(paste("Final Filtered window count:",as.character(nrow(as.data.frame((methyltreewindows))))))
       print(paste("Final Filtered window average width:",as.character(mean(GenomicRanges::width(methyltreewindows)))))
       print(paste("Final Total genome covered:",as.character(sum(GenomicRanges::width(methyltreewindows))/1000000),"Mbp"))

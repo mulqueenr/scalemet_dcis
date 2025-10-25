@@ -52,8 +52,8 @@ cluster_by_windows<-function(obj,
   print(paste("Estimating dimensions..."))                                           
   #filter windows by cell coverage
   obj@genomeMatrices[[window_name]] <- obj@genomeMatrices[[window_name]][rowSums(!is.na(obj@genomeMatrices[[window_name]])) >= 45, ]
-  #est_dim<-dimEstimate(obj, genomeMatrices = c(window_name), dims = c(10), threshold = 0.95)
-  #print(est_dim)
+  est_dim<-dimEstimate(obj, genomeMatrices = c(window_name), dims = c(20), threshold = 0.95)
+  print(est_dim)
 
   print("Running IRLBA reduction...")
   obj@reductions[[paste(window_name,"irlba",sep="_")]] <- runIrlba(obj, genomeMatrices = c(window_name), dims = est_dim, replaceNA = c(0))
@@ -127,7 +127,6 @@ dmr_and_1kb_window_gen<-function(
     return(obj)
 }
 
-
 #modified from histograM
 histograModified <- function(obj,
     genes = NULL,
@@ -136,6 +135,7 @@ histograModified <- function(obj,
     trackOverhang = 5000,arrowOverhang = 3000,trackScale = 1.5,arrowScale = 0.025,colorMax = 100,
     legend = TRUE,removeNA = TRUE,
     order = NULL,baseline = "mean",
+    promoter_focus=FALSE,
     cgisland=NULL) {
 
     if (!is.null(colors)) {pal <- colors} else {pal <- c("#FF0082", "#dbdbdb", "#cccccc", "#999999")}
@@ -154,10 +154,26 @@ histograModified <- function(obj,
 
             ref <- obj@ref |> dplyr::filter(gene_name == genes[i])
             aggregated <- obj@genomeMatrices[[matrix]]
+
             toplot <- aggregated[c((aggregated$chr == ref$seqid[ref$type == "gene"] &
                                 aggregated$start > (ref$start[ref$type == "gene"] - trackOverhang) &
                                 aggregated$end < (ref$end[ref$type == "gene"] + trackOverhang))), ]
 
+            promoter <- ref |> dplyr::filter(type == "gene") |>
+                  dplyr::mutate(promoter_start = ifelse(strand == "+", (start - 2000), (end + 2000)),
+                  promoter_end = ifelse(strand == "+", (promoter_start+2000), (promoter_start-2000)))
+            
+            if(promoter_focus){
+              if(ref[ref$type == "gene",]$strand[1] == "+"){
+                plot_left<-promoter$promoter_start-trackOverhang
+                plot_right<-promoter$promoter_end+trackOverhang
+              }else{
+                plot_right<-promoter$promoter_start+trackOverhang
+                plot_left<-promoter$promoter_end-trackOverhang
+              }
+            }
+            exon <- ref |> dplyr::filter(type == "exon")
+            
             trackHeight <- group_count * trackScale
             toplot <- tidyr::pivot_longer(toplot, cols = c(4:ncol(toplot)), names_to = "group", values_to = "pct_m") |> dplyr::rowwise() |> dplyr::mutate(middle = mean(c(start, end), na.rm = TRUE))
         
@@ -179,20 +195,17 @@ histograModified <- function(obj,
             p[[i]][[j]] <- ggplot2::ggplot() +
             {if (baseline == 0) ggplot2::geom_col(data = toplot_sub, ggplot2::aes(x = middle, y = pct_m, fill = pct_m), width = mean(toplot_sub$end - toplot_sub$start))} +
             {if (baseline == "mean")ggplot2::geom_rect(data = toplot_sub, ggplot2::aes(xmin = start, xmax = end, ymin = glob_m, ymax = pct_m, fill = pct_m))} + 
+            {if(promoter_focus) ggplot2::coord_cartesian(xlim=c(plot_left,plot_right),expand=FALSE)}+
             ggplot2::scale_fill_gradientn(colors = pal, limits = c(0,colorMax), oob = scales::squish) + theme_minimal()+ ylab(j) + ggplot2::theme(legend.position="none") +
             ylim(c(0,100))+
-            ggplot2::theme(panel.background = element_blank(), axis.ticks = element_blank(), panel.grid.major.y = element_line(color = "#dbdbdb", linetype = "dashed"))
+            ggplot2::theme(panel.background = element_blank(), axis.ticks = element_blank(), axis.text.x = element_blank(),axis.ticks.x = element_blank(), panel.grid.major.y = element_line(color = "#dbdbdb", linetype = "dashed"))
             }
-
-        #first track is annot
+        #last track is annot
         p[[i]][["gene_track"]] <-ggplot()+
-        ggplot2::geom_rect(fill = "pink",alpha=0.8, data = ref |> dplyr::filter(type == "gene") |>
-                            dplyr::mutate(promoter_start = ifelse(strand == "+", (start - 1500), (end + 1500)),
-                            promoter_end = ifelse(strand == "+", (promoter_start+3000), (promoter_start-3000))),
-                            ggplot2::aes(xmin = promoter_start, xmax = promoter_end, ymin = 0, ymax = trackHeight/4)) +
-        ggplot2::geom_rect(alpha=0.8,fill = "black", data = ref |> dplyr::filter(type == "exon"),ggplot2::aes(xmin = start, xmax = end, ymin = 0, ymax = trackHeight/4)) +
+        ggplot2::geom_rect(fill = "pink",alpha=0.8, data = promoter, ggplot2::aes(xmin = promoter_start, xmax = promoter_end, ymin = 0, ymax = trackHeight/4)) +
+        ggplot2::geom_rect(alpha=0.8,fill = "gray", data = exon,ggplot2::aes(xmin = start, xmax = end, ymin = 0, ymax = trackHeight/8)) +
         ggplot2::geom_rect(alpha=0.8,fill = "green", data = cgi, ggplot2::aes(xmin = start, xmax = end, ymin = 0, ymax = trackHeight/4)) +
-        ggplot2::geom_segment(data = ref, color="gray",
+        ggplot2::geom_segment(data = ref, color=ifelse(ref$strand == "+","gray","black"),
                             aes(x = ifelse(strand == "+", (min(start) - arrowOverhang), (max(end)) + arrowOverhang),
                             y = trackHeight/8,
                             xend = ifelse(strand == "+", (max(end) + arrowOverhang), (min(start)) - arrowOverhang),
@@ -208,12 +221,248 @@ histograModified <- function(obj,
                             panel.background = element_blank(),
                             title=element_text(size=8))+
                             theme(legend.position="none") #+xlim(c(xmin_pos,xmax_pos))
+
+    if(promoter_focus){ #focus to plot region to promoter + track overhang for either direction
+      p[[i]][["gene_track"]]<-p[[i]][["gene_track"]]+ggplot2::coord_cartesian(xlim=c(plot_left,plot_right),expand=FALSE)
+    }
     p[[i]]<-wrap_plots(p[[i]],guides='collect')+plot_layout(ncol=1)
     }
     all_genes_plot<-wrap_plots(p)+plot_layout(nrow=1)
     return(all_genes_plot)
 }
 
+################################################
+################FINE CELLTYPING FUNCTIONS######
+################################################
+################################################
+
+plot_histogram_page<-function(celltype){
+    plt<-histograModified(obj, 
+        baseline="mean",
+        genes = unlist(cell_markers[celltype]),
+        colors= c(cell_colors[celltype], "#dbdbdb","#cccccc", "#999999"),
+        matrix = "cg_cluster_id_tracks", arrowScale = .03, trackScale = .5,
+        legend = F, cgisland=cgi)
+    return(plt)
+}
+
+plot_dmr_RNAmarker_overlap<-function(dmr,rna_markers,celltype,plot_value="Jaccard",clus_order){
+    #plot_value can be one of pval, odds.ratio, intersection, union, Jaccard
+    #flow through:
+    # - filter DMRs to HYPO
+    # - filter RNA markers to overexpressed
+    # - table dmr to marker count, and plot odds ratio
+    # - plot gene body methylation hypoM plots
+    output_directory=paste0(project_data_directory,"/fine_celltyping/",celltype)
+
+    #PLOT HYPO
+    #filter to hypo DMRs (more likely to increase expression)
+    dmr_hypo<- dmr %>% group_by(test) %>% filter(direction=="hypo") 
+    rna_markers_up <- rna_markers %>% filter(avg_log2FC>0) #look only for increased expression markers
+    rna_markers_up$gene_name<-row.names(rna_markers_up)
+    dmr_gene_lists<-split(row.names(dmr_hypo),dmr_hypo$test)
+    dmr_gene_lists<-lapply(dmr_gene_lists,function(i) {
+            unlist(
+                lapply(unlist(strsplit(dmr_hypo[unlist(dmr_gene_lists[i]),]$gene_names,",")),
+                function(x) {gsub("[[:space:]]", "", x)})
+            )
+        })
+    rna_markers_lists<-split(rna_markers_up$gene,rna_markers_up$cluster)
+    gom.obj<-newGOM(dmr_gene_lists,
+                rna_markers_lists,
+                genome.size=length(unique(c(unlist(dmr_gene_lists),unlist(rna_markers_lists))))
+    )
+    or_mat<-getMatrix(gom.obj, plot_value)
+
+    dmr_count<-dmr_hypo %>% 
+                    group_by(test,.drop=FALSE) %>% 
+                    tally()
+    dmr_count<-setNames(dmr_count$n,nm=dmr_count$test)
+    dmr_count=dmr_count[clus_order]
+
+    marker_count<-rna_markers_up %>% 
+                    group_by(cluster,.drop=FALSE) %>% 
+                    tally() 
+    marker_count<-setNames(marker_count$n,nm=marker_count$cluster)
+
+
+    print("Plotting hypo overlap of DMRs...")
+    pdf(paste0(output_directory,"/","04_scaledcis.",broad_celltype,".dmr_marker_overlap.heatmap.pdf"))
+    print(
+        ComplexHeatmap::Heatmap(or_mat,
+            row_order=clus_order,cluster_rows=FALSE,cluster_columns=FALSE,
+            bottom_annotation=HeatmapAnnotation(bar=anno_barplot(marker_count)),
+            show_row_names = TRUE, show_column_names = TRUE, row_names_side="right",column_names_side="bottom",
+            column_title = "Hypomethylated and Overexpressed",
+            left_annotation=rowAnnotation(bar=anno_barplot(dmr_count)),
+            name=plot_value,
+            cell_fun = function(j, i, x, y, width, height, fill) {
+                                grid.text(format(round(or_mat,digits=2),nsmall=2)[i, j], x, y, gp = gpar(fontsize = 10))
+                                }
+            ))
+    #PLOT HYPER
+    #filter to hypo DMRs (more likely to increase expression)
+    dmr_hyper<- dmr %>% group_by(test) %>% filter(direction=="hyper") 
+    rna_markers_down <- rna_markers %>% filter(avg_log2FC<0) #look only for increased expression markers
+    rna_markers_down$gene_name<-row.names(rna_markers_down)
+    dmr_gene_lists<-split(row.names(dmr_hyper),dmr_hyper$test)
+    dmr_gene_lists<-lapply(dmr_gene_lists,function(i) {
+            unlist(
+                lapply(unlist(strsplit(dmr_hyper[unlist(dmr_gene_lists[i]),]$gene_names,",")),
+                function(x) {gsub("[[:space:]]", "", x)})
+            )
+        })
+    rna_markers_lists<-split(rna_markers_down$gene,rna_markers_down$cluster)
+    gom.obj<-newGOM(dmr_gene_lists,
+                rna_markers_lists,
+                genome.size=length(unique(c(unlist(dmr_gene_lists),unlist(rna_markers_lists))))
+    )
+    or_mat<-getMatrix(gom.obj, plot_value)
+    
+    dmr_count<-dmr_hyper %>% 
+                    group_by(test,.drop=FALSE) %>% 
+                    tally()
+    dmr_count<-setNames(dmr_count$n,nm=dmr_count$test)
+    dmr_count=dmr_count[clus_order]
+
+    marker_count<-rna_markers_down %>% 
+                    group_by(cluster,.drop=FALSE) %>% 
+                    tally() 
+    marker_count<-setNames(marker_count$n,nm=marker_count$cluster)
+
+    
+    print(
+        ComplexHeatmap::Heatmap(or_mat,
+            bottom_annotation=HeatmapAnnotation(bar=anno_barplot(marker_count)),
+            row_order=clus_order,cluster_rows=FALSE,cluster_columns=FALSE,
+            show_row_names = TRUE, show_column_names = TRUE, row_names_side="right",column_names_side="bottom",
+            column_title = "Hypermethylated and Underexpressed",
+            left_annotation=rowAnnotation(bar=anno_barplot(dmr_count)),
+            name=plot_value,
+            cell_fun = function(j, i, x, y, width, height, fill) {
+                                grid.text(format(round(or_mat,digits=2),nsmall=2)[i, j], x, y, gp = gpar(fontsize = 10))
+                                }
+            ))
+    
+    dev.off()
+}
+
+
+plot_dmr_RNAMarker_hypoM<-function(dat=dat_fine,dmr,order=NULL,rna_markers,broad_celltype,gtf_file="/container_ref/gencode.v43.annotation.gtf.gz"){
+
+    rna_markers$gene_name<-row.names(rna_markers)
+    #subset markers by size for plotting
+    #use gtf file to set gene sizes
+
+    met_clusters<-length(unique(dmr$group))
+
+    print("Reading in GTF file to append to markers...")
+    gtf <- rtracklayer::readGFF(gtf_file)
+        gtf<- gtf %>% 
+        filter(type=="gene" & gene_type %in% c("lncRNA","protein_coding")) %>% 
+        filter(gene_name %in% rna_markers$gene_name) %>% 
+        mutate(gene_length=abs(end-start))
+
+    print("Merging GTF data and marker gene information...")
+    rna_markers_merge<-merge(rna_markers,gtf,by="gene_name")
+    #overlap hypo DMR and RNA markers per fine celltype
+    #limit markers to those that will plot well for visual inspection (i.e. correct size)
+    #plot celltype markers for fine celltyping
+
+    print("Filtering marker genes to those that are between 5 and 25kbp")
+    rna_markers_merge<-rna_markers_merge %>% 
+    filter(gene_length>5000) %>% 
+    filter(gene_length<50000)
+
+    print(paste(nrow(rna_markers_merge),"RNA markers remaining..."))
+    #so now we have a list of RNA markers that are set to size thresholds
+    #pick based on significant DMRs (across all clusters) per fine_celltype rna marker
+
+    dmr<-dmr %>% filter(direction=="hypo" & dmr_logFC< -1 & dmr_length > 2000)
+    print(paste(nrow(dmr),"DMR sites that are hypomethylated, log2FC >2, and >2kbp"))
+    #dmr gene names is a nested list (dmr associated with multiple genes, so unlist them) and remove white space
+    dmr_gene_names<-unlist(
+        lapply(
+            unlist(
+                strsplit(
+                    unlist(dmr$gene_names),",")),
+                function(x) gsub("[[:space:]]", "", x)
+            )
+        )
+    genes_to_plot<-rna_markers_merge %>% 
+                    group_by(cluster) %>% 
+                    filter(gene %in% dmr_gene_names) %>% 
+                    slice_min(n=10,order=p_val_adj) %>%
+                    select(gene_name)
+    print(paste("Genes passing all filters for plotting:",nrow(genes_to_plot)))
+
+    #make a named list of fine cell types and genes for plotting
+    plotting_list<-setNames(nm=unique(genes_to_plot$cluster),
+        lapply(unique(genes_to_plot$cluster), function(x){
+            return(genes_to_plot[genes_to_plot$cluster==x,]$gene_name)
+        }) )
+    
+    print(paste("Making genome plots..."))
+    plt_list<-lapply(names(plotting_list),
+        function(celltype){
+                genes<-unlist(plotting_list[celltype])
+                genes<-genes[genes %in% dat_fine@ref$gene_name]
+                print(paste("Plotting:",celltype))
+                print(paste("Genes to plot:",genes))
+                plt<-histograModified(obj=dat_fine, 
+                    baseline="mean",
+                    genes = unlist(plotting_list[celltype]),
+                    order=order,
+                    matrix = paste0("cg_",broad_celltype,".clusters_tracks"), arrowScale = .03, trackScale = .5,
+                    legend = F, cgisland=cgi) + ggtitle(celltype)
+                ggsave(plt,
+                file=paste(broad_celltype,"clusters",celltype,"fine_celltype.markers.pdf",sep="."),
+                width=length(genes)*5,
+                height=length(met_clusters)*20,
+                limitsize=F)
+            })
+
+}
+
+
+calc_overlap_stats<-function(i){
+    i_name<-names(dmr_granges)[i]
+    out<-do.call("rbind",
+        lapply(1:length(atac_markers_granges),
+            function(j){
+                j_name <- names(atac_markers_granges)[j]
+                sizeA <- length(dmr_granges[[i]])
+                sizeB <- length(atac_markers_granges[[j]])
+                intersection <- GenomicRanges::countOverlaps(dmr_granges[i],atac_markers_granges[[j]])
+                union <- sizeA+sizeB - intersection
+                cont.tbl <- matrix(c(union, 
+                                            sizeA - intersection, 
+                                            sizeB - intersection, 
+                                            intersection), 
+                                            ncol=2)
+                rownames(cont.tbl) <- c('notB', 'inB')
+                colnames(cont.tbl) <- c('notA', 'inA')
+
+                # Perform Fisher's exact test.
+                res.fisher <- try(fisher.test(cont.tbl, alternative='greater'), silent=TRUE)
+
+                if(is.list(res.fisher)) {
+                    odds.ratio <- setNames(res.fisher$estimate, NULL)
+                    pval <- res.fisher$p.value
+                    } else {
+                    odds.ratio <- .0
+                    pval <- 1.
+                    }
+                # Calculate Jaccard index. how many DMRs overlap out of all DMRs
+                Jaccard_val <- ifelse(union == 0, 0, 
+                                            intersection / 
+                                                sizeA
+                )
+
+                return(c(i_name,j_name,as.numeric(odds.ratio),as.numeric(pval),as.numeric(Jaccard_val)))
+            }))
+    return(out)
+}
 
 ################################################
 ################################################

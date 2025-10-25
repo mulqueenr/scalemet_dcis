@@ -18,6 +18,6 @@ bamDedupOut: true
 
 ### Don't output:
 fastqOut: false
-trimOut: false
+trimOut: true
 covOut: false
 allcOut: false

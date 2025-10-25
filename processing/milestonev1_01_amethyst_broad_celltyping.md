@@ -155,7 +155,7 @@ out<-dmr_and_1kb_window_gen(obj=dat,prefix="03_scaledcis.dmr_cluster",groupBy = 
 saveRDS(out,file="03_scaledcis.dmr_cluster.1kb.amethyst.rds")
 
 #read from [prefix].dmr.[group_by].collapsed.rdsa
-dmr_out<-readRDS("dmr_clusters.dmr.cluster_id.collapsed.rds")
+dmr_out<-readRDS("03_scaledcis.dmr_cluster.dmr.nakshatri_clusters.collapsed.rds")
 dat<-readRDS(file="03_scaledcis.dmr_cluster.1kb.amethyst.rds")
 ```
 
@@ -164,6 +164,15 @@ dat<-readRDS(file="03_scaledcis.dmr_cluster.1kb.amethyst.rds")
 ########################################
 
 ```R
+
+
+print("Plotting...")
+p1 <- dimFeature(dat, colorBy = cluster_id, reduction = "umap") + ggtitle("Clusters")
+p2 <- dimFeature(dat, colorBy = sample, reduction = "umap") + ggtitle("Samples")
+p3 <- dimFeature(dat, colorBy = log10(cov), pointSize = 1) + scale_color_gradientn(colors = c("black", "turquoise", "gold", "red"),guide="colourbar") + ggtitle("Coverage distribution")
+p4 <- dimFeature(dat, colorBy = mcg_pct, pointSize = 1) + scale_color_gradientn(colors = c("black", "turquoise", "gold", "red")) + ggtitle("Global %mCG distribution")
+plt<-plot_grid(p1, p2,p3, p4,ncol=2)
+ggsave(plt,file="03_scaledcis.dmr_cluster.broad_final.umap.pdf",width=20,height=20)  
 
 cell_markers<-list()
 cell_markers[["basal"]]<-c("CARMN","ACTA2","KRT17","KRT14","DST","KRT5")
@@ -184,8 +193,7 @@ cell_colors=c(
 "lumhr"="#e23e96",
 "lumsec"="#ff6498",
 "fibro"="#f58e90",
-"lymphatic"="#b5d564",
-"vascular"="#5bbb5a",
+"endo"="#5bbb5a",
 "perivasc"="#eaba67",
 "myeloid"="#8088c2",
 "tcell"="#1d87c8",
@@ -194,25 +202,6 @@ cell_colors=c(
 "plasma"="#7ecdc2",
 "adipo"="#b48454")
 
-nakshatri<-list()
-nakshatri[["basal"]]<-c("CELSR2","TP73","UQCRC1")
-nakshatri[["lumhr"]]<-c("ANKRD30A","CELSR1","STC2","FOXA1")
-nakshatri[["lumsec"]]<-c("TFAP2C","EPB41L1","ZMYND8","SLC52A3","WFDC3")
-nakshatri[["fibro"]]<-c("GAS7","SH3PXD2B","COL5A1","TWIST2","ISLR","GABRB3")
-nakshatri[["adipo"]]=c("PPARG","TMEM100","C14orf180","PCK1","ACACB")
-nakshatri[["endothelial"]]=c("CLEC14A")
-nakshatri[["macrophage"]]=c("HHEX","LYL1","CD300LB","C1QB","TYROBP","FPR3")
-nakshatri[["tcell"]]=c("SCML4","FYN","BCL11B","RUNX3")
-
-nakshatri_cell_colors=c(
-"basal"="#844c9d",
-"lumhr"="#e23e96",
-"lumsec"="#ff6498",
-"fibro"="#f58e90",
-"endothelial"="#b5d564",
-"macrophage"="#8088c2",
-"tcell"="#1d87c8",
-"adipo"="#b48454")
 
 #prepare cgi
 cgisland="/data/rmulqueen/projects/scalebio_dcis/ref/cpgIslandExt.bed"
@@ -232,14 +221,14 @@ plot_histogram_page<-function(celltype){
 
 #rough ordering by what clustered together
 order<-c(
-"9","10","1",
-"15","3","12",
-"8","2",
-"20",
-"7","18",
-"14","4","5","11","16","13","17",
+"10","4","5","18",
+"16","21","19","14",
 "6",
-"19")
+"7","20",
+"11",
+"8","2","17",
+"9","1","12",
+"3","13","15")
     
 plt_list<-lapply(names(cell_colors),
 function(celltype){
@@ -251,7 +240,7 @@ function(celltype){
         baseline="mean",
         genes = unlist(cell_markers[celltype]),
         colors= c(cell_colors[celltype], "#dbdbdb","#cccccc", "#999999"),
-        matrix = "cg_cluster_id_tracks", arrowScale = .03, trackScale = .5,
+        matrix = "cg_nakshatri_clusters_tracks", arrowScale = .03, trackScale = .5,
         legend = F, cgisland=cgi,order=order) + ggtitle(celltype)
     return(plt)
 })
@@ -259,80 +248,52 @@ function(celltype){
 plt_out<-wrap_plots(plt_list,ncol=1) 
 ggsave(plt_out ,file="03_scaledcis.dmr_cluster.test.marker.pdf",width=30,height=length(cell_colors)*30,limitsize=F)
 
-# plt_list<-lapply(names(nakshatri_cell_colors),
-# function(celltype){
-#     genes<-unlist(nakshatri[celltype])
-#     genes<-genes[genes %in% dat@ref$gene_name]
-#     print(paste("Plotting:",celltype))
-#     print(paste("Genes to plot:",genes))
-#     plt<-histograModified(dat, 
-#         baseline="mean",
-#         genes = unlist(nakshatri[celltype]),
-#         colors= c(nakshatri_cell_colors[celltype], "#dbdbdb","#cccccc", "#999999"),
-#         matrix = "cg_cluster_id_tracks", arrowScale = .03, trackScale = .5,
-#         legend = F, cgisland=cgi,order=order) + ggtitle(celltype)
-#     return(plt)
-# })
 
-# plt_out<-wrap_plots(plt_list,ncol=1) 
-# ggsave(plt_out ,file="nakshatri_test.marker.pdf",width=30,height=length(cell_colors)*30,limitsize=F)
+dat@metadata$broad_celltype<-"lumhr" #10, 4, 5, 18, 16, 21, 19, 14, 6
+dat@metadata[dat@metadata$cluster_id %in% c("7","20","11"),]$broad_celltype<-"basal"
+dat@metadata[dat@metadata$cluster_id %in% c("17","8","2"),]$broad_celltype<-"lumsec"
+dat@metadata[dat@metadata$cluster_id %in% c("12","1","9"),]$broad_celltype<-"fibro"
+dat@metadata[dat@metadata$cluster_id %in% c("15","3","13"),]$broad_celltype<-"immune"
 
-# #set celltype plotting order
-# dat@metadata$celltype<-factor(dat@metadata$celltype,levels=c(
-# "basal",
-# "lumhr",
-# "lumsec",
-# "fibro",
-# "endothelial",
-# "myeloid",
-# "tcell"))
-
-# cell_colors=c(
-# "basal"="#844c9d",
-# "lumhr"="#e23e96",
-# "lumsec"="#f68d3e",
-# "fibro"="#68b1af",
-# "lymphatic"="#b5d564",
-# "endothelial"="#b5d564",
-# "vascular"="#5bbb5a",
-# "perivasc"="#eaba67",
-# "myeloid"="#8088c2",
-# "tcell"="#1d87c8",
-# "mast"="#dcd0ff",
-# "bcell"="#65cbe4",
-# "plasma"="#7ecdc2",
-# "adipo"="#b48454",
-# "dcis_diff"="black"
-# )
-
-# "basal"="#844c9d",
-# "lumhr"="#e23e96",
-# "lumsec"="#ff6498",
-# "fibro"="#f58e90",
-# "endothelial"="#b5d564",
-# "macrophage"="#8088c2",
-# "tcell"="#1d87c8",
-# "adipo"="#b48454"
-
-# dat@metadata$broad_celltype<-"lumhr_cancer" #20, 15, 8, 17, 11, 3, 9, 19, 12
-# dat@metadata[dat@metadata$cluster_id %in% c("10"),]$broad_celltype<-"lumhr"
-# dat@metadata[dat@metadata$cluster_id %in% c("4"),]$broad_celltype<-"basal"
-# dat@metadata[dat@metadata$cluster_id %in% c("5"),]$broad_celltype<-"lumsec"
-# dat@metadata[dat@metadata$cluster_id %in% c("6","1"),]$broad_celltype<-"stromal"
-# dat@metadata[dat@metadata$cluster_id %in% c("2","18","7","16"),]$broad_celltype<-"immune"
-
-# #run DMR and 1kb windows on reclustered data
-# #running with 500 step so I can use the same chunks for methyltree
-# out<-dmr_and_1kb_window_gen(dat,
-#     prefix="broad_celltype",
-#     groupBy="broad_celltype",
-#     threads=10,step=500)
-
-# dat<-out
-# saveRDS(dat,file="04_scaledcis.amethyst.broad_celltype.rds")
+saveRDS(dat,file="04_scaledcis.broad_celltype.amethyst.rds")
 
 
-# #run 3d plotting just for fun
+print("Plotting...")
 
+cell_colors=c(
+"basal"="#844c9d",
+"lumhr"="#e23e96",
+"lumsec"="#ff6498",
+"fibro"="#f58e90",
+"endo"="#5bbb5a",
+"myeloid"="#8088c2",
+"lymphoid"="#1d87c8")
 
-# ```
+p1 <- dimFeature(dat, colorBy = broad_celltype, colors=cell_colors, reduction = "umap",) + ggtitle("Broad cell types")
+ggsave(p1,file="03_scaledcis.broad_celltypes.umap.pdf",width=20,height=20)  
+```
+
+```R
+
+#run 3d plotting just for fun
+dim3d<-uwot::umap(
+  X=dat@reductions$nakshatri_dmr_sites_irlba_regressed,
+  n_neighbors = 15,
+  n_components = 3,
+  metric = "euclidean",
+  seed = 123,
+  n_threads=50,
+)
+
+dim3d<-as.data.frame(dim3d)
+colnames(dim3d)<-c("X","Y","Z")
+dim3d$cellname<-row.names(dim3d)
+dim3d$celltype<-as.data.frame(dat@metadata[row.names(dim3d),])$broad_celltype
+dim3d$hex_color<-cell_colors[dim3d$celltype]
+dim3d$r_col<-unlist(col2rgb(dim3d$hex_color)["red",])
+dim3d$g_col<-unlist(col2rgb(dim3d$hex_color)["green",])
+dim3d$b_col<-unlist(col2rgb(dim3d$hex_color)["blue",])
+
+write.table(dim3d,col.names=T,file="03_scaledcis.broad_celltypes.3dumap.csv",sep=",",row.names=F)
+
+```
