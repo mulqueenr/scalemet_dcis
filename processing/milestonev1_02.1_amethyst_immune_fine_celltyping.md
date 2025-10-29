@@ -309,6 +309,8 @@ dat_fine<-dmr_and_1kb_window_gen(dat_fine,
 print(paste("Saving final amethyst object of",broad_celltype))
 saveRDS(dat_fine,paste0(output_directory,"/",paste("04_scaledcis",broad_celltype,"fine_celltype.amethyst.rds",sep=".")))
 
+
+
 #fix rna marker overlap (i think heatmap doesnt work, but pulling with dplyr does?)
 #fix atac overlap of markers
 

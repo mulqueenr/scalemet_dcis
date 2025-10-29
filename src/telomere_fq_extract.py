@@ -1,21 +1,3 @@
-count telomere motifs using fuzzy matching on fastq per cell
-perform normalization with nico
-get telomere estimate sizes
-
-#go from raw fq files, assign barcode after counting
-zcat $(ls *R2_001.fastq.gz) | grep -A 2 -B 1 "GGGATTGGGATT"
-
-
-```python
-
-"""
-singularity shell \
-    --bind /data/rmulqueen/projects/scalebio_dcis \
-    --bind ~/tools/ \
-~/singularity/amethyst.sif
-"""
-#UPDATE THIS TO ALLOW FOR HAMMING DISTANCE IN THE FUTURE
-
 import gzip
 from Bio import SeqIO
 import sys
@@ -68,15 +50,15 @@ telo_list=[telo_fwd,telo_rev,telo_fwdcomp,telo_revcomp,telo_fwdcomp_conv,telo_re
 #count telomere reads
 #write out telomere reads fq to another directory
 def count_telo_fq(r1):
-    fq1=r1
-    fq2=r1.replace("_R1_001.fastq.gz","_R2_001.fastq.gz")
+    fq1_file=r1
+    fq2_file=r1.replace("_R1_001.fastq.gz","_R2_001.fastq.gz")
     read_counter=[]
     telo_counter=[]
     print("Running FastQ split for: " + os.path.basename(r1))
-    with gzip.open(fq1, "rt") as handle1, \
-        gzip.open(fq2, "rt") as handle2, \
-        open(output_directory+"/"+os.path.basename(fq1).replace("R1_001.","R1_001.TELO.")[:-3], "w") as outfile_fq1, \
-        open(output_directory+"/"+os.path.basename(fq2).replace("R2_001.","R2_001.TELO.")[:-3], "w") as outfile_fq2:
+    with gzip.open(fq1_file, "rt") as handle1, \
+        gzip.open(fq2_file, "rt") as handle2, \
+        open(output_directory+"/"+os.path.basename(fq1_file).replace("R1_001.","R1_001.TELO.")[:-3], "w") as outfile_fq1, \
+        open(output_directory+"/"+os.path.basename(fq2_file).replace("R2_001.","R2_001.TELO.")[:-3], "w") as outfile_fq2:
             for (title1, seq1, qual1), (title2, seq2, qual2) in \
             zip(FastqGeneralIterator(handle1), FastqGeneralIterator(handle2)):
                 idx1_2=title1.split(":")[-1]
@@ -92,8 +74,8 @@ def count_telo_fq(r1):
                         fq1="@%s\n%s\n+\n%s\n" % (title1, seq1, qual1)
                         fq2="@%s\n%s\n+\n%s\n" % (title2, seq2, qual2)
                         telo_counter.append(idx)
-                        outfile_fq1.write(fq1)
-                        outfile_fq2.write(fq2)
+                        outfile_fq1.write(fq1_file)
+                        outfile_fq2.write(fq2_file)
                     elif min([round(distance.hamming(Seq(idx1), Seq(i))*10) for i in i7_whitelist]) <= 2:
                         i7idx_hamming=[round(distance.hamming(Seq(idx1), Seq(i))*10) for i in i7_whitelist]
                         idx1=i7_whitelist[i7idx_hamming.index(min(i7idx_hamming))]
@@ -109,8 +91,8 @@ def count_telo_fq(r1):
                                 fq1="@%s\n%s\n+\n%s\n" % (title1, seq1, qual1)
                                 fq2="@%s\n%s\n+\n%s\n" % (title2, seq2, qual2)
                                 telo_counter.append(idx)
-                                outfile_fq1.write(fq1)
-                                outfile_fq2.write(fq2)
+                                outfile_fq1.write(fq1_file)
+                                outfile_fq2.write(fq2_file)
     if len(telo_counter)>0 and len(read_counter)>0:
         print("Counting total reads and telomere reads: " + os.path.basename(r1))
         idx_count, val_count = np.unique(read_counter, return_counts=True)
@@ -120,12 +102,10 @@ def count_telo_fq(r1):
         telo_result=pd.DataFrame(list(zip(idx_telo, val_telo)))
         telo_result.columns = ['cellID', 'telomereReads']
         merged_df = pd.merge(read_result, telo_result, on='cellID', how='inner')
-        merged_df.to_csv(output_directory+"/"+os.path.basename(fq1).replace("R1_001.fastq.gz","readCounts.tsv"), index=True)
-        os.system('gzip -f '+ output_directory+"/"+os.path.basename(fq1).replace("R1_001.","R1_001.TELO.")[:-3])
-        os.system('gzip -f '+ output_directory+"/"+os.path.basename(fq2).replace("R1_001.","R1_001.TELO.")[:-3])
+        merged_df.to_csv(output_directory+"/"+os.path.basename(fq1_file).replace("R1_001.fastq.gz","readCounts.tsv"), index=True)
+        os.system('gzip -f '+ output_directory+"/"+os.path.basename(fq1_file).replace("R1_001.","R1_001.TELO.")[:-3])
+        os.system('gzip -f '+ output_directory+"/"+os.path.basename(fq2_file).replace("R2_001.","R2_001.TELO.")[:-3])
 
 p = Pool(int(args.cores))
 with p:
     p.map(count_telo_fq,file_list)
-
-```

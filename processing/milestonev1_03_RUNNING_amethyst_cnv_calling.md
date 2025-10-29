@@ -17,10 +17,11 @@ project_data_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_miles
 merged_dat_folder="merged_data"
 wd=paste(sep="/",project_data_directory,merged_dat_folder)
 setwd(wd)
-obj<-readRDS(file="04_scaledcis.amethyst.broad_celltype.rds")
+obj<-readRDS(file="05_scaledcis.fine_celltype.amethyst.rds")
 
 #make output directory
 system(paste0("mkdir -p ",project_data_directory,"/copykit" ))
+system(paste0("mkdir -p ",project_data_directory,"/methyltree" ))
 
 read_scalebio_bam<-function(obj_met,x,sample_name){
     #scalebio pipeline outputs bam files as Tn5 wells. so multiple cell IDs are in a bam. this function splits out the bam to the query cellid
@@ -245,23 +246,19 @@ runCountReads_amethyst <- function(obj,
     return(cna_obj)
 }
 
-lapply(unique(obj@metadata$sample)[1:length(unique(obj@metadata$sample))],function(x) runCountReads_amethyst(obj=obj,sample_name=x,resolution="220kb"))
+lapply(unique(obj@metadata$sample)[10:length(unique(obj@metadata$sample))],function(x) runCountReads_amethyst(obj=obj,sample_name=x,resolution="220kb"))
 ```
 
-named all of them infercnv instead of copykit on accident to start....
-
-#failed:
-#ECIS57T
-#BCMDCIS32T
-#BCMDCIS28T
-#HBCA-17T
+#BCMHBCA09R-3h failed
+#ECIS57T failed
 
 
 
-# Read all RDS objects and plot together
+# Read all CopyKit RDS objects and plot together
 
 ```R
 library(ComplexHeatmap)
+
 copykit_output<-list.files(path=paste0(project_data_directory,"/copykit"),
     recursive=TRUE,full.names=TRUE,pattern="*rds")
 
@@ -286,8 +283,6 @@ copykit<-readRDS(copykit_output[1])
 windows<-copykit@rowRanges
 
 cnv_col<-c("0"="#002C3E", "0.5"="#78BCC4", "1"="#F7F8F3", "1.5"="#F7444E", "2"="#aa1407", "3"="#440803")
-#from Curtis et al.
-
 
 #relevant CNV genes from curtis work
 #from https://www.nature.com/articles/s41416-024-02804-6#Sec20
@@ -348,5 +343,108 @@ Heatmap(t(cnv_logr),
   border = TRUE)
 dev.off()
 print(paste0(output_directory,"/","all_met.cnv.heatmap.pdf"))
+
+```
+
+
+# Output files for methyltree format
+
+```R
+methyltree_output<-function(obj=obj,
+                            sample_name="DCIS-41T",
+                            filt_min_pct=10,
+                            filt_max_pct=80,
+                            threads=1){
+        
+        output_directory=paste0(project_data_directory,"/methyltree/",sample_name)
+        system(paste0("mkdir -p ",output_directory))
+
+        obj_met<-subsetObject(obj, cells = row.names(obj@metadata[obj@metadata$sample %in% sample_name,]))
+        obj_met@metadata$methyltree_group<-"all"
+        obj_met@metadata$pass<-"TRUE"
+        #make 500bp windows with methylation percentages
+        methyltreewindows <- calcSmoothedWindows(obj_met, 
+                                            type = "CG", 
+                                            threads = threads,
+                                            step = 500,
+                                            smooth = 1,
+                                            index = "chr_cg",
+                                            groupBy = "methyltree_group", 
+                                            returnSumMatrix = TRUE, # save sum matrix for DMR analysis
+                                            returnPctMatrix = TRUE)
+        print(paste("Starting number of windows:",as.character(nrow(methyltreewindows[["pct_matrix"]]))))
+
+        methyltreewindows[["pct_matrix"]]<-methyltreewindows[["pct_matrix"]][methyltreewindows[["pct_matrix"]]$all>=filt_min_pct & methyltreewindows[["pct_matrix"]]$all<=filt_max_pct,]
+
+        #filter to windows to middling methylation values
+        print(paste("Filtering by m0 >=", as.character(filt_min_pct), "m1 <=", as.character(filt_max_pct),as.character(nrow(methyltreewindows[["pct_matrix"]]))))
+        
+        #merge windows that are touching
+        methyltreewindows<-reduce(GenomicRanges::makeGRangesFromDataFrame(methyltreewindows[["pct_matrix"]]))
+        print(paste("Filtered window count:",as.character(nrow(as.data.frame((methyltreewindows))))))
+        print(paste("Filtered window average width:",as.character(mean(width(methyltreewindows)))))
+        print(paste("Total genome covered:",as.character(sum(width(methyltreewindows))/1000000),"Mbp"))
+        #make a merged windows percentile matrix per cell for methyltree
+
+        methyltreeoutput<-makeWindows(obj_met,
+                    type = "CG", 
+                    metric = "percent", 
+                    bed = as.data.frame(methyltreewindows,col.names=NULL)[,1:3],
+                    threads = threads, 
+                    index = "chr_cg", 
+                    nmin = 1) 
+
+      print(paste("Mean percent cells covered per window:",
+            mean((rowSums(!is.na(methyltreeoutput))/ncol(methyltreeoutput))*100)))
+
+      print("Filtering to windows with >10% of cells with coverage")
+      methyltreeoutput<-methyltreeoutput[(rowSums(!is.na(methyltreeoutput))/ncol(methyltreeoutput)*100)>=10,]
+      methyltreewindows<-data.frame(do.call("rbind",strsplit(row.names(methyltreeoutput),"_")))
+
+      colnames(methyltreewindows)<-c("chr","start","end")
+      methyltreewindows<-GenomicRanges::makeGRangesFromDataFrame(methyltreewindows)
+      print(paste("Final Filtered window count:",as.character(nrow(as.data.frame((methyltreewindows))))))
+      print(paste("Final Filtered window average width:",as.character(mean(width(methyltreewindows)))))
+      print(paste("Final Total genome covered:",as.character(sum(width(methyltreewindows))/1000000),"Mbp"))
+
+      methyltreeoutput<-makeWindows(obj_met,
+                                    type = "CG", 
+                                    metric = "percent", 
+                                    bed = as.data.frame(methyltreewindows,col.names=NULL)[,1:3],
+                                    threads = threads, 
+                                    index = "chr_cg", 
+                                    nmin = 1) 
+
+      methyltreeoutput$genomic_region_id<-row.names(methyltreeoutput)
+
+      methyltreeoutput <- methyltreeoutput |> 
+          pivot_longer(
+          cols = !genomic_region_id, 
+          names_to = "cell_id",
+          values_to = "value",
+          values_drop_na = TRUE)
+
+    #make a metadata sheet with cluster info
+    out_metadata<-obj_met@metadata[,c("pass","fine_celltype","cg_cov","mcg_pct","subclones")]
+    colnames(out_metadata)<-c("HQ","celltype","nCG","met_rate","large_clone_id") #match names
+    out_metadata$sample<-row.names(out_metadata) #sample (cell) names
+    out_metadata$met_rate<-out_metadata$met_rate/100 #percentage to rate
+
+    methyltree_input_file=paste(output_directory,
+        paste("methyltree",sample_name,"_methyltree_input.h5",sep="."),sep="/")
+    if(file.exists(methyltree_input_file)){
+        system(paste0("rm -rf ",methyltree_input_file))
+    }
+      h5createFile(file=methyltree_input_file)
+      h5write(methyltreeoutput,file=methyltree_input_file,name="data")
+      h5write(out_metadata,file=methyltree_input_file,name="metadata")
+    }
+
+lapply(unique(obj@metadata$sample),function(x) 
+methyltree_output(obj=obj,
+                   sample_name=x,
+                    filt_min_pct=10,
+                    filt_max_pct=80,
+                    threads=1))
 
 ```
