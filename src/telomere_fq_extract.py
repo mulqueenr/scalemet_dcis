@@ -74,8 +74,8 @@ def count_telo_fq(r1):
                         fq1="@%s\n%s\n+\n%s\n" % (title1, seq1, qual1)
                         fq2="@%s\n%s\n+\n%s\n" % (title2, seq2, qual2)
                         telo_counter.append(idx)
-                        outfile_fq1.write(fq1_file)
-                        outfile_fq2.write(fq2_file)
+                        outfile_fq1.write(fq1)
+                        outfile_fq2.write(fq2)
                     elif min([round(distance.hamming(Seq(idx1), Seq(i))*10) for i in i7_whitelist]) <= 2:
                         i7idx_hamming=[round(distance.hamming(Seq(idx1), Seq(i))*10) for i in i7_whitelist]
                         idx1=i7_whitelist[i7idx_hamming.index(min(i7idx_hamming))]
@@ -91,8 +91,8 @@ def count_telo_fq(r1):
                                 fq1="@%s\n%s\n+\n%s\n" % (title1, seq1, qual1)
                                 fq2="@%s\n%s\n+\n%s\n" % (title2, seq2, qual2)
                                 telo_counter.append(idx)
-                                outfile_fq1.write(fq1_file)
-                                outfile_fq2.write(fq2_file)
+                                outfile_fq1.write(fq1)
+                                outfile_fq2.write(fq2)
     if len(telo_counter)>0 and len(read_counter)>0:
         print("Counting total reads and telomere reads: " + os.path.basename(r1))
         idx_count, val_count = np.unique(read_counter, return_counts=True)

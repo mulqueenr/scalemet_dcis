@@ -101,7 +101,7 @@ runCountReads_amethyst <- function(obj,
     message("Counting reads for genome ",genome," and resolution: ",resolution)
 
     #get list of bams and cellids
-    obj_met<-obj@metadata[obj@metadata$sample==sample_name,]
+    obj_met<-obj@metadata[obj@metadata$Sample==sample_name,]
     #return chr start position for reads filtered in bam to cell id
     varbin_counts_list_all_fields<-mclapply(
                                         1:nrow(obj_met), 
@@ -246,14 +246,15 @@ runCountReads_amethyst <- function(obj,
     return(cna_obj)
 }
 
-lapply(unique(obj@metadata$sample)[10:length(unique(obj@metadata$sample))],function(x) runCountReads_amethyst(obj=obj,sample_name=x,resolution="220kb"))
+
+sample_list<-sort(unique(obj@metadata$Sample))
+
+lapply(sample_list[4:length(sample_list)],function(x) runCountReads_amethyst(obj=obj,sample_name=x,resolution="220kb"))
+
+
+
+list.files(paste0(project_data_directory,"/copykit"))
 ```
-
-#BCMHBCA09R-3h failed
-#ECIS57T failed
-
-
-
 # Read all CopyKit RDS objects and plot together
 
 ```R

@@ -13,7 +13,7 @@ annotation<-rtracklayer::readGFF("/geo_seq/code/3rd_party/10X/refdata-cellranger
 saveRDS(as.data.frame(annotation),file="GRCh38.genes.annot.rds")
 ```
 
-Run infercnv in singularity
+Run infercnv/copykat in singularity
 ```bash
 singularity shell \
 --writable-tmpfs \
@@ -27,6 +27,7 @@ library(Seurat) #local
 library(ggplot2) #local
 library(patchwork) #local
 library(infercnv)
+library(copykat)
 
 setwd("/data/rmulqueen/projects/scalebio_dcis/rna")
 obj<-readRDS("tenx_dcis.pf.rds")
@@ -43,10 +44,23 @@ gene_order<-with(gene_order, gene_order[order(seqid, start),]) #order by chr and
 write.table(gene_order[c("gene_name","seqid","start","end")],file="gene_order.infercnv.txt",sep="\t",col.names=F,row.names=F,quote=F)
 gene_order<-read.csv(file="gene_order.infercnv.txt",sep="\t",header=F,row.names=1)
 
+#copykat
+#make directory
+system(paste0("mkdir ","./copykat/"))
+copykat_per_sample<-function(dat,sample_name="BCMDCIS80T"){
+  system(paste0("mkdir ",paste0("./copykat/",sample_name)))
+  dat<-subset(obj,sample==sample_name) 
+  DefaultAssay(dat)<-"RNA" #using raw counts, and not SOUPX corrected counts for this
+  norm_cells=setNames(dat@meta.data$fine_celltype,nm=row.names(dat@meta.data))
+  norm_cells<-names(norm_cells[!(norm_cells %in% c("lumhr"))]) #all nonlumhr are considered normal
+  exp.rawdata <- LayerData(dat, assay = "RNA", layer = "counts")
+  copykat.test <- copykat(rawmat=exp.rawdata, sam.name=sample_name, distance="euclidean", norm.cell.names=norm_cells,output.seg="FLASE", plot.genes="TRUE", genome="hg20",n.cores=4) #hg20 is same as hg38
+
+}
+
+#infercnv
 #make directory
 system(paste0("mkdir ","./infercnv/"))
-
-
 infercnv_per_sample<-function(dat,sample_name="BCMDCIS80T"){
   system(paste0("mkdir ",paste0("./infercnv/",sample_name)))
   dat<-subset(obj,sample==sample_name) #subset data to sample specified by x and outname
