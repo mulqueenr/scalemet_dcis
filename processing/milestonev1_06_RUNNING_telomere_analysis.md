@@ -9,10 +9,27 @@ singularity shell \
 
 cd /data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/fastq
 for plate in $(find -maxdepth 1 -type d -name "*plate*" | cut -c 3-);
-do python /data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/telomere_fq_extract.py --plate $plate --cores 8 & done &
+do python /data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/telomere_fq_extract.py --plate $plate --cores 4 & done &
+
+#NOTE in plates that were run multiple times, use ScaleMethylMerged fastqs, remove others.
+#Just go through directories and check by hand for now.
+cd /data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/telomere_fq
+
+for plate in $(find -maxdepth 1 -type d -name "*plate*" | cut -c 3-); do
+    if [ -f "./${plate}/ScaleMethylMerged_A01_S1_L001_R1_001.fastq.gz" ]; then
+        cat ./${plate}/ScaleMethylMerged*R1*fastq.gz > ./${plate}/${plate}.merged.telo.R1.fq.gz
+        cat ./${plate}/ScaleMethylMerged*R2*fastq.gz > ./${plate}/${plate}.merged.telo.R2.fq.gz
+        cat ./${plate}/ScaleMethylMerged*readCounts.tsv > ./${plate}/${plate}_readCounts.telo.tsv
+    else
+        cat ./${plate}/ScaleMethyl*R1*fastq.gz > ./${plate}/${plate}.merged.telo.R1.fq.gz
+        cat ./${plate}/ScaleMethyl*R2*fastq.gz > ./${plate}/${plate}.merged.telo.R2.fq.gz
+        cat ./${plate}/ScaleMethyl*readCounts.tsv > ./${plate}/${plate}_readCounts.telo.tsv
+    fi
+done
 
 #concatenate all plate-lane counts
-cat /data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/telomere_fq/*/*readCounts.tsv > /data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/telomere_fq/telomere_readCounts.tsv
+cat /data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/telomere_fq/*/*_readCounts.telo.tsv > /data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/telomere_fq/telomere_readCounts.tsv
+
 ```
 
 ```R
@@ -54,7 +71,7 @@ plt_dat<-telomere_meta %>% dplyr::group_by(fine_celltype,Group) %>% dplyr::summa
     total_count_fq_mean=mean(totalReads_fq,na.rm=T),
     total_count_fq_sd=sd(totalReads_fq,na.rm=T)) %>% as.data.frame()
 
-plt<-ggplot(plt_dat,aes(x=fine_celltype,y=telo_perc_fq_mean,fill=Group))+
+plt<-ggplot(plt_dat,aes(x=fine_celltype,y=telo_perc_fq_mean*100,fill=Group))+
 geom_bar(stat="identity",position=position_dodge())+
 theme_minimal()
 ggsave(plt,width=10,file="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/telomere_fq/telomere_percCount.summarized.pdf")

@@ -37,6 +37,6 @@ obj<-dmr_and_1kb_window_gen(obj,
 saveRDS(obj,file="05_scaledcis.fine_celltype.amethyst.rds")
 write.table(obj@metadata,file="05_scaledcis.fine_celltype.metadata.tsv",quote=F,col.names=T,row.names=T,sep="\t")
 
-obj<-readRDS(file="05_scaledcis.fine_celltype.amethyst.rds")
 obj<-readRDS(file="01_celllines.amethyst.rds")
 write.table(obj@metadata,file="01_celllines.metadata.tsv",quote=F,col.names=T,row.names=T,sep="\t")
+```

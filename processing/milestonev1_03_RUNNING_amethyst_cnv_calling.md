@@ -8,6 +8,32 @@ singularity shell --bind /data/rmulqueen/projects/scalebio_dcis ~/singularity/am
 source("/data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/amethyst_custom_functions.R") #to load in
 library(Rsamtools)
 library(copykit)
+library(circlize)
+detach("package:GeneNMF",unload=TRUE)
+library(dendextend)
+library(RColorBrewer)
+
+#download cytoband data
+#system("wget -P /data/rmulqueen/projects/scalebio_dcis/ref https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/cytoBand.txt.gz ")
+#system("gzip -d /data/rmulqueen/projects/scalebio_dcis/ref/cytoBand.txt.gz")
+cyto=read.table(file="/data/rmulqueen/projects/scalebio_dcis/ref/cytoBand.txt",sep="\t")
+colnames(cyto)<-c("chr","start","end","band","stain")
+table(cyto$stain) #set colors for these
+
+#set colors
+celltype_col=c(
+'peri'='#c1d552',
+'fibro1'='#7f1911',
+'fibro2'='#e791f9',
+'endo'='#f0b243',
+'endo2'='#d0bd4a',
+'tcell'='#2e3fa3',
+'bcell'='#00adea',
+'myeloid1'='#00a487',
+'myeloid2'='#006455',
+'basal'='#7200cc',
+'lumsec'='#af00af',
+'lumhr'='#d8007c')
 
 #set environment and read in data
 set.seed(111)
@@ -25,7 +51,7 @@ system(paste0("mkdir -p ",project_data_directory,"/methyltree" ))
 
 read_scalebio_bam<-function(obj_met,x,sample_name){
     #scalebio pipeline outputs bam files as Tn5 wells. so multiple cell IDs are in a bam. this function splits out the bam to the query cellid
-    bam=obj_met[obj_met$sample==sample_name,]$bam_path[x]
+    bam=obj_met[obj_met$Sample %in% c(sample_name),]$bam_path[x]
     cellid=strsplit(row.names(obj_met)[x],"[+]batch|[+]prelim")[[1]][1]
 
     what <- c("qname","rname", "pos")
@@ -60,8 +86,8 @@ runCountReads_amethyst <- function(obj,
                         remove_Y = TRUE,
                         min_bincount = 10,
                         cores=100) {
-    output_directory=paste0(project_data_directory,"/copykit/",sample_name)
-    system(paste0("mkdir -p ",project_data_directory,"/copykit/",sample_name))
+    output_directory=paste0(project_data_directory,"/copykit/",sample_name[1])
+    system(paste0("mkdir -p ",project_data_directory,"/copykit/",sample_name[1]))
 
     resolution <- match.arg(resolution)
     #resolution="220kb"
@@ -101,7 +127,7 @@ runCountReads_amethyst <- function(obj,
     message("Counting reads for genome ",genome," and resolution: ",resolution)
 
     #get list of bams and cellids
-    obj_met<-obj@metadata[obj@metadata$Sample==sample_name,]
+    obj_met<-obj@metadata[obj@metadata$Sample %in% sample_name,]
     #return chr start position for reads filtered in bam to cell id
     varbin_counts_list_all_fields<-mclapply(
                                         1:nrow(obj_met), 
@@ -168,7 +194,6 @@ runCountReads_amethyst <- function(obj,
         ignore.strand = TRUE,
         keep.extra.columns = TRUE)
 
-
     cna_obj <- CopyKit(
         assays = list(bincounts = varbin_counts_df),
         rowRanges = rg_gr)
@@ -189,7 +214,7 @@ runCountReads_amethyst <- function(obj,
     bam_metrics <- bam_metrics[good_cells,]
 
     bam_metrics$sample <- rownames(bam_metrics)
-    bam_metrics$sample_name=sample_name
+    bam_metrics$sample_name=sample_name[1]
     bam_metrics$reads_assigned_bins <- colSums(varbin_counts_df)
 
     # adding to metadata
@@ -215,46 +240,134 @@ runCountReads_amethyst <- function(obj,
     cna_obj <- runUmap(cna_obj)
     cna_obj <- findSuggestedK(cna_obj)
     S4Vectors::metadata(cna_obj)$suggestedK
-    cna_obj <- findClusters(cna_obj)
+
+    #add own clusters based on logr calling (based on hclust of logr heatmap)
+    #filters to top 20% of variable sites then clusters on those
+    # var_df <- t(cna_obj@assays@data$logr) %>% as.data.frame() %>%
+    #         summarise(across(.cols = everything(), .fns = var)) %>% 
+    #         pivot_longer(cols = everything()) %>% 
+    #         slice_max(n = round(nrow(cna_obj@assays@data$logr)/10), order_by = value) %>%
+    #         mutate(name=gsub("V","",name))
+
+    #dend <- t(cna_obj@assays@data$logr[row.names(cna_obj@assays@data$logr) %in% var_df$name,]) %>% 
+    #        dist(method="manhattan") %>% hclust(method="ward.D2") %>% as.dendrogram
+
+    dend <- t(cna_obj@assays@data$logr) %>% 
+            dist(method="manhattan") %>% hclust(method="ward.D2") %>% as.dendrogram
+    k_optimal=find_k(dend, krange = 2:10)
+    print(paste("optimal k value for cutting hclust:", k_optimal$k))
+    superclones=dendextend::cutree(dend,k=k_optimal$k+2)
+    subclones=dendextend::cutree(dend,k=k_optimal$k+5)
+    cna_obj@colData$subclones<-subclones[row.names(cna_obj@colData)]
+    cna_obj@colData$superclones<-superclones[row.names(cna_obj@colData)]
+
+    #define colors based on data
+    log_col=colorRamp2(c(-2,-1,0,1,2),
+                            c("darkblue","blue","white","red","darkred"))
+    cg_perc_col=colorRamp2(c(40,60,80,100),
+                            c("white","lightgreen","green","darkgreen"))
+    reads_col=colorRamp2(c(min(log10(log10(cna_obj@colData$unique_reads))),
+                            max(log10(log10(cna_obj@colData$unique_reads)))),
+                            c("white","black"))
+    superclone_col=setNames(nm=unique(as.character(cna_obj@colData$superclones)),
+                            brewer.pal(length(unique(as.character(cna_obj@colData$superclones))), "Pastel1"))
+    subclone_col=setNames(nm=unique(as.character(cna_obj@colData$subclones)),
+                            brewer.pal(length(unique(as.character(cna_obj@colData$subclones))), "Spectral"))
+    #plot heatmap
+    ha = rowAnnotation(
+        reads=log10(cna_obj@colData$unique_reads),
+        cg_perc=cna_obj@colData$mcg_pct,
+        celltype=cna_obj@colData$broad_celltype,
+        superclones=as.character(cna_obj@colData$superclones),
+        subclones=as.character(cna_obj@colData$subclones),
+        col= list(
+            celltype=celltype_col,
+            reads=reads_col,
+            cg_perc=cg_perc_col,
+            superclones=superclone_col,
+            subclones=subclone_col
+        ))
+
+    cyto_overlap<-GenomicRanges::findOverlaps(cna_obj@rowRanges,
+                                                makeGRangesFromDataFrame(cyto,keep=TRUE),
+                                                select="first")
+    cna_obj@rowRanges$stain <- cyto[cyto_overlap,]$stain
+
+    arm_col=c("p"="grey","q"="darkgrey")
+    band_col=c("acen"="#99746F","gneg"="white","gpos100"="black","gpos25"="lightgrey","gpos50"="grey","gpos75"="darkgrey","gvar"="#446879")
+
+    column_ha = HeatmapAnnotation(
+        arm = cna_obj@rowRanges$arm,
+        band = cna_obj@rowRanges$stain,
+        col=list(arm=arm_col,band=band_col))
+
+    plt<-Heatmap(
+        t(cna_obj@assays@data$logr),
+        left_annotation=ha,col=log_col,
+        row_split=as.character(cna_obj@colData$superclones),
+        show_column_names=FALSE,show_row_names=FALSE,
+        top_annotation=column_ha,cluster_columns=FALSE,cluster_column_slices=FALSE,column_split=seqnames(cna_obj@rowRanges),
+        name="logr")
+
+    pdf(paste0(output_directory,"/copykit.",sample_name[1],".",resolution,".pdf"),width=10)
+    print(plt)
+    dev.off()
+
+    print(paste("Plotted... ",paste0(output_directory,"/copykit.",sample_name[1],".",resolution,".pdf")))
     cna_obj <- calcConsensus(cna_obj)
     cna_obj <- runConsensusPhylo(cna_obj)
-
     plt_umap<-plotUmap(cna_obj,label="subclones")
-    logr_heatmap<-plotHeatmap(
-        cna_obj,
-        assay = "logr",
-        label = c('subclones','mcg_pct','plate_info','reads_assigned_bins','broad_celltype'),
-        genes = c("TP53", "BRAF", "MYC"),
-        order_cells = 'consensus_tree',
-        n_threads=cores)
-    segratio_heatmap<-plotHeatmap(
-        cna_obj,
-        assay = "segment_ratios",
-        label = c('subclones','mcg_pct','plate_info','reads_assigned_bins'),
-        genes = c("TP53", "BRAF", "MYC"),
-        order_cells = 'consensus_tree',
-        n_threads=cores)
-
-    pdf(paste0(output_directory,"/copykit.",sample_name,".",resolution,".pdf"))
-    print(plt_umap)
-    print(logr_heatmap)
-    print(segratio_heatmap)
-    dev.off()
-    print(paste("Plotted... ",paste0(output_directory,"/copykit.",sample_name,".",resolution,".pdf")))
-
-    saveRDS(cna_obj,file=paste0(output_directory,"/copykit",sample_name,".",resolution,".rds"))
+    saveRDS(cna_obj,file=paste0(output_directory,"/copykit",".",sample_name[1],".",resolution,".rds"))
     return(cna_obj)
 }
 
-
-sample_list<-sort(unique(obj@metadata$Sample))
-
-lapply(sample_list[4:length(sample_list)],function(x) runCountReads_amethyst(obj=obj,sample_name=x,resolution="220kb"))
-
-
+#running as a list like this so if one fails it will keep going
+runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS05T'),resolution='220kb')
+runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS07T'),resolution='220kb')
+runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS102T_24hTis'),resolution='220kb')
+runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS124T'),resolution='220kb')
+runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS22T'),resolution='220kb')
+runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS28T'),resolution='220kb')
+runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS32T'),resolution='220kb')
+runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS35T'),resolution='220kb')
+runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS41T'),resolution='220kb')
+runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS49T'),resolution='220kb')
+runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS52T'),resolution='220kb')
+runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS65T'),resolution='220kb')
+runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS66T'),resolution='220kb')
+runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS70T'),resolution='220kb')
+runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS74T'),resolution='220kb')
+runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS79T_24hTis_DCIS','BCMDCIS79T_24hTis_IDC'),resolution='220kb')
+runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS80T_24hTis'),resolution='220kb')
+runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS82T_24hTis'),resolution='220kb')
+runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS92T_24hTis'),resolution='220kb')
+runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS94T_24hTis'),resolution='220kb')
+runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS97T'),resolution='220kb')
+runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS99T'),resolution='220kb')
+runCountReads_amethyst(obj=obj,sample_name=c('BCMHBCA03R'),resolution='220kb')
+runCountReads_amethyst(obj=obj,sample_name=c('BCMHBCA04R'),resolution='220kb')
+runCountReads_amethyst(obj=obj,sample_name=c('BCMHBCA09R-3h'),resolution='220kb')
+runCountReads_amethyst(obj=obj,sample_name=c('BCMHBCA12R-3h'),resolution='220kb')
+runCountReads_amethyst(obj=obj,sample_name=c('BCMHBCA16R-3h'),resolution='220kb')
+runCountReads_amethyst(obj=obj,sample_name=c('BCMHBCA17R-3h'),resolution='220kb')
+runCountReads_amethyst(obj=obj,sample_name=c('BCMHBCA19R-4h'),resolution='220kb')
+runCountReads_amethyst(obj=obj,sample_name=c('BCMHBCA22R-4h'),resolution='220kb')
+runCountReads_amethyst(obj=obj,sample_name=c('BCMHBCA26L-24hTis-4h'),resolution='220kb')
+runCountReads_amethyst(obj=obj,sample_name=c('BCMHBCA29L-2h'),resolution='220kb')
+runCountReads_amethyst(obj=obj,sample_name=c('BCMHBCA38L-3h'),resolution='220kb')
+runCountReads_amethyst(obj=obj,sample_name=c('BCMHBCA83L-3h'),resolution='220kb')
+runCountReads_amethyst(obj=obj,sample_name=c('BCMHBCA85L-3h'),resolution='220kb')
+runCountReads_amethyst(obj=obj,sample_name=c('ECIS25T'),resolution='220kb')
+runCountReads_amethyst(obj=obj,sample_name=c('ECIS26T'),resolution='220kb')
+runCountReads_amethyst(obj=obj,sample_name=c('ECIS36T'),resolution='220kb')
+runCountReads_amethyst(obj=obj,sample_name=c('ECIS48T'),resolution='220kb')
+runCountReads_amethyst(obj=obj,sample_name=c('ECIS57T'),resolution='220kb')
 
 list.files(paste0(project_data_directory,"/copykit"))
+
+
 ```
+
 # Read all CopyKit RDS objects and plot together
 
 ```R
@@ -266,7 +379,7 @@ copykit_output<-list.files(path=paste0(project_data_directory,"/copykit"),
 #read in all meta data from copykit
 read_meta_copykit<-function(x){
     tmp<-readRDS(x)
-    meta<-as.data.frame(tmp@colData[c("sample_name","reads_assigned_bins","plate_info","subclones")])
+    meta<-as.data.frame(tmp@colData[c("sample_name","reads_assigned_bins","plate_info","subclones","broad_celltype")])
     return(meta)
 }
 cnv_meta<-do.call("rbind",lapply(copykit_output,read_meta_copykit))
@@ -306,7 +419,7 @@ cnv_genes_windows<-cnv_genes_windows[!duplicated(cnv_genes_windows$gene_name),] 
 cnv_genes_windows$cnv_gene_class<-unname(cnv_genes[match(cnv_genes_windows$gene_name, names(cnv_genes))]) #add amp/del
 
 cnv_genes_windows<-makeGRangesFromDataFrame(cnv_genes_windows,keep.extra.columns=TRUE) #make granges
-wind<-GenomicRanges::findOverlaps(windows,cnv_genes_windows,select="first") #do overlap to get window indexes
+wind<-GenomicRanges::findOverlaps(windows,cnv_genes_windows) #do overlap to get window indexes
 wind<-as.data.frame(wind)
 wind<-wind[!duplicated(wind$subjectHits),] #take first subject hit
 
@@ -323,11 +436,13 @@ hc = columnAnnotation(common_cnv = anno_mark(at = annot$window_loc,
                         labels_gp=gpar(col=annot$col)))
 
 hr = rowAnnotation(sample=cnv_meta$sample,
+                    celltype=cnv_meta$broad_celltype,
                     subclones=cnv_meta$subclones,
                     reads=anno_barplot(log10(cnv_meta$reads_assigned_bins)))
 
 #### CNV call output folder
-output_directory=paste0(dirname(getwd()),"/copykit")
+setwd(project_data_directory)
+output_directory=paste0(project_data_directory,"/copykit")
 
 pdf(paste0(output_directory,"/","all_met.cnv.heatmap.pdf"),height=90,width=40)
 Heatmap(t(cnv_logr),
@@ -353,11 +468,11 @@ print(paste0(output_directory,"/","all_met.cnv.heatmap.pdf"))
 ```R
 methyltree_output<-function(obj=obj,
                             sample_name="DCIS-41T",
-                            filt_min_pct=10,
-                            filt_max_pct=80,
+                            filt_min_pct=20,
+                            filt_max_pct=70,
                             threads=1){
         
-        output_directory=paste0(project_data_directory,"/methyltree/",sample_name)
+        output_directory=paste0(project_data_directory,"/methyltree/",sample_name[1])
         system(paste0("mkdir -p ",output_directory))
 
         obj_met<-subsetObject(obj, cells = row.names(obj@metadata[obj@metadata$sample %in% sample_name,]))
@@ -432,7 +547,7 @@ methyltree_output<-function(obj=obj,
     out_metadata$met_rate<-out_metadata$met_rate/100 #percentage to rate
 
     methyltree_input_file=paste(output_directory,
-        paste("methyltree",sample_name,"_methyltree_input.h5",sep="."),sep="/")
+        paste("methyltree.",sample_name[1],"_methyltree_input.h5",sep="."),sep="/")
     if(file.exists(methyltree_input_file)){
         system(paste0("rm -rf ",methyltree_input_file))
     }
@@ -441,11 +556,47 @@ methyltree_output<-function(obj=obj,
       h5write(out_metadata,file=methyltree_input_file,name="metadata")
     }
 
-lapply(unique(obj@metadata$sample),function(x) 
-methyltree_output(obj=obj,
-                   sample_name=x,
-                    filt_min_pct=10,
-                    filt_max_pct=80,
-                    threads=1))
+#making methyltree output
+#note i think some samples could use improvements on subclones, but for now just running
 
+methyltree_output(obj=obj,sample_name=c('BCMDCIS05T'),threads=1)
+methyltree_output(obj=obj,sample_name=c('BCMDCIS07T'),threads=1)
+methyltree_output(obj=obj,sample_name=c('BCMDCIS102T_24hTis'),threads=1)
+methyltree_output(obj=obj,sample_name=c('BCMDCIS124T'),threads=1)
+methyltree_output(obj=obj,sample_name=c('BCMDCIS22T'),threads=1)
+methyltree_output(obj=obj,sample_name=c('BCMDCIS28T'),threads=1)
+methyltree_output(obj=obj,sample_name=c('BCMDCIS32T'),threads=1)
+methyltree_output(obj=obj,sample_name=c('BCMDCIS35T'),threads=1)
+methyltree_output(obj=obj,sample_name=c('BCMDCIS41T'),threads=1)
+methyltree_output(obj=obj,sample_name=c('BCMDCIS49T'),threads=1)
+methyltree_output(obj=obj,sample_name=c('BCMDCIS52T'),threads=1)
+methyltree_output(obj=obj,sample_name=c('BCMDCIS65T'),threads=1)
+methyltree_output(obj=obj,sample_name=c('BCMDCIS66T'),threads=1)
+methyltree_output(obj=obj,sample_name=c('BCMDCIS70T'),threads=1)
+methyltree_output(obj=obj,sample_name=c('BCMDCIS74T'),threads=1)
+methyltree_output(obj=obj,sample_name=c('BCMDCIS79T_24hTis_DCIS','BCMDCIS79T_24hTis_IDC'),threads=1)
+methyltree_output(obj=obj,sample_name=c('BCMDCIS80T_24hTis'),threads=1)
+methyltree_output(obj=obj,sample_name=c('BCMDCIS82T_24hTis'),threads=1)
+methyltree_output(obj=obj,sample_name=c('BCMDCIS92T_24hTis'),threads=1)
+methyltree_output(obj=obj,sample_name=c('BCMDCIS94T_24hTis'),threads=1)
+methyltree_output(obj=obj,sample_name=c('BCMDCIS97T'),threads=1)
+methyltree_output(obj=obj,sample_name=c('BCMDCIS99T '),threads=1)
+methyltree_output(obj=obj,sample_name=c('BCMHBCA03R'),threads=1)
+methyltree_output(obj=obj,sample_name=c('BCMHBCA04R'),threads=1)
+methyltree_output(obj=obj,sample_name=c('BCMHBCA09R-3h'),threads=1)
+methyltree_output(obj=obj,sample_name=c('BCMHBCA12R-3h'),threads=1)
+methyltree_output(obj=obj,sample_name=c('BCMHBCA16R-3h'),threads=1)
+methyltree_output(obj=obj,sample_name=c('BCMHBCA17R-3h'),threads=1)
+methyltree_output(obj=obj,sample_name=c('BCMHBCA19R-4h'),threads=1)
+methyltree_output(obj=obj,sample_name=c('BCMHBCA22R-4h'),threads=1)
+methyltree_output(obj=obj,sample_name=c('BCMHBCA26L-24hTis-4h'),threads=1)
+methyltree_output(obj=obj,sample_name=c('BCMHBCA29L-2h'),threads=1)
+methyltree_output(obj=obj,sample_name=c('BCMHBCA38L-3h'),threads=1)
+methyltree_output(obj=obj,sample_name=c('BCMHBCA83L-3h'),threads=1)
+methyltree_output(obj=obj,sample_name=c('BCMHBCA85L-3h'),threads=1)
+methyltree_output(obj=obj,sample_name=c('ECIS25T'),threads=1)
+methyltree_output(obj=obj,sample_name=c('ECIS26T'),threads=1)
+methyltree_output(obj=obj,sample_name=c('ECIS36T'),threads=1)
+methyltree_output(obj=obj,sample_name=c('ECIS48T'),threads=1)
+methyltree_output(obj=obj,sample_name=c('ECIS57T'),threads=1)
 ```
