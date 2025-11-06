@@ -12,6 +12,7 @@ library(circlize)
 detach("package:GeneNMF",unload=TRUE)
 library(dendextend)
 library(RColorBrewer)
+library(ComplexHeatmap)
 
 #download cytoband data
 #system("wget -P /data/rmulqueen/projects/scalebio_dcis/ref https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/cytoBand.txt.gz ")
@@ -206,9 +207,8 @@ runCountReads_amethyst <- function(obj,
     # ADDING READS METRICS TO METADATA
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Sun Feb 14 20:55:24 2021
 
-
     # saving info and removing columns from list elements
-    bam_metrics <- obj_met[c("unique_reads","tss_enrich","mcg_pct","cg_cov","batch","plate_info","tgmt_well","i7_well","i5_well","broad_celltype")]
+    bam_metrics <- obj_met[c("unique_reads","tss_enrich","mcg_pct","cg_cov","batch","plate_info","tgmt_well","i7_well","i5_well","fine_celltype")]
 
     # making sure metrics match varbin_counts_df
     bam_metrics <- bam_metrics[good_cells,]
@@ -265,19 +265,21 @@ runCountReads_amethyst <- function(obj,
     log_col=colorRamp2(c(-2,-1,0,1,2),
                             c("darkblue","blue","white","red","darkred"))
     cg_perc_col=colorRamp2(c(40,60,80,100),
-                            c("white","lightgreen","green","darkgreen"))
-    reads_col=colorRamp2(c(min(log10(log10(cna_obj@colData$unique_reads))),
-                            max(log10(log10(cna_obj@colData$unique_reads)))),
+                            c("#4d2d18","#CABA9C","#4C6444","#102820"))
+    reads_col=colorRamp2(c(min(log10(cna_obj@colData$unique_reads)),
+                            max(log10(cna_obj@colData$unique_reads))),
                             c("white","black"))
+
     superclone_col=setNames(nm=unique(as.character(cna_obj@colData$superclones)),
-                            brewer.pal(length(unique(as.character(cna_obj@colData$superclones))), "Pastel1"))
+                            colorRampPalette(brewer.pal(9, "Pastel1"))(length(unique(as.character(cna_obj@colData$superclones)))))
     subclone_col=setNames(nm=unique(as.character(cna_obj@colData$subclones)),
-                            brewer.pal(length(unique(as.character(cna_obj@colData$subclones))), "Spectral"))
+                            colorRampPalette(brewer.pal(9, "Spectral"))(length(unique(as.character(cna_obj@colData$subclones)))))
+    
     #plot heatmap
     ha = rowAnnotation(
         reads=log10(cna_obj@colData$unique_reads),
         cg_perc=cna_obj@colData$mcg_pct,
-        celltype=cna_obj@colData$broad_celltype,
+        celltype=cna_obj@colData$fine_celltype,
         superclones=as.character(cna_obj@colData$superclones),
         subclones=as.character(cna_obj@colData$subclones),
         col= list(
@@ -309,7 +311,7 @@ runCountReads_amethyst <- function(obj,
         top_annotation=column_ha,cluster_columns=FALSE,cluster_column_slices=FALSE,column_split=seqnames(cna_obj@rowRanges),
         name="logr")
 
-    pdf(paste0(output_directory,"/copykit.",sample_name[1],".",resolution,".pdf"),width=10)
+    pdf(paste0(output_directory,"/copykit.",sample_name[1],".",resolution,".pdf"),width=20)
     print(plt)
     dev.off()
 
@@ -321,7 +323,6 @@ runCountReads_amethyst <- function(obj,
     return(cna_obj)
 }
 
-#running as a list like this so if one fails it will keep going
 runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS05T'),resolution='220kb')
 runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS07T'),resolution='220kb')
 runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS102T_24hTis'),resolution='220kb')
@@ -362,6 +363,8 @@ runCountReads_amethyst(obj=obj,sample_name=c('ECIS26T'),resolution='220kb')
 runCountReads_amethyst(obj=obj,sample_name=c('ECIS36T'),resolution='220kb')
 runCountReads_amethyst(obj=obj,sample_name=c('ECIS48T'),resolution='220kb')
 runCountReads_amethyst(obj=obj,sample_name=c('ECIS57T'),resolution='220kb')
+
+#assign aneuploidy based on CNV profiles.
 
 list.files(paste0(project_data_directory,"/copykit"))
 

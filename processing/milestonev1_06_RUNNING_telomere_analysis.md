@@ -61,20 +61,45 @@ telomere_meta$percent_telo<-telo[row.names(telomere_meta),]$percent_telo
 
 write.table(telomere_meta,col.names=T,row.names=T,
             file="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/telomere_fq/telomere_readCounts.summarized.tsv")
+telomere_meta<-read.table(file="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/telomere_fq/telomere_readCounts.summarized.tsv")
 
-plt_dat<-telomere_meta %>% dplyr::group_by(fine_celltype,Group) %>% dplyr::summarize(
-    telo_perc_fq_mean=mean(percent_telo,na.rm=T),
-    telo_perc_fq_sd=sd(percent_telo,na.rm=T),
-    cell_count=n(),
-    telo_count_fq_mean=mean(telomereReads_fq,na.rm=T),
-    telo_count_fq_sd=sd(telomereReads_fq,na.rm=T),
-    total_count_fq_mean=mean(totalReads_fq,na.rm=T),
-    total_count_fq_sd=sd(totalReads_fq,na.rm=T)) %>% as.data.frame()
+#set colors
+celltype_col=c(
+'peri'='#c1d552',
+'fibro1'='#7f1911',
+'fibro2'='#e791f9',
+'endo'='#f0b243',
+'endo2'='#d0bd4a',
+'tcell'='#2e3fa3',
+'bcell'='#00adea',
+'myeloid1'='#00a487',
+'myeloid2'='#006455',
+'basal'='#7200cc',
+'lumsec'='#af00af',
+'lumhr'='#d8007c',
+"MCF10A"="red",
+"MCF7"="red",
+"MDA-MB-231"="red")
 
-plt<-ggplot(plt_dat,aes(x=fine_celltype,y=telo_perc_fq_mean*100,fill=Group))+
-geom_bar(stat="identity",position=position_dodge())+
-theme_minimal()
+group_col=c("HBCA"="#c6d8e8",
+            "DCIS"="#8c86bc",
+            "DCIS/LCIS"="#bfda9f",
+            "IDC"="#e37f76")
+
+telomere_meta$Group<-factor(telomere_meta$Group,levels=names(group_col))
+telomere_meta$fine_celltype<-factor(telomere_meta$fine_celltype,levels=names(celltype_col))
+
+plt<-ggplot(telomere_meta,aes(x=fine_celltype,y=percent_telo*100,color=fine_celltype,fill=Group))+
+geom_boxplot(outlier.shape=NA)+scale_color_manual(values=celltype_col)+scale_fill_manual(values=group_col)+
+theme_minimal()+coord_cartesian(ylim = c(0, 5))
 ggsave(plt,width=10,file="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/telomere_fq/telomere_percCount.summarized.pdf")
 
+#plot celltypes by age 
+
+plt<-ggplot(telomere_meta[!is.na(telomere_meta$Age) & telomere_meta$Group!="DCIS/LCIS",],aes(x=Age,y=percent_telo*100,color=fine_celltype,fill=Group))+
+geom_point(size=0.5)+scale_color_manual(values=celltype_col)+scale_fill_manual(values=group_col)+
+theme_minimal()+coord_cartesian(ylim = c(0, 5))+facet_wrap(fine_celltype~Group,ncol=3)+geom_smooth(method='lm', formula= y~x)
+
+ggsave(plt,file="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/telomere_fq/telomere_percCount.age.pdf",height=20,width=10)
 ```
 

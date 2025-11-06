@@ -7,14 +7,19 @@ library(copykat)
 library(circlize)
 library(Seurat)
 library(ComplexHeatmap)
+library(dendextend)
+library(RColorBrewer)
 setwd("/data/rmulqueen/projects/scalebio_dcis/rna")
 obj<-readRDS("tenx_dcis.pf.rds")
+output_dir="/data/rmulqueen/projects/scalebio_dcis/rna"
+
+
 
 #copykat
 #make directory
-system(paste0("mkdir -p ","./copykat/"))
+system(paste0("mkdir -p ",paste0(output_dir,"/copykat/")))
 copykat_per_sample<-function(dat,sample_name="BCMDCIS80T"){
-  system(paste0("mkdir -p ",paste0("./copykat/",sample_name)))
+  system(paste0("mkdir -p ",paste0(output_dir,"/copykat/",sample_name)))
   dat<-subset(obj,sample==sample_name) 
   DefaultAssay(dat)<-"RNA" #using raw counts, and not SOUPX corrected counts for this
   norm_cells=setNames(dat@meta.data$fine_celltype,nm=row.names(dat@meta.data))
@@ -25,20 +30,54 @@ copykat_per_sample<-function(dat,sample_name="BCMDCIS80T"){
                           distance="euclidean", 
                           norm.cell.names=norm_cells,
                           output.seg="FLASE", 
-                          plot.genes="TRUE", 
-                          genome="hg20",n.cores=4) #hg20 is same as hg38
+                          plot.genes="FALSE", 
+                          genome="hg20",n.cores=20) #hg20 is same as hg38
   CNA.test <- data.frame(copykat.test$CNAmat)
   pred.test <- data.frame(copykat.test$prediction)
   cnv_col<-circlize::colorRamp2(colors=c("#002C3E", "#78BCC4", "#F7F8F3",  "#aa1407", "#440803"),breaks=c(-0.5,-0.25,0,0.25,0.5))
 
-  fine_celltype_annot=setNames(dat@meta.data$fine_celltype,nm=gsub(pattern="-",replacement=".",row.names(dat@meta.data)))
   broad_celltype_annot=setNames(dat@meta.data$broad_celltype,nm=gsub(pattern="-",replacement=".",row.names(dat@meta.data)))
 
+
+  dend <- t(CNA.test[,4:ncol(CNA.test)]) %>% 
+            dist(method="manhattan") %>% hclust(method="ward.D2") %>% as.dendrogram
+    k_optimal=find_k(dend, krange = 2:10)
+
+    print(paste("optimal k value for cutting hclust:", k_optimal$k))
+    superclones=dendextend::cutree(dend,k=k_optimal$k+2)
+    subclones=dendextend::cutree(dend,k=k_optimal$k+5)
+    names(subclones)<-gsub("[.]","-",names(subclones))
+    names(superclones)<-gsub("[.]","-",names(superclones))
+    copykat.test$prediction$subclones<-subclones[copykat.test$prediction$cell.names]
+    copykat.test$prediction$superclones<-superclones[copykat.test$prediction$cell.names]
+
+    superclone_col=setNames(nm=unique(as.character(copykat.test$prediction$superclones)),
+                            brewer.pal(length(unique(as.character(copykat.test$prediction$superclones))), "Pastel1"))
+    subclone_col=setNames(nm=unique(as.character(copykat.test$prediction$subclones)),
+                            brewer.pal(length(unique(as.character(copykat.test$prediction$subclones))), "Spectral"))
+    
+  celltype_col=c(
+  'perivasc'='#c1d552',
+  'vascular'='#d5a852',
+  'lymphatic'='#80d552',
+
+  'fibro'='#7f1911',
+  'endo'='#f0b243',
+
+  'tcell'='#2e3fa3',
+  'bcell'='#00adea',
+  'myeloid'='#00a487',
+  'plasma'='#006455',
+
+  'basal'='#7200cc',
+  'lumsec'='#af00af',
+  'lumhr'='#d8007c')
+
   row_annot = rowAnnotation(
-    fine_celltype = fine_celltype_annot[names(fine_celltype_annot) %in% row.names(t(CNA.test))],
-    broad_celltype = broad_celltype_annot[names(broad_celltype_annot) %in% row.names(t(CNA.test))])
-  pdf(copykat.test,paste0("./copykat/",sample_name,"/",sample_name,".copykat.heatmap.pdf"))
-  Heatmap(t(CNA.test[,4:ncol(CNA.test)]),
+    broad_celltype = broad_celltype_annot[names(broad_celltype_annot) %in% row.names(t(CNA.test))],
+    col=list(broad_celltype=celltype_col))
+
+  plt<-Heatmap(t(CNA.test[,4:ncol(CNA.test)]),
           cluster_columns=FALSE,
           left_annotation=row_annot,
           col=cnv_col,
@@ -46,13 +85,16 @@ copykat_per_sample<-function(dat,sample_name="BCMDCIS80T"){
           show_row_names=FALSE,
           cluster_rows=TRUE,
           show_column_names=FALSE)
+
+  pdf(copykat.test,paste0(output_dir,"/copykat/",sample_name,"/",sample_name,".copykat.heatmap.pdf"))
+  print(plt)
   dev.off()
-  saveRDS(copykat.test,paste0("./copykat/",sample_name,"/",sample_name,".copykat.rds"))
+
+  saveRDS(copykat.test,paste0(output_dir,"/copykat/",sample_name,"/",sample_name,".copykat.rds"))
 
 }
 
 copykat_per_sample(dat=obj,sample_name='BCMDCIS05T')
-#to run
 copykat_per_sample(dat=obj,sample_name='BCMDCIS07T')
 copykat_per_sample(dat=obj,sample_name='BCMDCIS102T-4h')
 copykat_per_sample(dat=obj,sample_name='BCMDCIS124T')
@@ -94,6 +136,8 @@ copykat_per_sample(dat=obj,sample_name='HBCA-83L')
 copykat_per_sample(dat=obj,sample_name='HBCA17T')
 copykat_per_sample(dat=obj,sample_name='IDC-79T')
 ```
+
+
 
 Set up infercnv with singularity
 ```bash
