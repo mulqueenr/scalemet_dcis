@@ -14,13 +14,6 @@ library(dendextend)
 library(RColorBrewer)
 library(ComplexHeatmap)
 
-#download cytoband data
-#system("wget -P /data/rmulqueen/projects/scalebio_dcis/ref https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/cytoBand.txt.gz ")
-#system("gzip -d /data/rmulqueen/projects/scalebio_dcis/ref/cytoBand.txt.gz")
-cyto=read.table(file="/data/rmulqueen/projects/scalebio_dcis/ref/cytoBand.txt",sep="\t")
-colnames(cyto)<-c("chr","start","end","band","stain")
-table(cyto$stain) #set colors for these
-
 #set colors
 celltype_col=c(
 'peri'='#c1d552',
@@ -48,7 +41,6 @@ obj<-readRDS(file="05_scaledcis.fine_celltype.amethyst.rds")
 
 #make output directory
 system(paste0("mkdir -p ",project_data_directory,"/copykit" ))
-system(paste0("mkdir -p ",project_data_directory,"/methyltree" ))
 
 read_scalebio_bam<-function(obj_met,x,sample_name){
     #scalebio pipeline outputs bam files as Tn5 wells. so multiple cell IDs are in a bam. this function splits out the bam to the query cellid
@@ -86,7 +78,9 @@ runCountReads_amethyst <- function(obj,
                                         "2.8Mb"),
                         remove_Y = TRUE,
                         min_bincount = 10,
-                        cores=100) {
+                        cores=100,
+                        subclone_addition=5,
+                        superclone_addition=2) {
     output_directory=paste0(project_data_directory,"/copykit/",sample_name[1])
     system(paste0("mkdir -p ",project_data_directory,"/copykit/",sample_name[1]))
 
@@ -241,23 +235,12 @@ runCountReads_amethyst <- function(obj,
     cna_obj <- findSuggestedK(cna_obj)
     S4Vectors::metadata(cna_obj)$suggestedK
 
-    #add own clusters based on logr calling (based on hclust of logr heatmap)
-    #filters to top 20% of variable sites then clusters on those
-    # var_df <- t(cna_obj@assays@data$logr) %>% as.data.frame() %>%
-    #         summarise(across(.cols = everything(), .fns = var)) %>% 
-    #         pivot_longer(cols = everything()) %>% 
-    #         slice_max(n = round(nrow(cna_obj@assays@data$logr)/10), order_by = value) %>%
-    #         mutate(name=gsub("V","",name))
-
-    #dend <- t(cna_obj@assays@data$logr[row.names(cna_obj@assays@data$logr) %in% var_df$name,]) %>% 
-    #        dist(method="manhattan") %>% hclust(method="ward.D2") %>% as.dendrogram
-
     dend <- t(cna_obj@assays@data$logr) %>% 
             dist(method="manhattan") %>% hclust(method="ward.D2") %>% as.dendrogram
     k_optimal=find_k(dend, krange = 2:10)
     print(paste("optimal k value for cutting hclust:", k_optimal$k))
-    superclones=dendextend::cutree(dend,k=k_optimal$k+2)
-    subclones=dendextend::cutree(dend,k=k_optimal$k+5)
+    superclones=dendextend::cutree(dend,k=k_optimal$k+superclone_addition)
+    subclones=dendextend::cutree(dend,k=k_optimal$k+subclone_addition)
     cna_obj@colData$subclones<-subclones[row.names(cna_obj@colData)]
     cna_obj@colData$superclones<-superclones[row.names(cna_obj@colData)]
 
@@ -368,10 +351,104 @@ runCountReads_amethyst(obj=obj,sample_name=c('ECIS57T'),resolution='220kb')
 
 list.files(paste0(project_data_directory,"/copykit"))
 
-
 ```
 
 # Read all CopyKit RDS objects and plot together
+Assign aneuploid and diploid clones, and subclones per sample
+
+```R
+
+copykit_output<-list.files(path=paste0(project_data_directory,"/copykit"),
+    recursive=TRUE,full.names=TRUE,pattern="*rds")
+
+assign_copykit_aneuploid_clonename<-function(sample_name,cancer_clones,split_on="superclones"){
+    tmp<-readRDS(paste0("/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/copykit/",sample_name,"/copykit.",sample_name,".220kb.rds"))
+    tmp@colData$ploidy<-"diploid"
+
+    if(length(cancer_clones)>0){
+        if(split_on=="subclones"){
+        tmp@colData$clones_split<-"subclones"
+        tmp@colData[tmp@colData$subclones %in% cancer_clones,]$ploidy<-"aneu"
+        tmp@colData$clonename<-unlist(
+            lapply(1:nrow(tmp@colData),
+            function(i) {
+                ifelse(tmp@colData[i,]$ploidy=="diploid","diploid",paste(sample_name,tmp@colData[i,]$subclones))}))
+        }else{
+        tmp@colData$clones_split<-"superclones"
+        tmp@colData[tmp@colData$superclones %in% cancer_clones,]$ploidy<-"aneu"
+        tmp@colData$clonename<-unlist(
+            lapply(1:nrow(tmp@colData),
+            function(i) {
+                ifelse(tmp@colData[i,]$ploidy=="diploid","diploid",paste(sample_name,tmp@colData[i,]$superclones,sep="_"))}))
+        }
+    } else {
+    tmp@colData$clones_split<-"all_diploid"
+    tmp@colData$clonename<-"diploid"
+    }
+    
+    saveRDS(tmp,file=paste0("/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/copykit/",sample_name,"/copykit.",sample_name,".220kb.rds"))
+}
+
+assign_copykit_aneuploid_clonename(sample_name="BCMDCIS05T",cancer_clones=c('3','4'))
+assign_copykit_aneuploid_clonename(sample_name='BCMDCIS07T',cancer_clones=c('4')) #check this one
+assign_copykit_aneuploid_clonename(sample_name='BCMDCIS102T_24hTis',cancer_clones=c('2'))
+assign_copykit_aneuploid_clonename(sample_name='BCMDCIS124T',cancer_clones=c('2','4'))
+assign_copykit_aneuploid_clonename(sample_name='BCMDCIS22T',cancer_clones=c('2'))
+#assign_copykit_aneuploid_clonename(sample_name='BCMDCIS28T',cancer_clones=c()) #not run
+#assign_copykit_aneuploid_clonename(sample_name='BCMDCIS32T',cancer_clones=c()) #not run
+assign_copykit_aneuploid_clonename(sample_name='BCMDCIS35T',cancer_clones=c('1','2','3','5','6','7','8','9'))
+assign_copykit_aneuploid_clonename(sample_name='BCMDCIS41T',cancer_clones=c('6','1','2','3','5')) #clone in diploid pop fixing
+#assign_copykit_aneuploid_clonename(sample_name='BCMDCIS49T',cancer_clones=c()) #not run
+assign_copykit_aneuploid_clonename(sample_name='BCMDCIS52T',cancer_clones=c('5','4','6'))
+assign_copykit_aneuploid_clonename(sample_name='BCMDCIS65T',split_on="subclones",cancer_clones=c('7')) 
+assign_copykit_aneuploid_clonename(sample_name='BCMDCIS66T',cancer_clones=c()) #need a rerun other obvious clones fixing
+assign_copykit_aneuploid_clonename(sample_name='BCMDCIS70T',cancer_clones=c('2','4'))
+assign_copykit_aneuploid_clonename(sample_name='BCMDCIS74T',cancer_clones=c('1','2','3','5','6','7','8','9','10','11'))
+assign_copykit_aneuploid_clonename(sample_name='BCMDCIS79T_24hTis_DCIS',cancer_clones=c('5','2','4'))
+assign_copykit_aneuploid_clonename(sample_name='BCMDCIS80T_24hTis',cancer_clones=c('3'))
+assign_copykit_aneuploid_clonename(sample_name='BCMDCIS82T_24hTis',cancer_clones=c('3','4'))
+assign_copykit_aneuploid_clonename(sample_name='BCMDCIS92T_24hTis',split_on="subclones",cancer_clones=c('4','3','5')) 
+assign_copykit_aneuploid_clonename(sample_name='BCMDCIS94T_24hTis',split_on="subclones",cancer_clones=c('4','3','6'))
+assign_copykit_aneuploid_clonename(sample_name='BCMDCIS97T',split_on="subclones",cancer_clones=c('6','2','5','7')) 
+assign_copykit_aneuploid_clonename(sample_name='BCMDCIS99T',cancer_clones=c('5')) 
+assign_copykit_aneuploid_clonename(sample_name='BCMHBCA03R',cancer_clones=c())
+assign_copykit_aneuploid_clonename(sample_name='BCMHBCA04R',cancer_clones=c()) #not found?
+assign_copykit_aneuploid_clonename(sample_name='BCMHBCA09R-3h',cancer_clones=c()) #not found?
+assign_copykit_aneuploid_clonename(sample_name='BCMHBCA12R-3h',cancer_clones=c()) #not found?
+assign_copykit_aneuploid_clonename(sample_name='BCMHBCA16R-3h',cancer_clones=c())
+assign_copykit_aneuploid_clonename(sample_name='BCMHBCA17R-3h',cancer_clones=c()) #not found?
+assign_copykit_aneuploid_clonename(sample_name='BCMHBCA19R-4h',cancer_clones=c())
+assign_copykit_aneuploid_clonename(sample_name='BCMHBCA22R-4h',cancer_clones=c())
+assign_copykit_aneuploid_clonename(sample_name='BCMHBCA26L-24hTis-4h',cancer_clones=c()) #maybe this one??
+assign_copykit_aneuploid_clonename(sample_name='BCMHBCA29L-2h',cancer_clones=c())
+assign_copykit_aneuploid_clonename(sample_name='BCMHBCA38L-3h',cancer_clones=c())
+assign_copykit_aneuploid_clonename(sample_name='BCMHBCA83L-3h',cancer_clones=c('10')) #this one 
+assign_copykit_aneuploid_clonename(sample_name='BCMHBCA85L-3h',cancer_clones=c())
+assign_copykit_aneuploid_clonename(sample_name='ECIS25T',cancer_clones=c('1','2','4','5','6'))
+assign_copykit_aneuploid_clonename(sample_name='ECIS26T',split_on="subclones",cancer_clones=c('1','3','4','5','6','7')) #sublcones
+assign_copykit_aneuploid_clonename(sample_name='ECIS36T',split_on="subclones",cancer_clones=c('1','2','4','5')) #subclones
+assign_copykit_aneuploid_clonename(sample_name='ECIS48T',cancer_clones=c('4'))
+#assign_copykit_aneuploid_clonename(sample_name='ECIS57T',cancer_clones=c()) #not run
+
+#read in all meta data from copykit, append to amethyst object
+read_meta_copykit<-function(x){
+    tmp<-readRDS(x)
+    meta<-as.data.frame(tmp@colData[c("sample_name","reads_assigned_bins","plate_info","superclones","subclones","ploidy","clonename","fine_celltype","clones_split")])
+    return(meta)
+}
+cnv_meta<-do.call("rbind",lapply(copykit_output,read_meta_copykit))
+
+obj@metadata$cnv_ploidy<-cnv_meta[row.names(obj@metadata),]$ploidy
+obj@metadata$cnv_superclones<-cnv_meta[row.names(obj@metadata),]$superclones
+obj@metadata$cnv_subclones<-cnv_meta[row.names(obj@metadata),]$subclones
+obj@metadata$cnv_clonename<-cnv_meta[row.names(obj@metadata),]$clonename
+obj@metadata$cnv_clones_split<-cnv_meta[row.names(obj@metadata),]$clones_split
+
+saveRDS(obj,file="06_scaledcis.cnv_clones.amethyst.rds")
+
+```
+
+Plot all clones together (with clustering for shared cross-patient cnvs)
 
 ```R
 library(ComplexHeatmap)
@@ -382,7 +459,7 @@ copykit_output<-list.files(path=paste0(project_data_directory,"/copykit"),
 #read in all meta data from copykit
 read_meta_copykit<-function(x){
     tmp<-readRDS(x)
-    meta<-as.data.frame(tmp@colData[c("sample_name","reads_assigned_bins","plate_info","subclones","broad_celltype")])
+    meta<-as.data.frame(tmp@colData[c("sample_name","reads_assigned_bins","plate_info","subclones","fine_celltype","clonename","ploidy")])
     return(meta)
 }
 cnv_meta<-do.call("rbind",lapply(copykit_output,read_meta_copykit))
@@ -398,8 +475,6 @@ cnv_logr<-do.call("cbind",lapply(copykit_output,read_logr_copykit))
 #get 220kb windows ranges
 copykit<-readRDS(copykit_output[1])
 windows<-copykit@rowRanges
-
-cnv_col<-c("0"="#002C3E", "0.5"="#78BCC4", "1"="#F7F8F3", "1.5"="#F7444E", "2"="#aa1407", "3"="#440803")
 
 #relevant CNV genes from curtis work
 #from https://www.nature.com/articles/s41416-024-02804-6#Sec20
@@ -433,15 +508,48 @@ annot<-data.frame(
 
 annot$col<-ifelse(annot$cnv_class=="amp","red","blue")
 
+cyto_overlap<-GenomicRanges::findOverlaps(cna_obj@rowRanges,
+                                            makeGRangesFromDataFrame(cyto,keep=TRUE),
+                                            select="first")
+cna_obj@rowRanges$stain <- cyto[cyto_overlap,]$stain
+
+arm_col=c("p"="grey","q"="darkgrey")
+band_col=c("acen"="#99746F","gneg"="white","gpos100"="black","gpos25"="lightgrey","gpos50"="grey","gpos75"="darkgrey","gvar"="#446879")
+
+column_ha = HeatmapAnnotation(
+                            arm = cna_obj@rowRanges$arm,
+                            band = cna_obj@rowRanges$stain,
+                            col=list(arm=arm_col,band=band_col))
+
 hc = columnAnnotation(common_cnv = anno_mark(at = annot$window_loc, 
                         labels = annot$gene,
                         which="column",side="bottom",
                         labels_gp=gpar(col=annot$col)))
 
-hr = rowAnnotation(sample=cnv_meta$sample,
-                    celltype=cnv_meta$broad_celltype,
-                    subclones=cnv_meta$subclones,
-                    reads=anno_barplot(log10(cnv_meta$reads_assigned_bins)))
+
+#define colors based on data
+log_col=colorRamp2(c(-2,-1,0,1,2),
+                        c("darkblue","blue","white","red","darkred"))
+
+sample_col=setNames(nm=unique(as.character(cnv_meta$sample)),
+                        colorRampPalette(brewer.pal(9, "Set1"))(length(unique(as.character(cnv_meta$sample)))))
+clone_names_col=setNames(nm=unique(as.character(cnv_meta$clonename)),
+                        colorRampPalette(brewer.pal(9, "Pastel1"))(length(unique(as.character(cnv_meta$clonename)))))
+ploidy_col=setNames(nm=unique(as.character(cnv_meta$ploidy)),
+                        colorRampPalette(brewer.pal(9, "Spectral"))(length(unique(as.character(cnv_meta$ploidy)))))
+
+#plot heatmap
+ha = rowAnnotation(
+    sample=cnv_meta$sample,
+    celltype=cnv_meta$fine_celltype,
+    ploidy=cnv_meta$ploidy,
+    clones=cnv_meta$clonenames,
+    col= list(
+        sample=sample_col,
+        celltype=celltype_col,
+        ploidy=ploidy_col,
+        clones=clone_names_col
+    ))
 
 #### CNV call output folder
 setwd(project_data_directory)
@@ -449,15 +557,16 @@ output_directory=paste0(project_data_directory,"/copykit")
 
 pdf(paste0(output_directory,"/","all_met.cnv.heatmap.pdf"),height=90,width=40)
 Heatmap(t(cnv_logr),
-  #col=cnv_col,
+  col=log_col,
   cluster_columns=FALSE,
   cluster_rows=TRUE,
   show_row_names = FALSE, row_title_rot = 0,
   show_column_names = FALSE,
   cluster_row_slices = TRUE,
   bottom_annotation=hc,
-  left_annotation=hr,
-  row_split=paste(cnv_meta$sample_name,cnv_meta$subclones),
+  top_annotation=column_ha,
+  left_annotation=ha,
+  row_split=cnv_meta$clonename,
   column_split=seqnames(windows),
   border = TRUE)
 dev.off()
@@ -465,141 +574,3 @@ print(paste0(output_directory,"/","all_met.cnv.heatmap.pdf"))
 
 ```
 
-
-# Output files for methyltree format
-
-```R
-methyltree_output<-function(obj=obj,
-                            sample_name="DCIS-41T",
-                            filt_min_pct=20,
-                            filt_max_pct=70,
-                            threads=1){
-        
-        output_directory=paste0(project_data_directory,"/methyltree/",sample_name[1])
-        system(paste0("mkdir -p ",output_directory))
-
-        obj_met<-subsetObject(obj, cells = row.names(obj@metadata[obj@metadata$sample %in% sample_name,]))
-        obj_met@metadata$methyltree_group<-"all"
-        obj_met@metadata$pass<-"TRUE"
-        #make 500bp windows with methylation percentages
-        methyltreewindows <- calcSmoothedWindows(obj_met, 
-                                            type = "CG", 
-                                            threads = threads,
-                                            step = 500,
-                                            smooth = 1,
-                                            index = "chr_cg",
-                                            groupBy = "methyltree_group", 
-                                            returnSumMatrix = TRUE, # save sum matrix for DMR analysis
-                                            returnPctMatrix = TRUE)
-        print(paste("Starting number of windows:",as.character(nrow(methyltreewindows[["pct_matrix"]]))))
-
-        methyltreewindows[["pct_matrix"]]<-methyltreewindows[["pct_matrix"]][methyltreewindows[["pct_matrix"]]$all>=filt_min_pct & methyltreewindows[["pct_matrix"]]$all<=filt_max_pct,]
-
-        #filter to windows to middling methylation values
-        print(paste("Filtering by m0 >=", as.character(filt_min_pct), "m1 <=", as.character(filt_max_pct),as.character(nrow(methyltreewindows[["pct_matrix"]]))))
-        
-        #merge windows that are touching
-        methyltreewindows<-reduce(GenomicRanges::makeGRangesFromDataFrame(methyltreewindows[["pct_matrix"]]))
-        print(paste("Filtered window count:",as.character(nrow(as.data.frame((methyltreewindows))))))
-        print(paste("Filtered window average width:",as.character(mean(width(methyltreewindows)))))
-        print(paste("Total genome covered:",as.character(sum(width(methyltreewindows))/1000000),"Mbp"))
-        #make a merged windows percentile matrix per cell for methyltree
-
-        methyltreeoutput<-makeWindows(obj_met,
-                    type = "CG", 
-                    metric = "percent", 
-                    bed = as.data.frame(methyltreewindows,col.names=NULL)[,1:3],
-                    threads = threads, 
-                    index = "chr_cg", 
-                    nmin = 1) 
-
-      print(paste("Mean percent cells covered per window:",
-            mean((rowSums(!is.na(methyltreeoutput))/ncol(methyltreeoutput))*100)))
-
-      print("Filtering to windows with >10% of cells with coverage")
-      methyltreeoutput<-methyltreeoutput[(rowSums(!is.na(methyltreeoutput))/ncol(methyltreeoutput)*100)>=10,]
-      methyltreewindows<-data.frame(do.call("rbind",strsplit(row.names(methyltreeoutput),"_")))
-
-      colnames(methyltreewindows)<-c("chr","start","end")
-      methyltreewindows<-GenomicRanges::makeGRangesFromDataFrame(methyltreewindows)
-      print(paste("Final Filtered window count:",as.character(nrow(as.data.frame((methyltreewindows))))))
-      print(paste("Final Filtered window average width:",as.character(mean(width(methyltreewindows)))))
-      print(paste("Final Total genome covered:",as.character(sum(width(methyltreewindows))/1000000),"Mbp"))
-
-      methyltreeoutput<-makeWindows(obj_met,
-                                    type = "CG", 
-                                    metric = "percent", 
-                                    bed = as.data.frame(methyltreewindows,col.names=NULL)[,1:3],
-                                    threads = threads, 
-                                    index = "chr_cg", 
-                                    nmin = 1) 
-
-      methyltreeoutput$genomic_region_id<-row.names(methyltreeoutput)
-
-      methyltreeoutput <- methyltreeoutput |> 
-          pivot_longer(
-          cols = !genomic_region_id, 
-          names_to = "cell_id",
-          values_to = "value",
-          values_drop_na = TRUE)
-
-    #make a metadata sheet with cluster info
-    out_metadata<-obj_met@metadata[,c("pass","fine_celltype","cg_cov","mcg_pct","subclones")]
-    colnames(out_metadata)<-c("HQ","celltype","nCG","met_rate","large_clone_id") #match names
-    out_metadata$sample<-row.names(out_metadata) #sample (cell) names
-    out_metadata$met_rate<-out_metadata$met_rate/100 #percentage to rate
-
-    methyltree_input_file=paste(output_directory,
-        paste("methyltree.",sample_name[1],"_methyltree_input.h5",sep="."),sep="/")
-    if(file.exists(methyltree_input_file)){
-        system(paste0("rm -rf ",methyltree_input_file))
-    }
-      h5createFile(file=methyltree_input_file)
-      h5write(methyltreeoutput,file=methyltree_input_file,name="data")
-      h5write(out_metadata,file=methyltree_input_file,name="metadata")
-    }
-
-#making methyltree output
-#note i think some samples could use improvements on subclones, but for now just running
-
-methyltree_output(obj=obj,sample_name=c('BCMDCIS05T'),threads=1)
-methyltree_output(obj=obj,sample_name=c('BCMDCIS07T'),threads=1)
-methyltree_output(obj=obj,sample_name=c('BCMDCIS102T_24hTis'),threads=1)
-methyltree_output(obj=obj,sample_name=c('BCMDCIS124T'),threads=1)
-methyltree_output(obj=obj,sample_name=c('BCMDCIS22T'),threads=1)
-methyltree_output(obj=obj,sample_name=c('BCMDCIS28T'),threads=1)
-methyltree_output(obj=obj,sample_name=c('BCMDCIS32T'),threads=1)
-methyltree_output(obj=obj,sample_name=c('BCMDCIS35T'),threads=1)
-methyltree_output(obj=obj,sample_name=c('BCMDCIS41T'),threads=1)
-methyltree_output(obj=obj,sample_name=c('BCMDCIS49T'),threads=1)
-methyltree_output(obj=obj,sample_name=c('BCMDCIS52T'),threads=1)
-methyltree_output(obj=obj,sample_name=c('BCMDCIS65T'),threads=1)
-methyltree_output(obj=obj,sample_name=c('BCMDCIS66T'),threads=1)
-methyltree_output(obj=obj,sample_name=c('BCMDCIS70T'),threads=1)
-methyltree_output(obj=obj,sample_name=c('BCMDCIS74T'),threads=1)
-methyltree_output(obj=obj,sample_name=c('BCMDCIS79T_24hTis_DCIS','BCMDCIS79T_24hTis_IDC'),threads=1)
-methyltree_output(obj=obj,sample_name=c('BCMDCIS80T_24hTis'),threads=1)
-methyltree_output(obj=obj,sample_name=c('BCMDCIS82T_24hTis'),threads=1)
-methyltree_output(obj=obj,sample_name=c('BCMDCIS92T_24hTis'),threads=1)
-methyltree_output(obj=obj,sample_name=c('BCMDCIS94T_24hTis'),threads=1)
-methyltree_output(obj=obj,sample_name=c('BCMDCIS97T'),threads=1)
-methyltree_output(obj=obj,sample_name=c('BCMDCIS99T '),threads=1)
-methyltree_output(obj=obj,sample_name=c('BCMHBCA03R'),threads=1)
-methyltree_output(obj=obj,sample_name=c('BCMHBCA04R'),threads=1)
-methyltree_output(obj=obj,sample_name=c('BCMHBCA09R-3h'),threads=1)
-methyltree_output(obj=obj,sample_name=c('BCMHBCA12R-3h'),threads=1)
-methyltree_output(obj=obj,sample_name=c('BCMHBCA16R-3h'),threads=1)
-methyltree_output(obj=obj,sample_name=c('BCMHBCA17R-3h'),threads=1)
-methyltree_output(obj=obj,sample_name=c('BCMHBCA19R-4h'),threads=1)
-methyltree_output(obj=obj,sample_name=c('BCMHBCA22R-4h'),threads=1)
-methyltree_output(obj=obj,sample_name=c('BCMHBCA26L-24hTis-4h'),threads=1)
-methyltree_output(obj=obj,sample_name=c('BCMHBCA29L-2h'),threads=1)
-methyltree_output(obj=obj,sample_name=c('BCMHBCA38L-3h'),threads=1)
-methyltree_output(obj=obj,sample_name=c('BCMHBCA83L-3h'),threads=1)
-methyltree_output(obj=obj,sample_name=c('BCMHBCA85L-3h'),threads=1)
-methyltree_output(obj=obj,sample_name=c('ECIS25T'),threads=1)
-methyltree_output(obj=obj,sample_name=c('ECIS26T'),threads=1)
-methyltree_output(obj=obj,sample_name=c('ECIS36T'),threads=1)
-methyltree_output(obj=obj,sample_name=c('ECIS48T'),threads=1)
-methyltree_output(obj=obj,sample_name=c('ECIS57T'),threads=1)
-```
