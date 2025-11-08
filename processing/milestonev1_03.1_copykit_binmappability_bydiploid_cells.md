@@ -1,6 +1,14 @@
 ```bash
 singularity shell --bind /data/rmulqueen/projects/scalebio_dcis ~/singularity/amethyst.sif
 ```
+Use Sherman to simulate reads
+https://github.com/FelixKrueger/Sherman
+Use read simulations to define the 220kb bin sizes
+Use diploid cells to blacklist regions beyond 3 SD from mean
+
+
+Rework code below.
+
 
 ## Finding expected reads per diploid bin
 
@@ -73,6 +81,7 @@ read_scalebio_bam<-function(obj_met,x,sample_name){
     return(input_bam)
 }
 
+output_directory<-paste0(project_data_directory,"/copykit")
 remove_Y = TRUE
 min_bincount = 10
 cores=100
@@ -263,7 +272,7 @@ cna_obj <- logNorm(cna_obj)
         col= list(
             celltype=celltype_col,
             reads=reads_col,
-            cg_perc=cg_perc_col,
+            cg_perc=cg_perc_col
         ))
 
     cyto_overlap<-GenomicRanges::findOverlaps(cna_obj@rowRanges,
@@ -282,62 +291,12 @@ cna_obj <- logNorm(cna_obj)
     plt<-Heatmap(
         t(cna_obj@assays@data$logr),
         left_annotation=ha,col=log_col,
-        row_split=as.character(cna_obj@colData$superclones),
         show_column_names=FALSE,show_row_names=FALSE,
         top_annotation=column_ha,cluster_columns=FALSE,cluster_column_slices=FALSE,column_split=seqnames(cna_obj@rowRanges),
         name="logr")
 
-    pdf(paste0(output_directory,"/copykit.",sample_name[1],".",resolution,".pdf"),width=20)
+    pdf(paste0(output_directory,"/copykit.",sample_name,".",resolution,".pdf"),width=20)
     print(plt)
     dev.off()
 
-    print(paste("Plotted... ",paste0(output_directory,"/copykit.",sample_name[1],".",resolution,".pdf")))
-    cna_obj <- calcConsensus(cna_obj)
-    cna_obj <- runConsensusPhylo(cna_obj)
-    plt_umap<-plotUmap(cna_obj,label="subclones")
     saveRDS(cna_obj,file=paste0(output_directory,"/copykit",".",sample_name[1],".",resolution,".rds"))
-    return(cna_obj)
-}
-
-runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS05T'),resolution='220kb')
-runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS07T'),resolution='220kb')
-runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS102T_24hTis'),resolution='220kb')
-runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS124T'),resolution='220kb')
-runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS22T'),resolution='220kb')
-runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS28T'),resolution='220kb')
-runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS32T'),resolution='220kb')
-runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS35T'),resolution='220kb')
-runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS41T'),resolution='220kb')
-runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS49T'),resolution='220kb')
-runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS52T'),resolution='220kb')
-runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS65T'),resolution='220kb')
-runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS66T'),resolution='220kb')
-runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS70T'),resolution='220kb')
-runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS74T'),resolution='220kb')
-runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS79T_24hTis_DCIS','BCMDCIS79T_24hTis_IDC'),resolution='220kb')
-runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS80T_24hTis'),resolution='220kb')
-runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS82T_24hTis'),resolution='220kb')
-runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS92T_24hTis'),resolution='220kb')
-runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS94T_24hTis'),resolution='220kb')
-runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS97T'),resolution='220kb')
-runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS99T'),resolution='220kb')
-runCountReads_amethyst(obj=obj,sample_name=c('BCMHBCA03R'),resolution='220kb')
-runCountReads_amethyst(obj=obj,sample_name=c('BCMHBCA04R'),resolution='220kb')
-runCountReads_amethyst(obj=obj,sample_name=c('BCMHBCA09R-3h'),resolution='220kb')
-runCountReads_amethyst(obj=obj,sample_name=c('BCMHBCA12R-3h'),resolution='220kb')
-runCountReads_amethyst(obj=obj,sample_name=c('BCMHBCA16R-3h'),resolution='220kb')
-runCountReads_amethyst(obj=obj,sample_name=c('BCMHBCA17R-3h'),resolution='220kb')
-runCountReads_amethyst(obj=obj,sample_name=c('BCMHBCA19R-4h'),resolution='220kb')
-runCountReads_amethyst(obj=obj,sample_name=c('BCMHBCA22R-4h'),resolution='220kb')
-runCountReads_amethyst(obj=obj,sample_name=c('BCMHBCA26L-24hTis-4h'),resolution='220kb')
-runCountReads_amethyst(obj=obj,sample_name=c('BCMHBCA29L-2h'),resolution='220kb')
-runCountReads_amethyst(obj=obj,sample_name=c('BCMHBCA38L-3h'),resolution='220kb')
-runCountReads_amethyst(obj=obj,sample_name=c('BCMHBCA83L-3h'),resolution='220kb')
-runCountReads_amethyst(obj=obj,sample_name=c('BCMHBCA85L-3h'),resolution='220kb')
-runCountReads_amethyst(obj=obj,sample_name=c('ECIS25T'),resolution='220kb')
-runCountReads_amethyst(obj=obj,sample_name=c('ECIS26T'),resolution='220kb')
-runCountReads_amethyst(obj=obj,sample_name=c('ECIS36T'),resolution='220kb')
-runCountReads_amethyst(obj=obj,sample_name=c('ECIS48T'),resolution='220kb')
-runCountReads_amethyst(obj=obj,sample_name=c('ECIS57T'),resolution='220kb')
-
-#assign aneuploidy based on CNV profiles.

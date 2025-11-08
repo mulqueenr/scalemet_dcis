@@ -80,7 +80,8 @@ runCountReads_amethyst <- function(obj,
                         min_bincount = 10,
                         cores=100,
                         subclone_addition=5,
-                        superclone_addition=2) {
+                        superclone_addition=2,
+                        clus_distance="euclidean") {
     output_directory=paste0(project_data_directory,"/copykit/",sample_name[1])
     system(paste0("mkdir -p ",project_data_directory,"/copykit/",sample_name[1]))
 
@@ -236,7 +237,7 @@ runCountReads_amethyst <- function(obj,
     S4Vectors::metadata(cna_obj)$suggestedK
 
     dend <- t(cna_obj@assays@data$logr) %>% 
-            dist(method="manhattan") %>% hclust(method="ward.D2") %>% as.dendrogram
+            dist(method=clus_distance) %>% hclust(method="ward.D2") %>% as.dendrogram
     k_optimal=find_k(dend, krange = 2:10)
     print(paste("optimal k value for cutting hclust:", k_optimal$k))
     superclones=dendextend::cutree(dend,k=k_optimal$k+superclone_addition)
@@ -314,11 +315,11 @@ runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS22T'),resolution='220kb')
 runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS28T'),resolution='220kb')
 runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS32T'),resolution='220kb')
 runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS35T'),resolution='220kb')
-runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS41T'),resolution='220kb')
+runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS41T'),resolution='220kb',superclone_addition=15)
 runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS49T'),resolution='220kb')
 runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS52T'),resolution='220kb')
 runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS65T'),resolution='220kb')
-runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS66T'),resolution='220kb')
+runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS66T'),resolution='220kb',superclone_addition=15)
 runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS70T'),resolution='220kb')
 runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS74T'),resolution='220kb')
 runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS79T_24hTis_DCIS','BCMDCIS79T_24hTis_IDC'),resolution='220kb')
@@ -346,6 +347,10 @@ runCountReads_amethyst(obj=obj,sample_name=c('ECIS26T'),resolution='220kb')
 runCountReads_amethyst(obj=obj,sample_name=c('ECIS36T'),resolution='220kb')
 runCountReads_amethyst(obj=obj,sample_name=c('ECIS48T'),resolution='220kb')
 runCountReads_amethyst(obj=obj,sample_name=c('ECIS57T'),resolution='220kb')
+
+#runCountReads rerun with euclidean clustering, get those aneuploid clones
+#rerun methyltree input and all cells heatmap
+#run subcluster for cancer and not for umaps
 
 #assign aneuploidy based on CNV profiles.
 

@@ -2,6 +2,9 @@
 ```bash
 singularity shell --bind /data/rmulqueen/projects/scalebio_dcis ~/singularity/amethyst.sif
 ```
+
+
+
 ```R
 library(copykat)
 library(circlize)
@@ -24,9 +27,9 @@ table(cyto$stain) #set colors for these
 system(paste0("mkdir -p ",paste0(output_dir,"/copykat/")))
 
 
-copykat_per_sample<-function(dat,sample_name="BCMDCIS80T"){
+copykat_per_sample<-function(obj,sample_name="BCMDCIS80T"){
   system(paste0("mkdir -p ",paste0(output_dir,"/copykat/",sample_name[1])))
-  dat<-subset(obj,sample %in% c(sample_name)) 
+  dat<-subset(obj,Sample %in% c(sample_name)) 
   DefaultAssay(dat)<-"RNA" #using raw counts, and not SOUPX corrected counts for this
   norm_cells=setNames(dat@meta.data$fine_celltype,nm=row.names(dat@meta.data))
   norm_cells<-names(norm_cells[!(norm_cells %in% c("lumhr"))]) #all nonlumhr are considered normal
@@ -60,7 +63,7 @@ copykat_per_sample<-function(dat,sample_name="BCMDCIS80T"){
     pred.test <- pred.test[cells_in,]
     
     #define colors based on data
-    log_col=colorRamp2(c(-0.5,-0.25,0,0.25,0.5),
+    log_col=colorRamp2(c(-1,-0.5,0,0.5,1),
                           c("darkblue","blue","white","red","darkred"))
 
     reads_col=colorRamp2(c(min(log10(read_counts)),
@@ -139,48 +142,50 @@ copykat_per_sample<-function(dat,sample_name="BCMDCIS80T"){
 
 }
 
-copykat_per_sample(dat=obj,sample_name=c('BCMDCIS05T'))
-copykat_per_sample(dat=obj,sample_name=c('BCMDCIS07T'))
-copykat_per_sample(dat=obj,sample_name=c('BCMDCIS102T-4h'))
-copykat_per_sample(dat=obj,sample_name=c('BCMDCIS124T'))
-copykat_per_sample(dat=obj,sample_name=c('BCMDCIS22T'))
-copykat_per_sample(dat=obj,sample_name=c('BCMDCIS28T'))
-copykat_per_sample(dat=obj,sample_name=c('BCMDCIS32T'))
-copykat_per_sample(dat=obj,sample_name=c('BCMDCIS35T'))
-copykat_per_sample(dat=obj,sample_name=c('BCMDCIS41T'))
-copykat_per_sample(dat=obj,sample_name=c('BCMDCIS49T'))
-copykat_per_sample(dat=obj,sample_name=c('BCMDCIS52T'))
-copykat_per_sample(dat=obj,sample_name=c('BCMDCIS65T'))
-copykat_per_sample(dat=obj,sample_name=c('BCMDCIS66T'))
-copykat_per_sample(dat=obj,sample_name=c('BCMDCIS70T'))
-copykat_per_sample(dat=obj,sample_name=c('BCMDCIS74T'))
-copykat_per_sample(dat=obj,sample_name=c('BCMDCIS80T'))
-copykat_per_sample(dat=obj,sample_name=c('BCMDCIS79T_24hTis_DCIS','BCMDCIS79T_24hTis_IDC'))
-copykat_per_sample(dat=obj,sample_name=c('BCMDCIS80T_24hTis'))
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS05T'))
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS07T'))
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS102T-4h'))
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS124T'))
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS22T'))
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS28T'))
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS32T'))
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS35T')) #rerun (check name)
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS41T'))
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS49T'))
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS52T'))
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS65T'))
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS66T'))
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS70T'))
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS74T'))
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS80T'))
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS79T_24hTis_DCIS','BCMDCIS79T_24hTis_IDC'))
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS80T_24hTis'))
 
-copykat_per_sample(dat=obj,sample_name=c('BCMDCIS82T-24hTis'))
-copykat_per_sample(dat=obj,sample_name=c('BCMDCIS92T_24hTis'))
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS82T-24hTis'))
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS92T_24hTis'))
 
-copykat_per_sample(dat=obj,sample_name=c('BCMDCIS94T-24hTis'))
-copykat_per_sample(dat=obj,sample_name=c('BCMDCIS97T'))
-copykat_per_sample(dat=obj,sample_name=c('BCMDCIS99T'))
-copykat_per_sample(dat=obj,sample_name=c('BCMHBCA03R'))
-copykat_per_sample(dat=obj,sample_name=c('BCMHBCA04R'))
-copykat_per_sample(dat=obj,sample_name=c('BCMHBCA09R-3h'))
-copykat_per_sample(dat=obj,sample_name=c('BCMHBCA12R-3h'))
-copykat_per_sample(dat=obj,sample_name=c('BCMHBCA16R-3h'))
-copykat_per_sample(dat=obj,sample_name=c('BCMHBCA17R-3h'))
-copykat_per_sample(dat=obj,sample_name=c('BCMHBCA22R-4h'))
-copykat_per_sample(dat=obj,sample_name=c('BCMHBCA26L-24hTis-4h'))
-copykat_per_sample(dat=obj,sample_name=c('BCMHBCA29L-2h'))
-copykat_per_sample(dat=obj,sample_name=c('BCMHBCA38L-3h'))
-copykat_per_sample(dat=obj,sample_name=c('BCMHBCA83L-3h'))
-copykat_per_sample(dat=obj,sample_name=c('BCMHBCA85L-3h'))
-copykat_per_sample(dat=obj,sample_name=c('ECIS25T'))
-copykat_per_sample(dat=obj,sample_name=c('ECIS26T'))
-copykat_per_sample(dat=obj,sample_name=c('ECIS36T'))
-copykat_per_sample(dat=obj,sample_name=c('ECIS48T'))
-copykat_per_sample(dat=obj,sample_name=c('ECIS57T'))
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS94T-24hTis'))
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS97T'))
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS99T'))
+copykat_per_sample(obj=obj,sample_name=c('BCMHBCA03R'))
+copykat_per_sample(obj=obj,sample_name=c('BCMHBCA04R'))
+copykat_per_sample(obj=obj,sample_name=c('BCMHBCA09R-3h'))
+copykat_per_sample(obj=obj,sample_name=c('BCMHBCA12R-3h'))
+copykat_per_sample(obj=obj,sample_name=c('BCMHBCA16R-3h'))
+copykat_per_sample(obj=obj,sample_name=c('BCMHBCA17R-3h'))
+copykat_per_sample(obj=obj,sample_name=c('BCMHBCA22R-4h'))
+copykat_per_sample(obj=obj,sample_name=c('BCMHBCA26L-24hTis-4h'))
+copykat_per_sample(obj=obj,sample_name=c('BCMHBCA29L-2h'))
+copykat_per_sample(obj=obj,sample_name=c('BCMHBCA38L-3h'))
+copykat_per_sample(obj=obj,sample_name=c('BCMHBCA83L-3h'))
+copykat_per_sample(obj=obj,sample_name=c('BCMHBCA85L-3h'))
+copykat_per_sample(obj=obj,sample_name=c('ECIS25T'))
+copykat_per_sample(obj=obj,sample_name=c('ECIS26T'))
+copykat_per_sample(obj=obj,sample_name=c('ECIS36T'))
+copykat_per_sample(obj=obj,sample_name=c('ECIS48T'))
+copykat_per_sample(obj=obj,sample_name=c('ECIS57T'))
+
+
 ```
 
 
