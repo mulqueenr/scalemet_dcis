@@ -46,7 +46,7 @@ copykat_per_sample<-function(obj,sample_name="BCMDCIS80T"){
   #filter CNA.test[] to where there are predictions.
 
   dend <- t(CNA.test[,4:ncol(CNA.test)]) %>% 
-            dist(method="manhattan") %>% hclust(method="ward.D2") %>% as.dendrogram
+            dist(method="euclidean") %>% hclust(method="ward.D2") %>% as.dendrogram
     k_optimal=find_k(dend, krange = 2:10)
 
     print(paste("optimal k value for cutting hclust:", k_optimal$k))
@@ -123,7 +123,7 @@ copykat_per_sample<-function(obj,sample_name="BCMDCIS80T"){
   plt<-Heatmap(
           t(CNA.test[,4:ncol(CNA.test)]),
           col=log_col,
-          clustering_distance_rows = "manhattan",
+          clustering_distance_rows = "euclidean",
           clustering_method_rows="ward.D2",
           cluster_columns=FALSE,
           left_annotation=ha,
@@ -149,7 +149,7 @@ copykat_per_sample(obj=obj,sample_name=c('BCMDCIS124T'))
 copykat_per_sample(obj=obj,sample_name=c('BCMDCIS22T'))
 copykat_per_sample(obj=obj,sample_name=c('BCMDCIS28T'))
 copykat_per_sample(obj=obj,sample_name=c('BCMDCIS32T'))
-copykat_per_sample(obj=obj,sample_name=c('BCMDCIS35T')) #rerun (check name)
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS35T')) 
 copykat_per_sample(obj=obj,sample_name=c('BCMDCIS41T'))
 copykat_per_sample(obj=obj,sample_name=c('BCMDCIS49T'))
 copykat_per_sample(obj=obj,sample_name=c('BCMDCIS52T'))

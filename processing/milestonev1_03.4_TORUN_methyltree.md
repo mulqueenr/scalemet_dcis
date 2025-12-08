@@ -1,3 +1,8 @@
+```bash
+singularity shell --bind /data/rmulqueen/projects/scalebio_dcis ~/singularity/methyltree.sif
+source activate
+```
+
 ```python
 import sys
 sys.path.append('/MethylTree') #load in methyltree module
@@ -14,19 +19,21 @@ import re
 #cs.settings.set_figure_params()
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-i', "--input",default="MDA-MB-231_methyltree_input.h5")  #description='sample name input (matching prefix to methyltree output from amethyst processing)'
+parser.add_argument('-i', "--input",default="BCMDCIS41T")  #description='sample name input (matching prefix to methyltree output from amethyst processing)'
 parser.add_argument('-c', "--cpu_cores",default="50")  #description='sample name input (matching prefix to methyltree output from amethyst processing)'
 
 args = parser.parse_args()
-in_dir= "./"
-os.chdir(in_dir)
+in_dir= "/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/methyltree/"
+os.chdir(in_dir+"/"+sample_name)
 in_dat=args.input
-sample_name=re.sub("_methyltree_input.h5", "", args.input) 
+sample_name=args.input
+in_dat=in_dir+"/"+sample_name+"/"+"methyltree."+sample_name+".methyltree_input.h5"
 
 print('Read in H5 Data') # 
 dat=pd.read_hdf(in_dat, key="data", mode='r')
 dat.rename(columns={'cell_id': 'index'}, inplace=True)
 df_out=dat.pivot(index='index',columns='genomic_region_id',values='value')
+
 adata=sc.AnnData(df_out) #This adata has not annotation yet. We will use the df_sample from raw_data folder to annotate this object later
 
 print('Read in metadata')
@@ -34,21 +41,23 @@ metadat=pd.read_hdf(in_dat, key="metadata", mode='r')
 metadat.to_csv("sample_sheet.tsv.gz",sep='\t',compression='gzip')
 
 print('Set up output directories')
-out_dir=sample_name+'_methyltree'+'/data'
-save_data_des=sample_name
+out_dir=os.getcwd()+"/methyltree_data"
+save_data_des="methyltree"
 clone_key='large_clone_id'
-data_des=sample_name
-figure_path=sample_name+'_methyltree'+'/figure'
+data_des=os.getcwd()
 data_path=os.getcwd()
+figure_path=os.getcwd()+"/methyltree_figure"
 os.makedirs(out_dir,exist_ok=True)
 os.makedirs(figure_path,exist_ok=True)
 df_sample=methyltree.hf.load_sample_info(data_path)
+df_sample.head()
+df_sample
 
 adata_final,stat_out=methyltree.analysis.comprehensive_lineage_analysis(
                                                         out_dir,data_path,save_data_des,clone_key,
                                                         adata_orig=adata,
                                                         clone_color_dict=None,
-                                                        heatmap_additional_key_list=['celltype'],
+                                                        heatmap_additional_key_list=['celltype','cnv_clonename'],
                                                         compute_similarity=True,
                                                         update_sample_info=True,
                                                         # correct the correlation bias
@@ -68,9 +77,9 @@ adata_final,stat_out=methyltree.analysis.comprehensive_lineage_analysis(
                                                         #perform_clone_inference=True,clone_inference_threshold=0.8,clone_inference_print=True,
                                                         perform_memory_analysis=True, save_adata=True,perform_depth_analysis=True,)
 
-methyltree.plotting.plot_similarity_heatmap_with_multiple_colorbars(adata_final,save_name="test.svg",additional_key_list=['celltype'],heatmap_vmax_percentile=99.9,heatmap_vmin_percentile=80,)
+methyltree.plotting.plot_similarity_heatmap_with_multiple_colorbars(adata_final,save_name=sample_name+".methyltree.svg",additional_key_list=['celltype'],heatmap_vmax_percentile=99.9,heatmap_vmin_percentile=80,)
 fig = plt1.get_figure()
-plt1.savefig("out.png") 
+plt1.savefig(sample_name+".methyltree.png") 
 
 methyltree.lineage.bootstrap_lineage_tree(adata_final,out_dir,
     save_data_des,
@@ -88,4 +97,5 @@ method='UPGMA'
 my_tree_path=f"{out_dir}/lineage_tree_{clone_key}_{save_data_des}_{method}_support.txt"
 methyltree.plotting.plot_tree_with_support(my_tree_path,leaf_name_map=None,figsize=(10,20))#leaf_name_map=lambda x: x.split('-')[-1],figsize=(20,50))
 plt.savefig(f'{figure_path}/{data_des}_lineage_tree_support.pdf')
+
 ```

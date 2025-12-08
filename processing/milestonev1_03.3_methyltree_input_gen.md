@@ -19,14 +19,14 @@ obj<-readRDS(file="06_scaledcis.cnv_clones.amethyst.rds")
 
 
 #make output directory
-system(paste0("mkdir -p ",project_data_directory,"/methyltree" ))
+system(paste0("mkdir -p ",project_data_directory,"/methyltree"))
 
 
 # Output files for methyltree format
 ```R
 
 methyltree_output<-function(obj=obj,
-                            sample_name="DCIS-41T",
+                            sample_name="BCMDCIS41T",
                             filt_min_pct=20,
                             filt_max_pct=70,
                             threads=1){
@@ -101,9 +101,10 @@ methyltree_output<-function(obj=obj,
 
     #make a metadata sheet with cluster info
     out_metadata<-obj_met@metadata[,c("pass","fine_celltype","cg_cov","mcg_pct","cnv_clonename")]
-    colnames(out_metadata)<-c("HQ","celltype","nCG","met_rate","large_clone_id") #match names
+    colnames(out_metadata)<-c("HQ","celltype","nCG","met_rate","cnv_clonename") #match names
     out_metadata$sample<-row.names(out_metadata) #sample (cell) names
     out_metadata$met_rate<-out_metadata$met_rate/100 #percentage to rate
+    out_metadata$large_clone_id<-as.numeric(as.factor(as.character(out_metadata$cnv_clonename))) #factorize clones (to run on methyltree)
 
     methyltree_input_file=paste(output_directory,
         paste("methyltree",sample_name[1],"methyltree_input.h5",sep="."),sep="/")

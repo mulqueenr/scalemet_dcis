@@ -117,7 +117,8 @@ celltype_col=c(
 
 'basal'='#7200cc',
 'lumsec'='#af00af',
-'lumhr'='#d8007c')
+'lumhr'='#d8007c',
+'cancer'="#DFFF00")
 
 #met cell counts
 met_count<-obj@metadata %>% as.data.frame() %>% dplyr::count(Sample, .drop=FALSE)
