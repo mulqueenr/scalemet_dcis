@@ -116,9 +116,6 @@ methyltree_output<-function(obj=obj,
       h5write(out_metadata,file=methyltree_input_file,name="metadata")
     }
 
-methyltree_output(obj=obj,sample_name=c('BCMDCIS41T'),threads=1)
-#starting with 41T because of clear subclone structure
-
 methyltree_output(obj=obj,sample_name=c('BCMDCIS05T'),threads=1)
 methyltree_output(obj=obj,sample_name=c('BCMDCIS07T'),threads=1)
 methyltree_output(obj=obj,sample_name=c('BCMDCIS102T_24hTis'),threads=1)
@@ -127,13 +124,14 @@ methyltree_output(obj=obj,sample_name=c('BCMDCIS22T'),threads=1)
 methyltree_output(obj=obj,sample_name=c('BCMDCIS28T'),threads=1)
 methyltree_output(obj=obj,sample_name=c('BCMDCIS32T'),threads=1)
 methyltree_output(obj=obj,sample_name=c('BCMDCIS35T'),threads=1)
+methyltree_output(obj=obj,sample_name=c('BCMDCIS41T'),threads=1)
 methyltree_output(obj=obj,sample_name=c('BCMDCIS49T'),threads=1)
 methyltree_output(obj=obj,sample_name=c('BCMDCIS52T'),threads=1)
 methyltree_output(obj=obj,sample_name=c('BCMDCIS65T'),threads=1)
 methyltree_output(obj=obj,sample_name=c('BCMDCIS66T'),threads=1)
 methyltree_output(obj=obj,sample_name=c('BCMDCIS70T'),threads=1)
 methyltree_output(obj=obj,sample_name=c('BCMDCIS74T'),threads=1)
-methyltree_output(obj=obj,sample_name=c('BCMDCIS79T_24hTis_DCIS','BCMDCIS79T_24hTis_IDC'),threads=1)
+methyltree_output(obj=obj,sample_name=c('BCMDCIS79T_24hTis_DCIS'),threads=1)
 methyltree_output(obj=obj,sample_name=c('BCMDCIS80T_24hTis'),threads=1)
 methyltree_output(obj=obj,sample_name=c('BCMDCIS82T_24hTis'),threads=1)
 methyltree_output(obj=obj,sample_name=c('BCMDCIS92T_24hTis'),threads=1)

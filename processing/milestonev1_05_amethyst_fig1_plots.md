@@ -13,7 +13,7 @@ merged_dat_folder="merged_data"
 wd=paste(sep="/",project_data_directory,merged_dat_folder)
 setwd(wd)
 
-obj<-readRDS(file="05_scaledcis.fine_celltype.amethyst.rds")
+obj<-readRDS(file="06_scaledcis.cnv_clones.amethyst.rds")
 rna<-readRDS("/data/rmulqueen/projects/scalebio_dcis/rna/tenx_dcis.pf.rds")
 table(rna@meta.data$sample) %in% table(obj@metadata$Sample)
 rna$original_rna_sample_name<-rna$sample

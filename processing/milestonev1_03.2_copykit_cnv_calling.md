@@ -349,7 +349,7 @@ runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS80T_24hTis'),resolution='22
 runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS82T_24hTis'),resolution='220kb')
 runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS92T_24hTis'),resolution='220kb')
 runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS94T_24hTis'),resolution='220kb')
-runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS97T'),resolution='220kb')
+runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS97T'),resolution='220kb',superclone_addition=15)
 runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS99T'),resolution='220kb')
 runCountReads_amethyst(obj=obj,sample_name=c('BCMHBCA03R'),resolution='220kb')
 runCountReads_amethyst(obj=obj,sample_name=c('BCMHBCA04R'),resolution='220kb')
@@ -459,7 +459,7 @@ assign_copykit_aneuploid_clonename<-function(sample_name,cancer_clones,split_on=
         top_annotation=column_ha,cluster_columns=FALSE,cluster_column_slices=FALSE,column_split=seqnames(tmp@rowRanges),
         name="logr")
 
-    pdf(paste0(output_directory,"/",sample_name,"/copykit.",sample_name,".",resolution,".cancerclone.pdf"),width=20)
+    pdf(paste0("/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/copykit/",sample_name,"/copykit.",sample_name,".220kb.","cancerclone.pdf"),width=20)
     print(plt)
     dev.off()
 
@@ -500,12 +500,16 @@ assign_copykit_aneuploid_clonename(sample_name='BCMDCIS74T',cancer_clones=c(
                                                                             'c5'='1',
                                                                             'c6'='10'))
 
-assign_copykit_aneuploid_clonename(sample_name='BCMDCIS79T_24hTis_DCIS',split_on='subclones',cancer_clones=c('c1'='6','c1'='4','c2'='2'))
+assign_copykit_aneuploid_clonename(sample_name='BCMDCIS79T_24hTis_DCIS',split_on='superclones',cancer_clones=c('c1'='6','c1'='4','c2'='2'))
 assign_copykit_aneuploid_clonename(sample_name='BCMDCIS80T_24hTis',cancer_clones=c('c1'='4'))
 assign_copykit_aneuploid_clonename(sample_name='BCMDCIS82T_24hTis',cancer_clones=c('c1'='3','c2'='4','c2'='2'))
 assign_copykit_aneuploid_clonename(sample_name='BCMDCIS92T_24hTis',cancer_clones=c('c1'='2')) 
 assign_copykit_aneuploid_clonename(sample_name='BCMDCIS94T_24hTis',split_on="subclones",cancer_clones=c('c1'='4','c1'='3'))
-assign_copykit_aneuploid_clonename(sample_name='BCMDCIS97T',split_on="subclones",cancer_clones=c('c1'='4','c1'='7','c1'='5','c1'='2','c1'='6')) 
+assign_copykit_aneuploid_clonename(sample_name='BCMDCIS97T',split_on="superclones",cancer_clones=c(
+                                                                            'c1'='14','c1'='7','c1'='16','c1'='4','c1'='15',
+                                                                            'c2'='9','c2'='5',
+                                                                            'c3'='10','c3'='2',
+                                                                            'c4'='8','c4'='13','c4'='12')) 
 assign_copykit_aneuploid_clonename(sample_name='BCMDCIS99T',cancer_clones=c('c1'='4')) 
 
 assign_copykit_aneuploid_clonename(sample_name='BCMHBCA03R',split_on="subclones",cancer_clones=c('c1'='5'))
@@ -568,7 +572,7 @@ library(ComplexHeatmap)
 copykit_output<-list.files(path=paste0(project_data_directory,"/copykit"),recursive=TRUE,full.names=TRUE,pattern="*rds")
 copykit_output<-copykit_output[!grepl(copykit_output,pattern="diploid")]
 cna_obj<-readRDS(copykit_output[1]) #just to grab row ranges
-
+output_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/copykit/"
 #read in all meta data from copykit
 read_meta_copykit<-function(x){
     tmp<-readRDS(x)
@@ -659,10 +663,10 @@ ha = rowAnnotation(
     ploidy=aneu_meta$ploidy,
     clones=aneu_meta$clonenames,
     col= list(
-        sample=sample_col,
-        celltype=celltype_col,
-        ploidy=ploidy_col,
-        clones=clone_names_col
+        #sample=sample_col,
+        celltype=celltype_col
+        #ploidy=ploidy_col,
+        #clones=clone_names_col
     ))
 
 pdf(paste0(output_directory,"/","aneuploid.cnv.heatmap.pdf"),height=90,width=40)
@@ -696,10 +700,10 @@ ha = rowAnnotation(
     ploidy=diploid_meta$ploidy,
     clones=diploid_meta$clonenames,
     col= list(
-        sample=sample_col,
-        celltype=celltype_col,
-        ploidy=ploidy_col,
-        clones=clone_names_col
+        #sample=sample_col,
+        celltype=celltype_col
+        #ploidy=ploidy_col,
+        #clones=clone_names_col
     ))
 
 pdf(paste0(output_directory,"/","diploid.cnv.heatmap.pdf"),height=90,width=40)
@@ -720,3 +724,6 @@ dev.off()
 print(paste0(output_directory,"/","diploid.cnv.heatmap.pdf"))
 
 ```
+
+
+#Run PCA on aneuploid cells plot feature loadings over genome

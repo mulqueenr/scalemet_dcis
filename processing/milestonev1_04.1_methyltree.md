@@ -19,6 +19,8 @@ import argparse
 import cospar as cs
 import re
 from collections import Counter
+from ete3 import Tree, PhyloTree
+from tqdm import tqdm
 
 #cs.settings.set_figure_params()
 
@@ -100,7 +102,6 @@ adata_final,stat_out=methyltree.analysis.comprehensive_lineage_analysis(
                                                         perform_memory_analysis=True, save_adata=True,perform_depth_analysis=True,)
 
 #optimize lineage tree
-from ete3 import Tree
 background_cutoff=0.8
 method='UPGMA'
 my_tree_path=f"{out_dir}/lineage_tree_{clone_key}_{save_data_des}_{method}_support.txt"
@@ -108,6 +109,28 @@ my_tree_path=f"{out_dir}/lineage_tree_{clone_key}_{save_data_des}_{method}_suppo
 with open(my_tree_path, "r") as f:
         my_tree = Tree(f.read(), support=True)
 
+
+t = PhyloTree(my_tree_path)
+
+from ete3 import ClusterTree
+
+
+# To obtain all the evolutionary events involving a given leaf node we
+# use get_my_evol_events method for a given cell
+matches = t.search_nodes(name="119-cancer-BCMDCIS41T_c5")
+human_seq = matches[0]
+# Obtains its evolutionary events
+events = human_seq.get_my_evol_events()
+
+# Alternatively, you can scan the whole tree topology
+events = t.get_descendant_evol_events()
+
+
+#https://etetoolkit.org/docs/latest/tutorial/tutorial_phylogeny.html#detecting-evolutionary-events
+
+
+
+```
 for leaf in my_tree.iter_leaves():
     leaf.name=leaf.name.split('-')[0]
 
@@ -142,7 +165,6 @@ for i in range(weight_matrix.shape[0]):
 ## perform optimization
 current_score = np.sum(X_similarity[order_x][:, order_x] * weight_matrix)
 result = []
-from tqdm import tqdm
 iterations=10000
 
 for j in tqdm(range(iterations)):
