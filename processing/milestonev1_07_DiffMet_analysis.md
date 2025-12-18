@@ -1,11 +1,24 @@
 ```bash
 singularity shell --bind /data/rmulqueen/projects/scalebio_dcis ~/singularity/amethyst.sif
+source activate
+#update data.table
 ```
 
-
+<!-- 
+```bash
+export PATH="/home/rmulqueen/.local/bin:$PATH"
+facet convert new_format.h5 old_format.h5
+```
+ -->
 ```R
+#install.packages("data.table")
+#ensure 0.9 version of amethyst
+#system('wget https://github.com/lrylaarsdam/amethyst/releases/download/v0.0.0.9000/amethyst_0.0.0.9000.tar.gz')
+#system('tar -xf amethyst_0.0.0.9000.tar.gz')
+#devtools::install("./amethyst")
 source("/data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/amethyst_custom_functions.R") #to load in
 set.seed(111)
+library(amethyst)
 options(future.globals.maxSize= 80000*1024^2) #80gb limit for parallelizing
 task_cpus=300
 project_data_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1"
@@ -14,7 +27,18 @@ wd=paste(sep="/",project_data_directory,merged_dat_folder)
 setwd(wd)
 obj<-readRDS(file="06_scaledcis.cnv_clones.amethyst.rds")
 
+
+
+#update h5 files for cells
+#h5_directory=paste0(project_data_directory,"/h5_files")
+#system(paste("mkdir",h5_directory))
+#for(i in unique(obj@h5paths$path)){
+#   system(paste0("facet convert ",paste0(h5_directory,"/",basename(i))," ",i))
+#}
+
+
 ```
+
 
 Running through all the 500bp window generation split by:
 - Celltype (fine_celltype)
@@ -40,10 +64,11 @@ system(paste("mkdir -p", dmr_outdir))
 #clones
 dmr_clones_outdir=paste(sep="/",dmr_outdir,"cnv_clones")
 system(paste("mkdir -p", dmr_clones_outdir))
-clone500bpwindows <- calcSmoothedWindows(obj, 
+
+clone500bpwindows <- amethyst::calcSmoothedWindows(obj, 
                                         type = "CG", 
-                                        threads = 10,
-                                        step = 500, # change to 500 for real data unless you have really low coverage
+                                        threads = 20,
+                                        step = 500,
                                         smooth = 3,
                                         genome = "hg38",
                                         index = "chr_cg",
@@ -57,7 +82,7 @@ dmr_celltype_outdir=paste(sep="/",dmr_outdir,"celltype")
 system(paste("mkdir -p", dmr_celltype_outdir))
 celltype500bpwindows <- calcSmoothedWindows(obj, 
                                         type = "CG", 
-                                        threads = 10,
+                                        threads = 1,
                                         step = 500, # change to 500 for real data unless you have really low coverage
                                         smooth = 3,
                                         genome = "hg38",
@@ -74,7 +99,7 @@ system(paste("mkdir -p", dmr_celltype_by_diag_outdir))
 obj@metadata$celltype_diag<-paste(sep="_",obj@metadata$Group,obj@metadata$fine_celltype)
 celltypediag500bpwindows <- calcSmoothedWindows(obj, 
                                         type = "CG", 
-                                        threads = 10,
+                                        threads = 1,
                                         step = 500, # change to 500 for real data unless you have really low coverage
                                         smooth = 3,
                                         genome = "hg38",

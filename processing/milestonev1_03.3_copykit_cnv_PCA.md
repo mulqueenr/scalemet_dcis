@@ -112,25 +112,28 @@ hc = columnAnnotation(common_cnv = anno_mark(at = annot$window_loc,
                         which="column",side="bottom",
                         labels_gp=gpar(col=annot$col)))
 
-#define colors based on data
-col=colorRamp2(log(c(0,0.02,0.04)),
-                        c("white","red","darkred"))
-
-
 #run PCA on cnv_logr
 library(umap)
 
+dat<-as.data.frame(t(cnv_logr))
+row.names(dat)<-1:nrow(dat)
+
+#select top 10% of genomic windows by variance
+dat<-dat[apply(dat, 2, var)>quantile(apply(dat, 2, var),0.90),]
+
 #PCA on windows to determine correlations and shared events
-pca_result <- prcomp(t(cnv_logr), center = FALSE, scale = FALSE)
+pca_result <- prcomp(dat, center = FALSE, scale = FALSE)
 
 #define PC cutoff by elbow
 plt<-ggplot()+geom_line(aes(y=pca_result$sdev[1:100],x=1:100))+theme_minimal()
 ggsave(paste0(output_directory,"/","cnv_loadings.elbowplot.pdf"))
 #i'm going to say 1:25
 
+#define colors based on data
+col=colorRamp2(log(c(0,0.02,0.04)),c("white","red","darkred"))
+
 pdf(paste0(output_directory,"/","cnv_loadings.heatmap.pdf"),height=20,width=40)
-Heatmap(t(pca_result$rotation[,1:25]),
-  col=col,
+Heatmap(scale(t(pca_result$rotation[,1:25])),
   cluster_columns=FALSE,
   cluster_rows=TRUE,
   show_row_names = TRUE, row_title_rot = 0,
