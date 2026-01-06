@@ -1,6 +1,6 @@
-```bash
-singularity shell --bind /data/rmulqueen/projects/scalebio_dcis ~/singularity/amethyst.sif
-```
+#```bash
+#singularity shell --bind /data/rmulqueen/projects/scalebio_dcis ~/singularity/amethyst.sif
+#```
 
 # Generate methyltree formatted input for each sample
 
@@ -28,16 +28,18 @@ system(paste0("mkdir -p ",project_data_directory,"/methyltree"))
 methyltree_output<-function(obj=obj,
                             sample_name="BCMDCIS41T",
                             filt_min_pct=20,
-                            filt_max_pct=70,
+                            filt_max_pct=80,
                             threads=1){
         
         output_directory=paste0(project_data_directory,"/methyltree/",sample_name[1])
         system(paste0("mkdir -p ",output_directory))
 
         obj_met<-subsetObject(obj, cells = row.names(obj@metadata[obj@metadata$sample %in% sample_name,]))
+        obj_met<-subsetObject(obj_met, cells = row.names(obj@metadata[obj@metadata$fine_celltype %in% c("cancer","lumhr","basal","lumsec"),]))
+
         obj_met@metadata$methyltree_group<-"all"
         obj_met@metadata$pass<-"TRUE"
-        #make 500bp windows with methylation percentages
+        #make 500bp windows with methylation percentages, this is just used to filter
         methyltreewindows <- calcSmoothedWindows(obj_met, 
                                             type = "CG", 
                                             threads = threads,

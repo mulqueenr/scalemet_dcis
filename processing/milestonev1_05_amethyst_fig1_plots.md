@@ -1,10 +1,10 @@
-```bash
-singularity shell --bind /data/rmulqueen/projects/scalebio_dcis ~/singularity/amethyst.sif
-```
-
+#```bash
+#singularity shell --bind /data/rmulqueen/projects/scalebio_dcis ~/singularity/amethyst.sif
+#```
+#using local install now
 
 ```R
-source("/data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/amethyst_custom_functions.R") #to load in
+#source("/data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/amethyst_custom_functions.R") #to load in
 set.seed(111)
 options(future.globals.maxSize= 80000*1024^2) #80gb limit for parallelizing
 task_cpus=300
@@ -39,6 +39,7 @@ saveRDS(rna,"/data/rmulqueen/projects/scalebio_dcis/rna/tenx_dcis.pf.rds")
 ####################################################
 #           Fig 1 Sample Heatmap                  #
 ###################################################
+library(ComplexHeatmap)
 met<-obj@metadata
 #summarize per sample (heatmap categorical)
 met<-met[!duplicated(met$Sample),]
