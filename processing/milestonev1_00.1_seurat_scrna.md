@@ -6,51 +6,52 @@ library(patchwork)
 setwd("/data/rmulqueen/projects/scalebio_dcis/rna")
 
 #named vectors of sample name (as they are in the methylation, combined with 10x cellranger output)
-rna_dat<-c('BCMDCIS102T_24hTis'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMDCIS102T_24hTis'
-'BCMDCIS124T'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMDCIS124T'
-'BCMDCIS05T'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMDCIS05T'
-'BCMDCIS07T'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMDCIS07T'
-'BCMDCIS22T'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMDCIS22T'
-'BCMDCIS28T'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMDCIS28T'
-'BCMDCIS32T'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMDCIS32T'
-'BCMDCIS35T'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMDCIS35T'
-'BCMDCIS41T'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMDCIS41T'
-'BCMDCIS49T'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMDCIS49T'
-'BCMDCIS52T'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMDCIS52T'
-'BCMDCIS65T'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMDCIS65T'
-'BCMDCIS66T'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMDCIS66T'
-'BCMDCIS70T'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMDCIS70T'
-'BCMDCIS74T'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMDCIS74T'
-'BCMDCIS79T_24hTis_DCIS'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMDCIS79T_24hTis_DCIS'
-'BCMDCIS79T_24hTis_IDC'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMDCIS79T_24hTis_IDC'
-'BCMDCIS80T_24hTis'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMDCIS80T_24hTis'
-'BCMDCIS82T_24hTis'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMDCIS82T_24hTis'
-'BCMDCIS92T_24hTis'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMDCIS92T_24hTis'
-'BCMDCIS94T_24hTis'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMDCIS94T_24hTis'
-'BCMDCIS97T'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMDCIS97T'
-'BCMDCIS99T'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMDCIS99T'
-'ECIS25T'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/ECIS25T'
-'ECIS26T'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/ECIS26T'
-'ECIS36T'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/ECIS36T'
-'ECIS48T'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/ECIS48T'
-'ECIS57T'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/ECIS57T'
-'BCMHBCA03R'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMHBCA03R'
-'BCMHBCA04R'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMHBCA04R'
-'BCMHBCA09R-3h'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMHBCA09R-3h'
-'BCMHBCA12R-3h'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMHBCA12R-3h'
-'BCMHBCA16R-3h'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMHBCA16R-3h'
-'BCMHBCA16R-3h-nuc'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMHBCA16R-3h-nuc'
-'BCMHBCA17R-3h'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMHBCA17R-3h'
-'BCMHBCA17R-3h-nuc'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMHBCA17R-3h-nuc'
-'BCMHBCA19R-4h'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMHBCA19R-4h'
-'BCMHBCA19R-4h-nuc'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMHBCA19R-4h-nuc'
-'BCMHBCA22R-4h'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMHBCA22R-4h'
-'BCMHBCA22R-4h-nuc'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMHBCA22R-4h-nuc'
-'BCMHBCA26L-24hTis-4h'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMHBCA26L-24hTis-4h'
-'BCMHBCA26L-24hTis-4h-nuc'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMHBCA26L-24hTis-4h-nuc'
-'BCMHBCA29L-2h'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMHBCA29L-2h'
-'BCMHBCA38L-3h'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMHBCA38L-3h'
-'BCMHBCA83L-3h'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMHBCA83L-3h'
+rna_dat<-c(
+'BCMDCIS05T'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMDCIS05T',
+'BCMDCIS07T'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMDCIS07T',
+'BCMDCIS102T_24hTis'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMDCIS102T_24hTis',
+'BCMDCIS124T'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMDCIS124T',
+'BCMDCIS22T'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMDCIS22T',
+'BCMDCIS28T'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMDCIS28T',
+'BCMDCIS32T'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMDCIS32T',
+'BCMDCIS35T'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMDCIS35T',
+'BCMDCIS41T'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMDCIS41T',
+'BCMDCIS49T'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMDCIS49T',
+'BCMDCIS52T'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMDCIS52T',
+'BCMDCIS65T'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMDCIS65T',
+'BCMDCIS66T'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMDCIS66T',
+'BCMDCIS70T'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMDCIS70T',
+'BCMDCIS74T'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMDCIS74T',
+'BCMDCIS79T_24hTis_DCIS'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMDCIS79T_24hTis_DCIS',
+'BCMDCIS79T_24hTis_IDC'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMDCIS79T_24hTis_IDC',
+'BCMDCIS80T_24hTis'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMDCIS80T_24hTis',
+'BCMDCIS82T_24hTis'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMDCIS82T_24hTis',
+'BCMDCIS92T_24hTis'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMDCIS92T_24hTis',
+'BCMDCIS94T_24hTis'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMDCIS94T_24hTis',
+'BCMDCIS97T'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMDCIS97T',
+'BCMDCIS99T'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMDCIS99T',
+'ECIS25T'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/ECIS25T',
+'ECIS26T'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/ECIS26T',
+'ECIS36T'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/ECIS36T',
+'ECIS48T'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/ECIS48T',
+'ECIS57T'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/ECIS57T',
+'BCMHBCA03R'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMHBCA03R',
+'BCMHBCA04R'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMHBCA04R',
+'BCMHBCA09R-3h'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMHBCA09R-3h',
+'BCMHBCA12R-3h'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMHBCA12R-3h',
+'BCMHBCA16R-3h'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMHBCA16R-3h',
+'BCMHBCA16R-3h-nuc'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMHBCA16R-3h-nuc',
+'BCMHBCA17R-3h'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMHBCA17R-3h',
+'BCMHBCA17R-3h-nuc'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMHBCA17R-3h-nuc',
+'BCMHBCA19R-4h'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMHBCA19R-4h',
+'BCMHBCA19R-4h-nuc'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMHBCA19R-4h-nuc',
+'BCMHBCA22R-4h'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMHBCA22R-4h',
+'BCMHBCA22R-4h-nuc'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMHBCA22R-4h-nuc',
+'BCMHBCA26L-24hTis-4h'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMHBCA26L-24hTis-4h',
+'BCMHBCA26L-24hTis-4h-nuc'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMHBCA26L-24hTis-4h-nuc',
+'BCMHBCA29L-2h'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMHBCA29L-2h',
+'BCMHBCA38L-3h'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMHBCA38L-3h',
+'BCMHBCA83L-3h'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMHBCA83L-3h',
 'BCMHBCA85L-3h'='/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output/BCMHBCA85L-3h')
 
 make_seurat_object<-function(x){
@@ -76,27 +77,57 @@ dat <- merge(out[[1]], y = as.list(out[2:length(out)]), project = "all_data")
 #following standard seurat intial processing
 dat[["percent.mt"]] <- PercentageFeatureSet(dat, pattern = "^MT-")
 dat <- subset(dat, subset = nFeature_RNA > 200 & nFeature_RNA < 10000 & percent.mt < 5)
+saveRDS(dat, file = "tenx_dcis.rds")
+```
 
-cluster_object<-function(obj=dat,dims=1:15,prefix="coarse_celltype",res=0.5){
-    obj <- NormalizeData(obj, normalization.method = "LogNormalize", scale.factor = 10000)
-    obj <- FindVariableFeatures(obj, selection.method = "vst", nfeatures = 2000)
-    obj <- ScaleData(obj, features = rownames(obj))
-    obj <- RunPCA(obj, features = VariableFeatures(object = obj))
-    plt<-ElbowPlot(obj)
-    ggsave(plt,file=paste("tenx_dcis","elbow",prefix,"sample.pdf",sep="."))
 
-    obj <- FindNeighbors(obj, dims = 1:15)
+```R
+library(Seurat)
+library(hdf5r)
+library(ggplot2)
+library(patchwork)
+setwd("/data/rmulqueen/projects/scalebio_dcis/rna")
+obj<-readRDS(file = "tenx_dcis.rds")
+
+#filtering to only cellular RNA for now
+#plot nuc vs cellular
+obj@meta.data$assay="cellular_RNA"
+obj@meta.data[endsWith(obj@meta.data$sample,suffix="nuc"),]$assay="nuclear_RNA"
+obj<-subset(obj,assay=="cellular_RNA")
+
+#library(future)
+#plan("multisession",workers = 100)
+#options(future.globals.maxSize= 80000*1024^2) #80gb limit for parallelizing
+
+prefix="coarse_celltype"
+obj <- NormalizeData(obj, normalization.method = "LogNormalize", scale.factor = 10000)
+obj <- FindVariableFeatures(obj, selection.method = "vst", nfeatures = 2000)
+obj <- ScaleData(obj, features = rownames(obj))
+obj <- RunPCA(obj, features = VariableFeatures(object = obj))
+plt<-ElbowPlot(obj)
+ggsave(plt,file=paste("tenx_dcis","elbow",prefix,"sample.pdf",sep="."))
+
+saveRDS(obj, file = "tenx_dcis.rds")
+
+cluster_object<-function(obj=obj,dims=1:15,prefix="stromal_fibro",res=0.2){
+    obj <- FindNeighbors(obj, dims = dims)
     obj <- FindClusters(obj, resolution = res)
-    obj <- RunUMAP(obj, dims = 1:15)
-
+    obj <- RunUMAP(obj, dims = dims)
     plt<-DimPlot(obj,group.by="sample",raster=F,label=TRUE)
     ggsave(plt,file=paste("tenx_dcis","umap",prefix,"sample.pdf",sep="."),width=30,height=20,limitsize=FALSE)
     plt<-DimPlot(obj,group.by="seurat_clusters",raster=F,label=TRUE)
     ggsave(plt,file=paste("tenx_dcis","umap",prefix,"clusters.pdf",sep="."),width=30,height=20,limitsize=FALSE)
-    return(obj)
 }
 
-obj<-cluster_object(obj=dat,dims=1:15,prefix="coarse_celltype")
+cluster_object(obj=obj,dims=1:15,prefix="stromal_fibro",res=0.2)
+
+
+#plot hbca vs cancer
+obj@meta.data$diag="cancer"
+obj@meta.data[grepl(obj@meta.data$sample,pattern="HBCA"),]$diag="HBCA"
+plt<-DimPlot(obj,group.by="diag",raster=F,label=TRUE)
+ggsave(plt,file=paste("tenx_dcis","umap",prefix,"diag.pdf",sep="."),width=30,height=20,limitsize=FALSE)
+
 
 #same cell markers list as used for methylation
 cell_markers<-list()
@@ -115,28 +146,29 @@ cell_markers[["plasma"]]=c("IGHA2","IGHA1","JCHAIN","IGHM","IGHG1","IGHG4","IGHG
 
 cell_markers[["adipo"]]=c("PDE3B","ACACB","WDPCP","PCDH9","CLSTN2","ADIPOQ","TRHDE")
 
-#looks to me like all clusters 17 and up are doublets
-plt<-DotPlot(dat, features = cell_markers, group.by = "seurat_clusters",cluster.idents=TRUE) + RotatedAxis()
+plt<-DotPlot(obj, features = cell_markers, group.by = "seurat_clusters",cluster.idents=TRUE) + RotatedAxis()
 ggsave(plt,file="tenx_dcis.coarse_celltype.dotplot.pdf",width=20,height=20,limitsize=FALSE)
 
-dat@meta.data$coarse_celltype<-"suspected_doublet" #18, 19, 20, 21, 22, 23
-dat@meta.data[dat@meta.data$seurat_clusters %in% c("3","6","7","11"),]$coarse_celltype<-"lumhr"
-dat@meta.data[dat@meta.data$seurat_clusters %in% c("2"),]$coarse_celltype<-"basal"
-dat@meta.data[dat@meta.data$seurat_clusters %in% c("8"),]$coarse_celltype<-"lumsec"
+#pretty much everything over 16 is suspected double
+obj@meta.data$coarse_celltype<-"suspected_doublet" 
+obj@meta.data[obj@meta.data$seurat_clusters %in% c("5","3","14","15","17"),]$coarse_celltype<-"lumhr"
+obj@meta.data[obj@meta.data$seurat_clusters %in% c("2","11"),]$coarse_celltype<-"basal"
+obj@meta.data[obj@meta.data$seurat_clusters %in% c("9","19","10"),]$coarse_celltype<-"lumsec"
 
-dat@meta.data[dat@meta.data$seurat_clusters %in% c("1","9","15"),]$coarse_celltype<-"fibro"
-dat@meta.data[dat@meta.data$seurat_clusters %in% c("4","14","17"),]$coarse_celltype<-"endo"
-dat@meta.data[dat@meta.data$seurat_clusters %in% c("5"),]$coarse_celltype<-"perivasc"
+obj@meta.data[obj@meta.data$seurat_clusters %in% c("8","1","13"),]$coarse_celltype<-"fibro" #13 suspected CAFs
+obj@meta.data[obj@meta.data$seurat_clusters %in% c("4","23","24"),]$coarse_celltype<-"endo"
+obj@meta.data[obj@meta.data$seurat_clusters %in% c("6"),]$coarse_celltype<-"perivasc"
 
-dat@meta.data[dat@meta.data$seurat_clusters %in% c("0"),]$coarse_celltype<-"tcell"
-dat@meta.data[dat@meta.data$seurat_clusters %in% c("16"),]$coarse_celltype<-"bcell"
-dat@meta.data[dat@meta.data$seurat_clusters %in% c("10","13"),]$coarse_celltype<-"myeloid"
-dat@meta.data[dat@meta.data$seurat_clusters %in% c("12"),]$coarse_celltype<-"plasma"
+obj@meta.data[obj@meta.data$seurat_clusters %in% c("0"),]$coarse_celltype<-"tcell"
+obj@meta.data[obj@meta.data$seurat_clusters %in% c("12"),]$coarse_celltype<-"bcell"
+obj@meta.data[obj@meta.data$seurat_clusters %in% c("7","28","18"),]$coarse_celltype<-"myeloid"
+obj@meta.data[obj@meta.data$seurat_clusters %in% c("16"),]$coarse_celltype<-"plasma"
 
-plt<-DimPlot(dat,group.by="coarse_celltype",raster=F)
+plt<-DimPlot(obj,group.by="coarse_celltype",raster=F)
 ggsave(plt,file="tenx_dcis.umap.coarse_celltype.pdf",width=20,height=20,limitsize=FALSE)
-saveRDS(dat, file = "tenx_dcis.rds")
+saveRDS(obj, file = "tenx_dcis.rds")
 
+#some more umap groupings look like doublets to filter more during compartment fine celltyping
 
 ```
 
@@ -144,7 +176,9 @@ saveRDS(dat, file = "tenx_dcis.rds")
 
 ## Fibro
 ```R
-dat_sub<-subset(dat,coarse_celltype %in% c("fibro"))
+
+
+dat_sub<-subset(obj,coarse_celltype %in% c("fibro"))
 dat_sub<-cluster_object(obj=dat_sub,dims=1:15,prefix="stromal_fibro",res=0.2)
 
 stromal_markers<-list()
@@ -177,11 +211,10 @@ ggsave(plt_dim+plt+plot_layout(design=layout),file="tenx_dcis.stromal.fibro.fine
 
 #labelling fibro subtypes
 dat_sub@meta.data$fine_celltype<-"suspected_doublet"
-dat_sub@meta.data[dat_sub@meta.data$stromal_fibro_subclusters %in% c("0","6"),]$fine_celltype<-"fibro_major"
-dat_sub@meta.data[dat_sub@meta.data$stromal_fibro_subclusters %in% c("1"),]$fine_celltype<-"fibro_prematrix"
-dat_sub@meta.data[dat_sub@meta.data$stromal_fibro_subclusters %in% c("2","3","7","8"),]$fine_celltype<-"fibro_CAF"
-dat_sub@meta.data[dat_sub@meta.data$stromal_fibro_subclusters %in% c("5"),]$fine_celltype<-"fibro_matrix"
-dat_sub@meta.data[dat_sub@meta.data$stromal_fibro_subclusters %in% c("4"),]$fine_celltype<-"fibro_SFRP4"
+dat_sub@meta.data[dat_sub@meta.data$stromal_fibro_subclusters %in% c("1","4"),]$fine_celltype<-"fibro_major"
+dat_sub@meta.data[dat_sub@meta.data$stromal_fibro_subclusters %in% c("0"),]$fine_celltype<-"fibro_prematrix"
+dat_sub@meta.data[dat_sub@meta.data$stromal_fibro_subclusters %in% c("2"),]$fine_celltype<-"fibro_CAF"
+dat_sub@meta.data[dat_sub@meta.data$stromal_fibro_subclusters %in% c("3"),]$fine_celltype<-"fibro_matrix"
 plt_dim<-DimPlot(dat_sub,group.by=c("stromal_fibro_subclusters","fine_celltype"),label=TRUE)
 ggsave(plt_dim,file="tenx_dcis.stromal.fibro.fine_celltype.umap.pdf",width=8)
 

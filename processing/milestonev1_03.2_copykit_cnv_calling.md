@@ -1,6 +1,6 @@
-```bash
-singularity shell --bind /data/rmulqueen/projects/scalebio_dcis ~/singularity/amethyst.sif
-```
+#```bash
+#singularity shell --bind /data/rmulqueen/projects/scalebio_dcis ~/singularity/amethyst.sif
+#```
 
 # Generate CopyKit for each sample
 
@@ -9,10 +9,10 @@ source("/data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/amethyst_
 library(Rsamtools)
 library(copykit)
 library(circlize)
-detach("package:GeneNMF",unload=TRUE)
 library(dendextend)
 library(RColorBrewer)
 library(ComplexHeatmap)
+library(parallel)
 
 #set colors
 celltype_col=c(
@@ -98,7 +98,7 @@ runCountReads_amethyst <- function(obj,
     output_directory=paste0(project_data_directory,"/copykit/",sample_name[1])
     system(paste0("mkdir -p ",project_data_directory,"/copykit/",sample_name[1]))
 
-    resolution <- match.arg(resolution)
+    #resolution <- match.arg(resolution)
     #resolution="220kb"
 
     # bindings for NSE and data
@@ -329,7 +329,8 @@ runCountReads_amethyst <- function(obj,
     return(cna_obj)
 }
 
-runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS05T'),resolution='220kb')
+#ran first at 220kb, now trying 280kb
+runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS05T'),resolution='280kb')
 runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS07T'),resolution='220kb')
 runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS102T_24hTis'),resolution='220kb')
 runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS124T'),resolution='220kb')
@@ -375,6 +376,21 @@ runCountReads_amethyst(obj=obj,sample_name=c('ECIS57T'),resolution='220kb') #41 
 Assign aneuploid and diploid clones, and subclones per sample
 
 ```R
+library(copykit)
+library(ComplexHeatmap)
+library(circlize)
+library(RColorBrewer)
+
+
+
+#read in cyto info
+cyto=read.table(file="/data/rmulqueen/projects/scalebio_dcis/ref/cytoBand.txt",sep="\t")
+colnames(cyto)<-c("chr","start","end","band","stain")
+cyto$arm<-substring(cyto$band, 1, 1)
+cyto<-cyto[!is.na(cyto$band),]
+cyto<-cyto[cyto$chr %in% c(paste0("chr",1:22),"chrX"),]
+table(cyto$stain) #set colors for these
+
 
 copykit_output<-list.files(path=paste0(project_data_directory,"/copykit/"),recursive=TRUE,full.names=TRUE,pattern=".220kb.rds")
 #remove diploid cell call rds used for bin correction
@@ -382,8 +398,8 @@ copykit_output<-copykit_output[!grepl(copykit_output,pattern="diploid")]
 
 #make clones a named list to collapse overclustering or low cell counts/cluster
 
-assign_copykit_aneuploid_clonename<-function(sample_name,cancer_clones,split_on="superclones"){
-    tmp<-readRDS(paste0("/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/copykit/",sample_name,"/copykit.",sample_name,".220kb.rds"))
+assign_copykit_aneuploid_clonename<-function(sample_name,cancer_clones,split_on="superclones",resolution='220kb'){
+    tmp<-readRDS(paste0("/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/copykit/",sample_name,"/copykit.",sample_name,".",resolution,".rds"))
     tmp@colData$ploidy<-"diploid"
 
     if(length(cancer_clones)>0){
@@ -405,8 +421,8 @@ assign_copykit_aneuploid_clonename<-function(sample_name,cancer_clones,split_on=
 
         }
     #define colors based on data
-    #updated to be -3 to 3 instead of -2 to 2
-    log_col=colorRamp2(c(-1,-0.5,0,0.5,1), 
+    #updated to be -4 to 4 instead of -2 to 2
+    log_col=colorRamp2(c(-4,-2,0,2,4), 
                             c("darkblue","plum","white","tomato","darkred"))
     cg_perc_col=colorRamp2(c(40,60,80,100),
                             c("#4d2d18","#CABA9C","#4C6444","#102820"))
@@ -459,14 +475,14 @@ assign_copykit_aneuploid_clonename<-function(sample_name,cancer_clones,split_on=
         top_annotation=column_ha,cluster_columns=FALSE,cluster_column_slices=FALSE,column_split=seqnames(tmp@rowRanges),
         name="logr")
 
-    pdf(paste0("/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/copykit/",sample_name,"/copykit.",sample_name,".220kb.","cancerclone.pdf"),width=20)
+    pdf(paste0("/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/copykit/",sample_name,"/copykit.",sample_name,".",resolution,".cancerclone.pdf"),width=20)
     print(plt)
     dev.off()
 
-    saveRDS(tmp,file=paste0("/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/copykit/",sample_name,"/copykit.",sample_name,".220kb.rds"))
+    saveRDS(tmp,file=paste0("/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/copykit/",sample_name,"/copykit.",sample_name,".",resolution,".rds"))
 }
 
-assign_copykit_aneuploid_clonename(sample_name="BCMDCIS05T",cancer_clones=c("c1"='3',"c2"='4'))
+assign_copykit_aneuploid_clonename(sample_name="BCMDCIS05T",cancer_clones=c("c1"='3',"c2"='4'),resolution="280kb")
 assign_copykit_aneuploid_clonename(sample_name='BCMDCIS07T',cancer_clones=c()) #all diploid
 assign_copykit_aneuploid_clonename(sample_name='BCMDCIS102T_24hTis',cancer_clones=c("c1"='3'))
 assign_copykit_aneuploid_clonename(sample_name='BCMDCIS124T',cancer_clones=c("c1="='2',"c2"='4'))
@@ -568,13 +584,29 @@ Plot all clones together (with clustering for shared cross-patient cnvs)
 
 ```R
 library(ComplexHeatmap)
+library(copykit)
+library(circlize)
+library(RColorBrewer)
+library(dplyr)
+#set environment and read in data
+set.seed(111)
+options(future.globals.maxSize= 80000*1024^2) #80gb limit for parallelizing
+task_cpus=300
 
-copykit_output<-list.files(path=paste0(project_data_directory,"/copykit"),recursive=TRUE,full.names=TRUE,pattern="*rds")
+project_data_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1"
+merged_dat_folder="merged_data"
+wd=paste(sep="/",project_data_directory,merged_dat_folder)
+setwd(wd)
+obj<-readRDS(file="06_scaledcis.cnv_clones.amethyst.rds")
+
+copykit_output<-list.files(path=paste0(project_data_directory,"/copykit"),recursive=TRUE,full.names=TRUE,pattern="*220kb.rds")
 copykit_output<-copykit_output[!grepl(copykit_output,pattern="diploid")]
 cna_obj<-readRDS(copykit_output[1]) #just to grab row ranges
 output_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/copykit/"
+
 #read in all meta data from copykit
 read_meta_copykit<-function(x){
+    print(x)
     tmp<-readRDS(x)
     meta<-as.data.frame(tmp@colData[c("sample_name","reads_assigned_bins","plate_info","subclones","fine_celltype","clonename","ploidy")])
     return(meta)
@@ -602,11 +634,12 @@ cnv_genes_class<-c('amp','amp','amp', 'amp', 'amp', 'amp', 'amp', 'amp', 'amp', 
 cnv_genes<-setNames(cnv_genes_class,nm=cnv_genes)
 
 #use gtf file to get gene locations
-gtf_file="/container_ref/gencode.v43.annotation.gtf.gz"
+#system("wget -P /data/rmulqueen/projects/scalebio_dcis/ref https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_43/gencode.v43.annotation.gtf.gz")
+gtf_file="/data/rmulqueen/projects/scalebio_dcis/ref/gencode.v43.annotation.gtf.gz"
 
 gtf <- rtracklayer::readGFF(gtf_file)
 gtf<- gtf %>% 
-    filter(type=="gene" & gene_type %in% c("protein_coding")) %>% 
+    filter(type %in% c("gene") & gene_type %in% c("protein_coding")) %>% 
     filter(gene_name %in% names(cnv_genes))
 
 cnv_genes_windows<-gtf[gtf$gene_name %in% names(cnv_genes),] #filter annotation to genes we want
@@ -644,7 +677,7 @@ hc = columnAnnotation(common_cnv = anno_mark(at = annot$window_loc,
                         labels_gp=gpar(col=annot$col)))
 
 #define colors based on data
-log_col=colorRamp2(c(-2,-1,0,1,2),
+log_col=colorRamp2(c(-3,-1,0,1,3),
                         c("darkblue","blue","white","red","darkred"))
 
 ```
@@ -652,6 +685,7 @@ log_col=colorRamp2(c(-2,-1,0,1,2),
 Only cancer
 
 ```R
+
 aneu<-obj@metadata %>% filter(cnv_ploidy=="aneuploid")
 aneu_logr<-cnv_logr[row.names(aneu)]
 aneu_meta<-cnv_meta[row.names(aneu),]

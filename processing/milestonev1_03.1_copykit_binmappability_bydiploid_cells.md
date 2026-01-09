@@ -14,21 +14,21 @@ TO TRY:
 - rerun with larger genome bins (500kb), all diploid (check for bias), then 41t (check for subclonal fidelity)
 - use 220kb bins then matrix multiply by bin mappability weighting (scale bin counts 0-1 then divide)
 
-## Start environment.
-```bash
-singularity shell --bind /data/rmulqueen/projects/scalebio_dcis ~/singularity/amethyst.sif
-```
+### Start environment.
+#```bash
+#singularity shell --bind /data/rmulqueen/projects/scalebio_dcis ~/singularity/amethyst.sif
+#```
 
 ## Read in diploid cells from amethyst metadata
 ```R
-source("/data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/amethyst_custom_functions.R") #to load in
 library(Rsamtools)
 library(copykit)
 library(circlize)
 library(RColorBrewer)
 library(ComplexHeatmap)
 library(dendextend)
-
+library(amethyst)
+library(dplyr)
 #read in cyto info
 cyto=read.table(file="/data/rmulqueen/projects/scalebio_dcis/ref/cytoBand.txt",sep="\t")
 colnames(cyto)<-c("chr","start","end","band","stain")
@@ -80,7 +80,10 @@ remove_Y = TRUE
 min_bincount = 10
 cores=100
 genome = "hg38"
-resolution="220kb"
+#resolution="220kb"
+#run at 500kb and 280 as well
+#resolution="500kb"
+resolution="280kb"
 
 # bindings for NSE and data
 Chr <- chr <- strand <- GeneID <- NULL
@@ -150,9 +153,9 @@ varbin_counts_list <-mclapply(varbin_counts_list_all_fields,
                                 mc.cores=cores)
 
 
-saveRDS(varbin_counts_list,file="/data/rmulqueen/projects/scalebio_dcis/ref/copykit.met_windows.220kb.diploidcount.rds")
+saveRDS(varbin_counts_list,file=paste0("/data/rmulqueen/projects/scalebio_dcis/ref/copykit.met_windows.",resolution,".diploidcount.rds"))
 
-varbin_counts_list<-readRDS(file="/data/rmulqueen/projects/scalebio_dcis/ref/copykit.met_windows.220kb.diploidcount.rds")
+varbin_counts_list<-readRDS(file=paste0("/data/rmulqueen/projects/scalebio_dcis/ref/copykit.met_windows.",resolution,".diploidcount.rds"))
 
 #TRY MAPPABILITY CORRECTION INSTEAD OF VARIABLE BIN SIZES, DISTRIBUTION TO BIG AND I THINK IT MASKS CNVS
 dip_cov<-do.call("cbind",varbin_counts_list)
@@ -169,16 +172,16 @@ ref$band<-cyto[cyto_overlap$subjectHits,]$band
 ref$arm<-cyto[cyto_overlap$subjectHits,]$arm
 ref$stain<-cyto[cyto_overlap$subjectHits,]$stain
 
-
-saveRDS(ref,file="/data/rmulqueen/projects/scalebio_dcis/ref/copykit.met_windows.220kb.diploidcorrected.ref.rds")
+saveRDS(ref,file=paste0("/data/rmulqueen/projects/scalebio_dcis/ref/copykit.met_windows.",resolution,".diploidcorrected.ref.rds"))
 ```
 
 ## Count original 220kb original windows for metrics
 
 ```R
-varbin_counts_list<-readRDS(file="/data/rmulqueen/projects/scalebio_dcis/ref/copykit.met_windows.220kb.diploidcount.rds")
+varbin_counts_list<-readRDS(file=paste0("/data/rmulqueen/projects/scalebio_dcis/ref/copykit.met_windows.",resolution,".diploidcount.rds"))
 
-hg38_grangeslist[["hg38_200kb"]]<-readRDS(file="/data/rmulqueen/projects/scalebio_dcis/ref/copykit.met_windows.220kb.diploidcorrected.ref.rds")
+#hg38_grangeslist[["hg38_200kb"]]<-readRDS(file=paste0("/data/rmulqueen/projects/scalebio_dcis/ref/copykit.met_windows.",resolution,".diploidcorrected.ref.rds"))
+hg38_grangeslist[["hg38_500kb"]]<-readRDS(file=paste0("/data/rmulqueen/projects/scalebio_dcis/ref/copykit.met_windows.",resolution,".diploidcorrected.ref.rds"))
 
 # Reading hg38 VarBin ranges
 hg38_grangeslist <- hg38_grangeslist
@@ -265,7 +268,7 @@ cna_obj <- CopyKit(
 
 # Adding genome and resolution information to metadata
 S4Vectors::metadata(cna_obj)$genome <- genome
-S4Vectors::metadata(cna_obj)$resolution <- "220kb" #note this is different windows than regular copykit, easiest way to fit it in the functions though
+S4Vectors::metadata(cna_obj)$resolution <- resolution #note this is different windows than regular copykit, easiest way to fit it in the functions though
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
 # ADDING READS METRICS TO METADATA
@@ -305,7 +308,7 @@ cna_obj <- findSuggestedK(cna_obj)
 S4Vectors::metadata(cna_obj)$suggestedK
 
 #define colors based on data
-log_col=colorRamp2(c(-3,-1,0,1,3),
+log_col=colorRamp2(c(-2,-1,0,1,2),
                         c("darkblue","blue","white","red","darkred"))
 cg_perc_col=colorRamp2(c(40,60,80,100),
                         c("#4d2d18","#CABA9C","#4C6444","#102820"))
@@ -366,17 +369,30 @@ celltype_col=c(
 
     saveRDS(cna_obj,file=paste0(output_directory,"/copykit",".",sample_name,".",resolution,".rds"))
 
+    #replot different resolutions on -2 to 2 scale  scale
+    #define colors based on data
+    log_col=colorRamp2(c(-2,-1,0,1,2),c("darkblue","blue","white","red","darkred"))
+    lapply(c("200kb","250kb","500kb"),function(res){
+        cna_obj<-readRDS(file=paste0(output_directory,"/copykit",".",sample_name,".",resolution,".rds"))
+
+    plt<-Heatmap(
+        t(cna_obj@assays@data$logr),
+        left_annotation=ha,col=log_col,
+        show_column_names=FALSE,show_row_names=FALSE,
+        top_annotation=column_ha,cluster_columns=FALSE,cluster_column_slices=FALSE,column_split=seqnames(cna_obj@rowRanges),
+        name="logr")
+
+    pdf(paste0(output_directory,"/copykit.",sample_name,".",resolution,".pdf"),width=20)
+    print(plt)
+    dev.off()
+    paste0(output_directory,"/copykit.",sample_name,".",resolution,".pdf")})
+
 ```
 
-Run on 41T to check
-```R
-#pull function from scalemet_dcis/processing/milestonev1_03.2_copykit_cnv_calling.md
 
-runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS41T'),resolution='220kb',superclone_addition=15)
-
-```
 
 ## Changing window sizes to correct for mappability
+
 
 Decimate every range to add more modular scaling of size for met coverage
 
@@ -406,6 +422,7 @@ tiles <- unlist(tile(ref, n = 10))
  message("Counted reads across all bins.")
  varbin_counts_list <- lapply(varbin_counts_list,as.vector)
  saveRDS(varbin_counts_list,file="/data/rmulqueen/projects/scalebio_dcis/ref/copykit.met_windows.diploidcount.decimated_win.rds")
+varbin_counts_list<-readRDS(file="/data/rmulqueen/projects/scalebio_dcis/ref/copykit.met_windows.diploidcount.decimated_win.rds")
 
 #make into data frame
 decibin_counts<-do.call("cbind",varbin_counts_list)
@@ -421,7 +438,7 @@ summary(decibin_mean)
 #0.000000000 0.000007387 0.000008920 0.000008875 0.000010347 0.000019900 
 
 #split by chr
-chr_bin_means<-split(decibin_mean,f=as.character(seqnames(tiles)))
+chr_bin_means<-GenomicRanges::split(decibin_mean,f=as.character(seqnames(tiles)))
 bin_cov_split<-mean(decibin_mean)*10
 
 #split by mean bin count (of ~22kb bins* 10)
@@ -477,16 +494,21 @@ gr_met$band<-cyto[cyto_overlap$subjectHits,]$band
 gr_met$arm<-cyto[cyto_overlap$subjectHits,]$arm
 gr_met$stain<-cyto[cyto_overlap$subjectHits,]$stain
 
-#plot bin size of gr_met
-plt<-ggplot()+geom_histogram(aes(x=width(gr_met)),bins=100)+theme_minimal()+xlim(c(0,1000000))
-ggsave(plt,file="diploid_resized_window.width.histo.pdf")
-
-summary(width(gr_met))
-length(gr_met)
 #filter out gr_met windows that are >2x mean size
 gr_met2<-gr_met[(width(gr_met) <= 2*mean(width(gr_met)))]
 
+#plot bin size of gr_met
+library(patchwork)
+library(ggplot2)
+plt1<-ggplot()+geom_histogram(aes(x=width(gr_met)),bins=100)+theme_minimal()+xlim(c(0,1000000))
+plt2<-ggplot()+geom_histogram(aes(x=width(gr_met2)),bins=100)+theme_minimal()+xlim(c(0,1000000))
+ggsave(plt1/plt2,file="diploid_resized_window.width.histo.pdf")
+
+summary(width(gr_met))
 summary(width(gr_met2))
+
+length(gr_met)
+
 saveRDS(gr_met2,file="/data/rmulqueen/projects/scalebio_dcis/ref/copykit.220kb.met_windows.rds")
 ```
 
@@ -646,8 +668,559 @@ saveRDS(cna_obj,file=paste0(output_directory,"/copykit",".",sample_name,".",reso
 
 
 
+# Test run on 41T (lots of clonal structure)
+1. Regular 220kb bins
+2. Regular 500kb bins
+3. 220kb resized bins
+3. 220kb bins with mappability correction
+
+```R
+library(Rsamtools)
+library(copykit)
+library(circlize)
+library(dendextend)
+library(RColorBrewer)
+library(ComplexHeatmap)
+library(parallel)
+
+#set colors
+celltype_col=c(
+'peri'='#c1d552',
+'fibro1'='#7f1911',
+'fibro2'='#e791f9',
+'endo'='#f0b243',
+'endo2'='#d0bd4a',
+'tcell'='#2e3fa3',
+'bcell'='#00adea',
+'myeloid1'='#00a487',
+'myeloid2'='#006455',
+'basal'='#7200cc',
+'lumsec'='#af00af',
+'lumhr'='#d8007c',
+'cancer'="#DFFF00")
 
 
+
+#read in cyto info
+cyto=read.table(file="/data/rmulqueen/projects/scalebio_dcis/ref/cytoBand.txt",sep="\t")
+colnames(cyto)<-c("chr","start","end","band","stain")
+cyto$arm<-substring(cyto$band, 1, 1)
+cyto<-cyto[!is.na(cyto$band),]
+cyto<-cyto[cyto$chr %in% c(paste0("chr",1:22),"chrX"),]
+table(cyto$stain) #set colors for these
+
+
+
+runCountReads_amethyst <- function(obj,
+                        sample_name,
+                        genome = "hg38",
+                        resolution = c(
+                                        "220kb",
+                                        "55kb",
+                                        "110kb",
+                                        "195kb",
+                                        "280kb",
+                                        "500kb",
+                                        "1Mb",
+                                        "2.8Mb"),
+                        remove_Y = TRUE,
+                        min_bincount = 10,
+                        cores=100,
+                        subclone_addition=5,
+                        superclone_addition=2,
+                        clus_distance="euclidean") {
+    output_directory=paste0(project_data_directory,"/copykit/",sample_name[1])
+    system(paste0("mkdir -p ",project_data_directory,"/copykit/",sample_name[1]))
+
+    resolution <- match.arg(resolution)
+    #resolution="220kb"
+
+    # bindings for NSE and data
+    Chr <- chr <- strand <- GeneID <- NULL
+    reads_assigned_bins <- reads_duplicates <- reads_total <- NULL
+
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # genomic ranges (varbin scaffolds)
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    # Reading hg38 VarBin ranges
+    hg38_grangeslist <- hg38_grangeslist
+
+    hg38_rg <- switch(resolution,
+        "55kb" = hg38_grangeslist[["hg38_50kb"]],
+        "110kb" = hg38_grangeslist[["hg38_100kb"]],
+        "195kb" = hg38_grangeslist[["hg38_175kb"]],
+        "220kb" = hg38_grangeslist[["hg38_200kb"]],
+        "280kb" = hg38_grangeslist[["hg38_250kb"]],
+        "500kb" = hg38_grangeslist[["hg38_500kb"]],
+        "1Mb" = hg38_grangeslist[["hg38_1Mb"]],
+        "2.8Mb" = hg38_grangeslist[["hg38_2Mb"]]
+    )
+
+    hg38_rg <- as.data.frame(hg38_rg)
+
+    rg <- hg38_rg %>%
+        dplyr::rename(chr = "seqnames") %>%
+        dplyr::mutate(GeneID = 1:nrow(hg38_rg))
+
+    if (remove_Y == TRUE) {
+        rg <- dplyr::filter(rg,chr != "chrY")
+    }
+
+    message("Counting reads for genome ",genome," and resolution: ",resolution)
+
+    #get list of bams and cellids
+    obj_met<-obj@metadata[obj@metadata$Sample %in% sample_name,]
+    #return chr start position for reads filtered in bam to cell id
+    varbin_counts_list_all_fields<-mclapply(
+                                        1:nrow(obj_met), 
+                                        function(i) 
+                                        read_scalebio_bam(obj_met=obj_met,x=i,sample_name=sample_name), 
+                                        mc.cores=cores)
+
+    message("Read in all bam files.")
+
+    names(varbin_counts_list_all_fields)<- row.names(obj_met)
+    varbin_counts_list_all_fields<-as(varbin_counts_list_all_fields, "GRangesList")
+    ref<-as(rg,"GRanges")
+
+    varbin_counts_list <-mclapply(varbin_counts_list_all_fields,
+                                    function(x) 
+                                    GenomicRanges::countOverlaps(
+                                    query=ref,
+                                    subject=x,
+                                    type="any",
+                                    ignore.strand=TRUE),
+                                    mc.cores=cores)
+    message("Counted reads across all bins.")
+
+    varbin_counts_list <- lapply(varbin_counts_list,as.vector)
+
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # filtering for minimal mean bin count
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # obtaining the index of the ones that FAIL to meet the min_bincount arg
+    min_bc <- which(vapply(varbin_counts_list, mean, numeric(1)) < min_bincount)
+    # subsetting counts list and main counts list
+
+    if (length(min_bc) > 0) {
+        varbin_counts_list <- varbin_counts_list[-min_bc]
+        varbin_counts_list_all_fields <- varbin_counts_list_all_fields[-min_bc]
+        message(
+            length(min_bc), " bam files had less than ", min_bincount,
+            " mean bincounts and were removed."
+        )
+    }
+
+    # LOWESS GC normalization
+
+    message("Performing GC correction.")
+
+    varbin_counts_list_gccor <-
+        mclapply(varbin_counts_list, function(x) {
+            gc_cor <- lowess(rg$gc_content, log(x + 1e-3), f = 0.05)
+            gc_cor_z <- approx(gc_cor$x, gc_cor$y, rg$gc_content)
+            exp(log(x) - gc_cor_z$y) * median(x)
+        },mc.cores=cores
+        )
+
+    varbin_counts_df <- round(dplyr::bind_cols(varbin_counts_list_gccor), 2)
+
+    # filtering low read counts where the sum of bins does not reach more than 0
+    good_cells <- names(varbin_counts_df[which(colSums(varbin_counts_df) != 0)])
+
+    varbin_counts_df <- varbin_counts_df[good_cells]
+
+    rg <- rg %>%
+        dplyr::select(-strand, -GeneID)
+
+    rg_gr <- GenomicRanges::makeGRangesFromDataFrame(rg,
+        ignore.strand = TRUE,
+        keep.extra.columns = TRUE)
+
+    cna_obj <- CopyKit(
+        assays = list(bincounts = varbin_counts_df),
+        rowRanges = rg_gr)
+
+    # Adding genome and resolution information to metadata
+    S4Vectors::metadata(cna_obj)$genome <- genome
+    S4Vectors::metadata(cna_obj)$resolution <- resolution
+
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Sun Feb 14 20:55:01 2021
+    # ADDING READS METRICS TO METADATA
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Sun Feb 14 20:55:24 2021
+
+    # saving info and removing columns from list elements
+    bam_metrics <- obj_met[c("unique_reads","tss_enrich","mcg_pct","cg_cov","batch","plate_info","tgmt_well","i7_well","i5_well","fine_celltype")]
+
+    # making sure metrics match varbin_counts_df
+    bam_metrics <- bam_metrics[good_cells,]
+
+    bam_metrics$sample <- rownames(bam_metrics)
+    bam_metrics$sample_name=sample_name[1]
+    bam_metrics$reads_assigned_bins <- colSums(varbin_counts_df)
+
+    # adding to metadata
+    SummarizedExperiment::colData(cna_obj) <-
+        S4Vectors::DataFrame(bam_metrics)
+    colnames(cna_obj) <- names(varbin_counts_df)
+    #runvarbin module
+    cna_obj <- runVst(cna_obj)
+    cna_obj <- runSegmentation(cna_obj)
+    cna_obj <- logNorm(cna_obj)
+
+    # Mark euploid cells if they exist
+    #cna_obj <- findAneuploidCells(cna_obj)
+
+    # Mark low-quality cells for filtering
+    #cna_obj <- findOutliers(cna_obj)
+
+    # kNN smooth profiles
+    cna_obj <- knnSmooth(cna_obj)
+
+    # adds basic quality control information to colData
+    cna_obj <- runMetrics(cna_obj)
+    cna_obj <- if(nrow(obj_met)<50){
+        copykit::runUmap(cna_obj,n_neighbors=nrow(obj_met)-10)
+    }else{
+        copykit::runUmap(cna_obj)
+    }
+
+    dend <- t(cna_obj@assays@data$logr) %>% 
+            dist(method=clus_distance) %>% hclust(method="ward.D2") %>% as.dendrogram
+    k_optimal=find_k(dend, krange = 2:10)
+    print(paste("optimal k value for cutting hclust:", k_optimal$k))
+    superclones=dendextend::cutree(dend,k=k_optimal$k+superclone_addition)
+    subclones=dendextend::cutree(dend,k=k_optimal$k+subclone_addition)
+    cna_obj@colData$subclones<-subclones[row.names(cna_obj@colData)]
+    cna_obj@colData$superclones<-superclones[row.names(cna_obj@colData)]
+
+    #define colors based on data
+    #updated to be -4 to 4 instead of -2 to 2
+    log_col=colorRamp2(c(-4,-2,0,2,4), 
+                            c("darkblue","blue","white","red","darkred"))
+    cg_perc_col=colorRamp2(c(40,60,80,100),
+                            c("#4d2d18","#CABA9C","#4C6444","#102820"))
+    reads_col=colorRamp2(c(min(log10(cna_obj@colData$unique_reads)),
+                            max(log10(cna_obj@colData$unique_reads))),
+                            c("white","black"))
+
+    superclone_col=setNames(nm=unique(as.character(cna_obj@colData$superclones)),
+                            colorRampPalette(brewer.pal(9, "Pastel1"))(length(unique(as.character(cna_obj@colData$superclones)))))
+    subclone_col=setNames(nm=unique(as.character(cna_obj@colData$subclones)),
+                            colorRampPalette(brewer.pal(9, "Spectral"))(length(unique(as.character(cna_obj@colData$subclones)))))
+    
+    #plot heatmap
+    ha = rowAnnotation(
+        reads=log10(cna_obj@colData$unique_reads),
+        cg_perc=cna_obj@colData$mcg_pct,
+        celltype=cna_obj@colData$fine_celltype,
+        superclones=as.character(cna_obj@colData$superclones),
+        subclones=as.character(cna_obj@colData$subclones),
+        col= list(
+            celltype=celltype_col,
+            reads=reads_col,
+            cg_perc=cg_perc_col,
+            superclones=superclone_col,
+            subclones=subclone_col
+        ))
+
+    cyto_overlap<-GenomicRanges::findOverlaps(cna_obj@rowRanges,
+                                                makeGRangesFromDataFrame(cyto,keep=TRUE),
+                                                select="first")
+    cna_obj@rowRanges$stain <- cyto[cyto_overlap,]$stain
+
+    arm_col=c("p"="grey","q"="darkgrey")
+    band_col=c("acen"="#99746F","gneg"="white","gpos100"="black","gpos25"="lightgrey","gpos50"="grey","gpos75"="darkgrey","gvar"="#446879")
+
+    column_ha = HeatmapAnnotation(
+        arm = cna_obj@rowRanges$arm,
+        band = cna_obj@rowRanges$stain,
+        col=list(arm=arm_col,band=band_col))
+
+    plt<-Heatmap(
+        t(cna_obj@assays@data$logr),
+        left_annotation=ha,col=log_col,
+        row_split=as.character(cna_obj@colData$superclones),
+        show_column_names=FALSE,show_row_names=FALSE,
+        top_annotation=column_ha,cluster_columns=FALSE,cluster_column_slices=FALSE,column_split=seqnames(cna_obj@rowRanges),
+        name="logr")
+
+    pdf(paste0(output_directory,"/copykit.",sample_name[1],".",resolution,".pdf"),width=20)
+    print(plt)
+    dev.off()
+
+    print(paste("Plotted... ",paste0(output_directory,"/copykit.",sample_name[1],".",resolution,".pdf")))
+    cna_obj <- calcConsensus(cna_obj)
+    cna_obj <- runConsensusPhylo(cna_obj)
+    plt_umap<-plotUmap(cna_obj,label="subclones")
+    
+    pdf(paste0(output_directory,"/copykit.",sample_name[1],".",resolution,".umap.pdf"))
+    print(plt_umap)
+    dev.off()
+
+    saveRDS(cna_obj,file=paste0(output_directory,"/copykit",".",sample_name[1],".",resolution,".rds"))
+    return(cna_obj)
+}
+
+
+runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS41T'),resolution='220kb',superclone_addition=15) 
+runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS41T'),resolution='500kb',superclone_addition=15) 
+
+
+runCountReads_amethyst <- function(obj,
+                        sample_name,
+                        genome = "hg38",
+                        resolution = c(
+                                        "220kb",
+                                        "55kb",
+                                        "110kb",
+                                        "195kb",
+                                        "280kb",
+                                        "500kb",
+                                        "1Mb",
+                                        "2.8Mb"),
+                        remove_Y = TRUE,
+                        min_bincount = 10,
+                        cores=100,
+                        subclone_addition=5,
+                        superclone_addition=2,
+                        clus_distance="euclidean") {
+    output_directory=paste0(project_data_directory,"/copykit/",sample_name[1])
+    system(paste0("mkdir -p ",project_data_directory,"/copykit/",sample_name[1]))
+
+    resolution <- match.arg(resolution)
+    #resolution="220kb"
+
+    # bindings for NSE and data
+    Chr <- chr <- strand <- GeneID <- NULL
+    reads_assigned_bins <- reads_duplicates <- reads_total <- NULL
+
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # genomic ranges (varbin scaffolds)
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    # Reading hg38 VarBin ranges
+    hg38_grangeslist <- hg38_grangeslist
+
+    hg38_rg <- switch(resolution,
+        "55kb" = hg38_grangeslist[["hg38_50kb"]],
+        "110kb" = hg38_grangeslist[["hg38_100kb"]],
+        "195kb" = hg38_grangeslist[["hg38_175kb"]],
+        "220kb" = hg38_grangeslist[["hg38_200kb"]],
+        "280kb" = hg38_grangeslist[["hg38_250kb"]],
+        "500kb" = hg38_grangeslist[["hg38_500kb"]],
+        "1Mb" = hg38_grangeslist[["hg38_1Mb"]],
+        "2.8Mb" = hg38_grangeslist[["hg38_2Mb"]]
+    )
+
+    hg38_rg <- as.data.frame(hg38_rg)
+
+    rg <- hg38_rg %>%
+        dplyr::rename(chr = "seqnames") %>%
+        dplyr::mutate(GeneID = 1:nrow(hg38_rg))
+
+    if (remove_Y == TRUE) {
+        rg <- dplyr::filter(rg,chr != "chrY")
+    }
+
+    message("Counting reads for genome ",genome," and resolution: ",resolution)
+
+    #get list of bams and cellids
+    obj_met<-obj@metadata[obj@metadata$Sample %in% sample_name,]
+    #return chr start position for reads filtered in bam to cell id
+    varbin_counts_list_all_fields<-mclapply(
+                                        1:nrow(obj_met), 
+                                        function(i) 
+                                        read_scalebio_bam(obj_met=obj_met,x=i,sample_name=sample_name), 
+                                        mc.cores=cores)
+
+    message("Read in all bam files.")
+
+    names(varbin_counts_list_all_fields)<- row.names(obj_met)
+    varbin_counts_list_all_fields<-as(varbin_counts_list_all_fields, "GRangesList")
+    ref<-as(rg,"GRanges")
+
+    varbin_counts_list <-mclapply(varbin_counts_list_all_fields,
+                                    function(x) 
+                                    GenomicRanges::countOverlaps(
+                                    query=ref,
+                                    subject=x,
+                                    type="any",
+                                    ignore.strand=TRUE),
+                                    mc.cores=cores)
+    message("Counted reads across all bins.")
+
+    varbin_counts_list <- lapply(varbin_counts_list,as.vector)
+
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # filtering for minimal mean bin count
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # obtaining the index of the ones that FAIL to meet the min_bincount arg
+    min_bc <- which(vapply(varbin_counts_list, mean, numeric(1)) < min_bincount)
+    # subsetting counts list and main counts list
+
+    if (length(min_bc) > 0) {
+        varbin_counts_list <- varbin_counts_list[-min_bc]
+        varbin_counts_list_all_fields <- varbin_counts_list_all_fields[-min_bc]
+        message(
+            length(min_bc), " bam files had less than ", min_bincount,
+            " mean bincounts and were removed."
+        )
+    }
+
+    # LOWESS GC normalization
+
+    message("Performing GC correction.")
+
+    varbin_counts_list_gccor <-
+        mclapply(varbin_counts_list, function(x) {
+            gc_cor <- lowess(rg$gc_content, log(x + 1e-3), f = 0.05)
+            gc_cor_z <- approx(gc_cor$x, gc_cor$y, rg$gc_content)
+            exp(log(x) - gc_cor_z$y) * median(x)
+        },mc.cores=cores
+        )
+
+    varbin_counts_df <- round(dplyr::bind_cols(varbin_counts_list_gccor), 2)
+
+    # filtering low read counts where the sum of bins does not reach more than 0
+    good_cells <- names(varbin_counts_df[which(colSums(varbin_counts_df) != 0)])
+
+    varbin_counts_df <- varbin_counts_df[good_cells]
+
+    rg <- rg %>%
+        dplyr::select(-strand, -GeneID)
+
+    rg_gr <- GenomicRanges::makeGRangesFromDataFrame(rg,
+        ignore.strand = TRUE,
+        keep.extra.columns = TRUE)
+
+    cna_obj <- CopyKit(
+        assays = list(bincounts = varbin_counts_df),
+        rowRanges = rg_gr)
+
+    # Adding genome and resolution information to metadata
+    S4Vectors::metadata(cna_obj)$genome <- genome
+    S4Vectors::metadata(cna_obj)$resolution <- resolution
+
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Sun Feb 14 20:55:01 2021
+    # ADDING READS METRICS TO METADATA
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Sun Feb 14 20:55:24 2021
+
+    # saving info and removing columns from list elements
+    bam_metrics <- obj_met[c("unique_reads","tss_enrich","mcg_pct","cg_cov","batch","plate_info","tgmt_well","i7_well","i5_well","fine_celltype")]
+
+    # making sure metrics match varbin_counts_df
+    bam_metrics <- bam_metrics[good_cells,]
+
+    bam_metrics$sample <- rownames(bam_metrics)
+    bam_metrics$sample_name=sample_name[1]
+    bam_metrics$reads_assigned_bins <- colSums(varbin_counts_df)
+
+    # adding to metadata
+    SummarizedExperiment::colData(cna_obj) <-
+        S4Vectors::DataFrame(bam_metrics)
+    colnames(cna_obj) <- names(varbin_counts_df)
+    #runvarbin module
+    cna_obj <- runVst(cna_obj)
+    cna_obj <- runSegmentation(cna_obj)
+    cna_obj <- logNorm(cna_obj)
+
+    # Mark euploid cells if they exist
+    #cna_obj <- findAneuploidCells(cna_obj)
+
+    # Mark low-quality cells for filtering
+    #cna_obj <- findOutliers(cna_obj)
+
+    # kNN smooth profiles
+    cna_obj <- knnSmooth(cna_obj)
+
+    # adds basic quality control information to colData
+    cna_obj <- runMetrics(cna_obj)
+    cna_obj <- if(nrow(obj_met)<50){
+        copykit::runUmap(cna_obj,n_neighbors=nrow(obj_met)-10)
+    }else{
+        copykit::runUmap(cna_obj)
+    }
+
+    dend <- t(cna_obj@assays@data$logr) %>% 
+            dist(method=clus_distance) %>% hclust(method="ward.D2") %>% as.dendrogram
+    k_optimal=find_k(dend, krange = 2:10)
+    print(paste("optimal k value for cutting hclust:", k_optimal$k))
+    superclones=dendextend::cutree(dend,k=k_optimal$k+superclone_addition)
+    subclones=dendextend::cutree(dend,k=k_optimal$k+subclone_addition)
+    cna_obj@colData$subclones<-subclones[row.names(cna_obj@colData)]
+    cna_obj@colData$superclones<-superclones[row.names(cna_obj@colData)]
+
+    #define colors based on data
+    #updated to be -4 to 4 instead of -2 to 2
+    log_col=colorRamp2(c(-4,-2,0,2,4), 
+                            c("darkblue","blue","white","red","darkred"))
+    cg_perc_col=colorRamp2(c(40,60,80,100),
+                            c("#4d2d18","#CABA9C","#4C6444","#102820"))
+    reads_col=colorRamp2(c(min(log10(cna_obj@colData$unique_reads)),
+                            max(log10(cna_obj@colData$unique_reads))),
+                            c("white","black"))
+
+    superclone_col=setNames(nm=unique(as.character(cna_obj@colData$superclones)),
+                            colorRampPalette(brewer.pal(9, "Pastel1"))(length(unique(as.character(cna_obj@colData$superclones)))))
+    subclone_col=setNames(nm=unique(as.character(cna_obj@colData$subclones)),
+                            colorRampPalette(brewer.pal(9, "Spectral"))(length(unique(as.character(cna_obj@colData$subclones)))))
+    
+    #plot heatmap
+    ha = rowAnnotation(
+        reads=log10(cna_obj@colData$unique_reads),
+        cg_perc=cna_obj@colData$mcg_pct,
+        celltype=cna_obj@colData$fine_celltype,
+        superclones=as.character(cna_obj@colData$superclones),
+        subclones=as.character(cna_obj@colData$subclones),
+        col= list(
+            celltype=celltype_col,
+            reads=reads_col,
+            cg_perc=cg_perc_col,
+            superclones=superclone_col,
+            subclones=subclone_col
+        ))
+
+    cyto_overlap<-GenomicRanges::findOverlaps(cna_obj@rowRanges,
+                                                makeGRangesFromDataFrame(cyto,keep=TRUE),
+                                                select="first")
+    cna_obj@rowRanges$stain <- cyto[cyto_overlap,]$stain
+
+    arm_col=c("p"="grey","q"="darkgrey")
+    band_col=c("acen"="#99746F","gneg"="white","gpos100"="black","gpos25"="lightgrey","gpos50"="grey","gpos75"="darkgrey","gvar"="#446879")
+
+    column_ha = HeatmapAnnotation(
+        arm = cna_obj@rowRanges$arm,
+        band = cna_obj@rowRanges$stain,
+        col=list(arm=arm_col,band=band_col))
+
+    plt<-Heatmap(
+        t(cna_obj@assays@data$logr),
+        left_annotation=ha,col=log_col,
+        row_split=as.character(cna_obj@colData$superclones),
+        show_column_names=FALSE,show_row_names=FALSE,
+        top_annotation=column_ha,cluster_columns=FALSE,cluster_column_slices=FALSE,column_split=seqnames(cna_obj@rowRanges),
+        name="logr")
+
+    pdf(paste0(output_directory,"/copykit.",sample_name[1],".",resolution,".pdf"),width=20)
+    print(plt)
+    dev.off()
+
+    print(paste("Plotted... ",paste0(output_directory,"/copykit.",sample_name[1],".",resolution,".pdf")))
+    cna_obj <- calcConsensus(cna_obj)
+    cna_obj <- runConsensusPhylo(cna_obj)
+    plt_umap<-plotUmap(cna_obj,label="subclones")
+    
+    pdf(paste0(output_directory,"/copykit.",sample_name[1],".",resolution,".umap.pdf"))
+    print(plt_umap)
+    dev.off()
+
+    saveRDS(cna_obj,file=paste0(output_directory,"/copykit",".",sample_name[1],".",resolution,".rds"))
+    return(cna_obj)
+}
+
+```
 
 # old version where i resize windows
 

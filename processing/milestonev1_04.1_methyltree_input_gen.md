@@ -5,8 +5,7 @@
 # Generate methyltree formatted input for each sample
 
 ```R
-source("/data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/amethyst_custom_functions.R") #to load in
-
+library(amethyst)
 #set environment and read in data
 set.seed(111)
 options(future.globals.maxSize= 80000*1024^2) #80gb limit for parallelizing
@@ -34,8 +33,8 @@ methyltree_output<-function(obj=obj,
         output_directory=paste0(project_data_directory,"/methyltree/",sample_name[1])
         system(paste0("mkdir -p ",output_directory))
 
-        obj_met<-subsetObject(obj, cells = row.names(obj@metadata[obj@metadata$sample %in% sample_name,]))
-        obj_met<-subsetObject(obj_met, cells = row.names(obj@metadata[obj@metadata$fine_celltype %in% c("cancer","lumhr","basal","lumsec"),]))
+        obj_met<-subsetObject(obj, cells = row.names(obj@metadata[obj@metadata$Sample %in% sample_name,]))
+        #obj_met<-subsetObject(obj_met, cells = row.names(obj@metadata[obj@metadata$fine_celltype %in% c("cancer","lumhr","basal","lumsec"),]))
 
         obj_met@metadata$methyltree_group<-"all"
         obj_met@metadata$pass<-"TRUE"
@@ -151,7 +150,7 @@ methyltree_output(obj=obj,sample_name=c('BCMHBCA22R-4h'),threads=1)
 methyltree_output(obj=obj,sample_name=c('BCMHBCA26L-24hTis-4h'),threads=1)
 methyltree_output(obj=obj,sample_name=c('BCMHBCA29L-2h'),threads=1)
 methyltree_output(obj=obj,sample_name=c('BCMHBCA38L-3h'),threads=1)
-methyltree_output(obj=obj,sample_name=c('BCMHBCA83L-3h'),threads=1)
+methyltree_output(obj=obj,sample_name=c('BCMHBCA83L-3h'),threads=1) #rerun
 methyltree_output(obj=obj,sample_name=c('BCMHBCA85L-3h'),threads=1)
 methyltree_output(obj=obj,sample_name=c('ECIS25T'),threads=1)
 methyltree_output(obj=obj,sample_name=c('ECIS26T'),threads=1)
@@ -159,3 +158,5 @@ methyltree_output(obj=obj,sample_name=c('ECIS36T'),threads=1)
 methyltree_output(obj=obj,sample_name=c('ECIS48T'),threads=1)
 methyltree_output(obj=obj,sample_name=c('ECIS57T'),threads=1)
 ```
+
+#this should all be rerun 1/9/26, sample name label inconsistent and changed some cnv assignments

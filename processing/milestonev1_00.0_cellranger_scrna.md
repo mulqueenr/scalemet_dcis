@@ -3,7 +3,36 @@ mkdir -p /data/rmulqueen/projects/scalebio_dcis/rna
 mkdir -p /data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output
 cd /data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output
 
+
 fq_dir=(
+"/geo_seq/projects/ECIS/BCMDCIS_cellranger_v3_10/Fastq/BCMDCIS102T"
+"/geo_USR3/ctang4/10X_processing_RNA/090924_BCMDCIS_3_Rui/Fastq/outs/fastq_path/2223MNMNX/BCMDCIS124T"
+"/geo_seq/projects/ECIS/BCMDCIS_cellranger_v3_10/Fastq/BCMDCIS05T"
+"/geo_seq/projects/ECIS/BCMDCIS_cellranger_v3_10/Fastq/BCMDCIS07T"
+"/geo_seq/projects/ECIS/BCMDCIS_cellranger_v3_10/Fastq/BCMDCIS22T"
+"/geo_seq/projects/ECIS/BCMDCIS_cellranger_v3_10/Fastq/BCMDCIS28T"
+"/geo_seq/projects/ECIS/BCMDCIS_cellranger_v3_10/Fastq/BCMDCIS32T"
+"/geo_seq/projects/ECIS/BCMDCIS_cellranger_v3_10/Fastq/BCMDCIS35T"
+"/geo_seq/projects/ECIS/BCMDCIS_cellranger_v3_10/Fastq/BCMDCIS41T"
+"/geo_seq/projects/ECIS/BCMDCIS_cellranger_v3_10/Fastq/BCMDCIS49T_24htis"
+"/geo_seq/projects/ECIS/BCMDCIS_cellranger_v3_10/Fastq/BCMDCIS52T_novaseq"
+"/geo_seq/projects/ECIS/BCMDCIS_cellranger_v3_10/Fastq/BCMDCIS65T"
+"/geo_seq/projects/ECIS/BCMDCIS_cellranger_v3_10/Fastq/BCMDCIS66T"
+"/geo_seq/projects/ECIS/BCMDCIS_cellranger_v3_10/Fastq/BCMDCIS70T"
+"/geo_seq/projects/ECIS/BCMDCIS_cellranger_v3_10/Fastq/BCMDCIS74T"
+"/geo_seq/projects/ECIS/BCMDCIS_cellranger_v3_10/Fastq/BCMDCIS79T_DCIS"
+"/geo_seq/projects/ECIS/BCMDCIS_cellranger_v3_10/Fastq/BCMDCIS79T_IDC"
+"/geo_seq/projects/ECIS/BCMDCIS_cellranger_v3_10/Fastq/BCMDCIS80T"
+"/geo_seq/projects/ECIS/BCMDCIS_cellranger_v3_10/Fastq/BCMDCIS82T"
+"/geo_seq/projects/ECIS/BCMDCIS_cellranger_v3_10/Fastq/BCMDCIS92T_24h"
+"/geo_seq/projects/ECIS/BCMDCIS_cellranger_v3_10/Fastq/BCMDCIS94T_24h"
+"/geo_seq/projects/ECIS/BCMDCIS_cellranger_v3_10/Fastq/BCMDCIS97T"
+"/geo_seq/projects/ECIS/BCMDCIS_cellranger_v3_10/Fastq/BCMDCIS99T"
+"/geo_seq/projects/ECIS/ECIS_cellranger_v3_10/fastq/ECIS25T"
+"/geo_seq/projects/ECIS/ECIS_cellranger_v3_10/fastq/ECIS26T"
+"/geo_seq/projects/ECIS/ECIS_cellranger_v3_10/fastq/ECIS36T_24hTis"
+"/geo_seq/projects/ECIS/ECIS_cellranger_v3_10/fastq/ECIS48T"
+"/geo_seq/projects/ECIS/ECIS_cellranger_v3_10/fastq/ECIS57T"
 "/geo_seq/projects/HBCA/BCMHBCA/BCMHBCA_10x_RNA/Fastq_output/BCMHBCA03R"
 "/geo_seq/projects/HBCA/BCMHBCA/BCMHBCA_10x_RNA/Fastq_output/BCMHBCA04R_2h"
 "/geo_seq/projects/HBCA/BCMHBCA/BCMHBCA_10x_RNA/Fastq_output/BCMHBCA09R"
@@ -21,35 +50,7 @@ fq_dir=(
 "/geo_seq/projects/HBCA/BCMHBCA/BCMHBCA_10x_RNA/Fastq_output/BCMHBCA29L_2h"
 "/geo_seq/projects/HBCA/BCMHBCA/BCMHBCA_10x_RNA/Fastq_output/BCMHBCA38R"
 "/geo_seq/projects/HBCA/BCMHBCA/BCMHBCA_10x_RNA/Fastq_output/BCMHBCA83L_3h"
-"/geo_seq/projects/HBCA/BCMHBCA/BCMHBCA_10x_RNA/Fastq_output/BCMHBCA85L_3h"
-"/geo_seq/projects/ECIS/BCMDCIS_cellranger_v3_10/Fastq/BCMDCIS05T"
-"/geo_seq/projects/ECIS/BCMDCIS_cellranger_v3_10/Fastq/BCMDCIS07T"
-"/geo_seq/projects/ECIS/BCMDCIS_cellranger_v3_10/Fastq/BCMDCIS41T"
-"/geo_seq/projects/ECIS/BCMDCIS_cellranger_v3_10/Fastq/BCMDCIS66T"
-"/geo_seq/projects/ECIS/BCMDCIS_cellranger_v3_10/Fastq/BCMDCIS80T"
-"/geo_seq/projects/ECIS/BCMDCIS_cellranger_v3_10/Fastq/BCMDCIS82T"
-"/geo_seq/projects/ECIS/BCMDCIS_cellranger_v3_10/Fastq/BCMDCIS99T"
-"/geo_seq/projects/ECIS/ECIS_cellranger_v3_10/fastq/ECIS25T"
-"/geo_seq/projects/ECIS/ECIS_cellranger_v3_10/fastq/ECIS36T_24hTis"
-"/geo_seq/projects/ECIS/ECIS_cellranger_v3_10/fastq/ECIS26T"
-"/geo_seq/projects/ECIS/BCMDCIS_cellranger_v3_10/Fastq/BCMDCIS79T_DCIS"
-"/geo_USR3/ctang4/10X_processing_RNA/090924_BCMDCIS_3_Rui/Fastq/outs/fastq_path/2223MNMNX/BCMDCIS124T"
-"/geo_seq/projects/ECIS/BCMDCIS_cellranger_v3_10/Fastq/BCMDCIS22T"
-"/geo_seq/projects/ECIS/BCMDCIS_cellranger_v3_10/Fastq/BCMDCIS28T"
-"/geo_seq/projects/ECIS/BCMDCIS_cellranger_v3_10/Fastq/BCMDCIS32T"
-"/geo_seq/projects/ECIS/BCMDCIS_cellranger_v3_10/Fastq/BCMDCIS35T"
-"/geo_seq/projects/ECIS/BCMDCIS_cellranger_v3_10/Fastq/BCMDCIS49T_24htis"
-"/geo_seq/projects/ECIS/BCMDCIS_cellranger_v3_10/Fastq/BCMDCIS52T"
-"/geo_seq/projects/ECIS/BCMDCIS_cellranger_v3_10/Fastq/BCMDCIS52T_novaseq"
-"/geo_seq/projects/ECIS/BCMDCIS_cellranger_v3_10/Fastq/BCMDCIS65T"
-"/geo_seq/projects/ECIS/BCMDCIS_cellranger_v3_10/Fastq/BCMDCIS70T"
-"/geo_seq/projects/ECIS/BCMDCIS_cellranger_v3_10/Fastq/BCMDCIS74T"
-"/geo_seq/projects/ECIS/BCMDCIS_cellranger_v3_10/Fastq/BCMDCIS79T_IDC"
-"/geo_seq/projects/ECIS/BCMDCIS_cellranger_v3_10/Fastq/BCMDCIS92T_24h"
-"/geo_seq/projects/ECIS/BCMDCIS_cellranger_v3_10/Fastq/BCMDCIS94T_24h"
-"/geo_seq/projects/ECIS/BCMDCIS_cellranger_v3_10/Fastq/BCMDCIS97T"
-"/geo_seq/projects/ECIS/ECIS_cellranger_v3_10/fastq/ECIS48T"
-"/geo_seq/projects/ECIS/ECIS_cellranger_v3_10/fastq/ECIS57T")
+"/geo_seq/projects/HBCA/BCMHBCA/BCMHBCA_10x_RNA/Fastq_output/BCMHBCA85L_3h")
 
 samp_name=(
 'BCMDCIS102T_24hTis'
@@ -100,6 +101,8 @@ samp_name=(
 'BCMHBCA85L-3h'
 )
 
+#/data/rmulqueen/projects/scalebio_dcis/rna/cellranger_output
+
 for i in $(seq ${#samp_name[@]}); do
 /home/rmulqueen/tools/cellranger-9.0.1/cellranger count \
 --fastqs=${fq_dir[i]} \
@@ -107,8 +110,10 @@ for i in $(seq ${#samp_name[@]}); do
 --transcriptome=/home/rmulqueen/ref/refdata-gex-GRCh38-2024-A \
 --create-bam=true \
 --include-introns=true \
---localcores=200 \
---localmem=100; 
+--localcores=300 \
+--localmem=500; 
 done
+
+#102 failed for some reason, rerun, oh i think it just skipped base 1 vs base 0 style
 ```
 
