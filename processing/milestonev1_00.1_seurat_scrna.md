@@ -90,14 +90,9 @@ setwd("/data/rmulqueen/projects/scalebio_dcis/rna")
 obj<-readRDS(file = "tenx_dcis.rds")
 
 #filtering to only cellular RNA for now
-#plot nuc vs cellular
 obj@meta.data$assay="cellular_RNA"
 obj@meta.data[endsWith(obj@meta.data$sample,suffix="nuc"),]$assay="nuclear_RNA"
 obj<-subset(obj,assay=="cellular_RNA")
-
-#library(future)
-#plan("multisession",workers = 100)
-#options(future.globals.maxSize= 80000*1024^2) #80gb limit for parallelizing
 
 prefix="coarse_celltype"
 obj <- NormalizeData(obj, normalization.method = "LogNormalize", scale.factor = 10000)
@@ -106,28 +101,30 @@ obj <- ScaleData(obj, features = rownames(obj))
 obj <- RunPCA(obj, features = VariableFeatures(object = obj))
 plt<-ElbowPlot(obj)
 ggsave(plt,file=paste("tenx_dcis","elbow",prefix,"sample.pdf",sep="."))
-
 saveRDS(obj, file = "tenx_dcis.rds")
 
-cluster_object<-function(obj=obj,dims=1:15,prefix="stromal_fibro",res=0.2){
+#function for umap clustering
+cluster_object<-function(obj=obj,dims=1:15,prefix="coarse_celltype",res=0.2){
+    obj <- FindVariableFeatures(obj, selection.method = "vst", nfeatures = 2000)
+    obj <- RunPCA(obj, features = VariableFeatures(object = obj))
     obj <- FindNeighbors(obj, dims = dims)
     obj <- FindClusters(obj, resolution = res)
     obj <- RunUMAP(obj, dims = dims)
-    plt<-DimPlot(obj,group.by="sample",raster=F,label=TRUE)
-    ggsave(plt,file=paste("tenx_dcis","umap",prefix,"sample.pdf",sep="."),width=30,height=20,limitsize=FALSE)
-    plt<-DimPlot(obj,group.by="seurat_clusters",raster=F,label=TRUE)
-    ggsave(plt,file=paste("tenx_dcis","umap",prefix,"clusters.pdf",sep="."),width=30,height=20,limitsize=FALSE)
+    return(obj)
 }
+obj<-cluster_object(obj=obj,dims=1:15,prefix="coarse_celltype",res=0.2)
+saveRDS(obj, file = "tenx_dcis.rds")
 
-cluster_object(obj=obj,dims=1:15,prefix="stromal_fibro",res=0.2)
-
+plt<-DimPlot(obj,group.by="sample",raster=T,label=TRUE)
+ggsave(plt,file=paste("tenx_dcis","umap",prefix,"sample.pdf",sep="."),width=30,height=20,limitsize=FALSE)
+plt<-DimPlot(obj,group.by="seurat_clusters",raster=T,label=TRUE)
+ggsave(plt,file=paste("tenx_dcis","umap",prefix,"clusters.pdf",sep="."),width=30,height=20,limitsize=FALSE)
 
 #plot hbca vs cancer
 obj@meta.data$diag="cancer"
 obj@meta.data[grepl(obj@meta.data$sample,pattern="HBCA"),]$diag="HBCA"
-plt<-DimPlot(obj,group.by="diag",raster=F,label=TRUE)
+plt<-DimPlot(obj,group.by="diag",raster=T,label=TRUE)
 ggsave(plt,file=paste("tenx_dcis","umap",prefix,"diag.pdf",sep="."),width=30,height=20,limitsize=FALSE)
-
 
 #same cell markers list as used for methylation
 cell_markers<-list()
@@ -149,11 +146,11 @@ cell_markers[["adipo"]]=c("PDE3B","ACACB","WDPCP","PCDH9","CLSTN2","ADIPOQ","TRH
 plt<-DotPlot(obj, features = cell_markers, group.by = "seurat_clusters",cluster.idents=TRUE) + RotatedAxis()
 ggsave(plt,file="tenx_dcis.coarse_celltype.dotplot.pdf",width=20,height=20,limitsize=FALSE)
 
-#pretty much everything over 16 is suspected double
-obj@meta.data$coarse_celltype<-"suspected_doublet" 
+#pretty much everything over 25ish is suspected double
+obj@meta.data$coarse_celltype<-"suspected_doublet" #32, 30, 21, 26, 31, 10, 29, 27, 33, 25, 23, 22, 11
 obj@meta.data[obj@meta.data$seurat_clusters %in% c("5","3","14","15","17"),]$coarse_celltype<-"lumhr"
-obj@meta.data[obj@meta.data$seurat_clusters %in% c("2","11"),]$coarse_celltype<-"basal"
-obj@meta.data[obj@meta.data$seurat_clusters %in% c("9","19","10"),]$coarse_celltype<-"lumsec"
+obj@meta.data[obj@meta.data$seurat_clusters %in% c("2"),]$coarse_celltype<-"basal"
+obj@meta.data[obj@meta.data$seurat_clusters %in% c("9","19"),]$coarse_celltype<-"lumsec"
 
 obj@meta.data[obj@meta.data$seurat_clusters %in% c("8","1","13"),]$coarse_celltype<-"fibro" #13 suspected CAFs
 obj@meta.data[obj@meta.data$seurat_clusters %in% c("4","23","24"),]$coarse_celltype<-"endo"
@@ -176,8 +173,6 @@ saveRDS(obj, file = "tenx_dcis.rds")
 
 ## Fibro
 ```R
-
-
 dat_sub<-subset(obj,coarse_celltype %in% c("fibro"))
 dat_sub<-cluster_object(obj=dat_sub,dims=1:15,prefix="stromal_fibro",res=0.2)
 
@@ -211,14 +206,16 @@ ggsave(plt_dim+plt+plot_layout(design=layout),file="tenx_dcis.stromal.fibro.fine
 
 #labelling fibro subtypes
 dat_sub@meta.data$fine_celltype<-"suspected_doublet"
-dat_sub@meta.data[dat_sub@meta.data$stromal_fibro_subclusters %in% c("1","4"),]$fine_celltype<-"fibro_major"
-dat_sub@meta.data[dat_sub@meta.data$stromal_fibro_subclusters %in% c("0"),]$fine_celltype<-"fibro_prematrix"
-dat_sub@meta.data[dat_sub@meta.data$stromal_fibro_subclusters %in% c("2"),]$fine_celltype<-"fibro_CAF"
-dat_sub@meta.data[dat_sub@meta.data$stromal_fibro_subclusters %in% c("3"),]$fine_celltype<-"fibro_matrix"
+dat_sub@meta.data[dat_sub@meta.data$stromal_fibro_subclusters %in% c("0"),]$fine_celltype<-"fibro_major"
+dat_sub@meta.data[dat_sub@meta.data$stromal_fibro_subclusters %in% c("2"),]$fine_celltype<-"fibro_prematrix"
+dat_sub@meta.data[dat_sub@meta.data$stromal_fibro_subclusters %in% c("1"),]$fine_celltype<-"fibro_CAF"
+dat_sub@meta.data[dat_sub@meta.data$stromal_fibro_subclusters %in% c("4"),]$fine_celltype<-"fibro_matrix"
+dat_sub@meta.data[dat_sub@meta.data$stromal_fibro_subclusters %in% c("6"),]$fine_celltype<-"fibro_SFRP4"
+dat_sub@meta.data[dat_sub@meta.data$stromal_fibro_subclusters %in% c("3"),]$fine_celltype<-"fibro_SFRP4"
+
 plt_dim<-DimPlot(dat_sub,group.by=c("stromal_fibro_subclusters","fine_celltype"),label=TRUE)
 ggsave(plt_dim,file="tenx_dcis.stromal.fibro.fine_celltype.umap.pdf",width=8)
 
-#missing fibro_SFRP4 fibro_stress
 saveRDS(dat_sub, file = "tenx_dcis.stromal.fibro.rds")
 ```
 
@@ -226,7 +223,8 @@ saveRDS(dat_sub, file = "tenx_dcis.stromal.fibro.rds")
 ## Endo
 
 ```R
-dat_sub<-subset(dat,coarse_celltype %in% c("endo"))
+dat_sub<-subset(obj,coarse_celltype %in% c("endo"))
+dat_sub
 dat_sub<-cluster_object(obj=dat_sub,dims=1:15,prefix="stromal_endo",res=0.2)
 
 stromal_markers<-list()
@@ -259,12 +257,12 @@ ggsave(plt_dim+plt+plot_layout(design=layout),file="tenx_dcis.stromal.endo.fine_
 
 #labelling endo subtypes
 dat_sub@meta.data$fine_celltype<-"suspected_doublet"
-dat_sub@meta.data[dat_sub@meta.data$stromal_endo_subclusters %in% c("1"),]$fine_celltype<-"endo_unknown"
-dat_sub@meta.data[dat_sub@meta.data$stromal_endo_subclusters %in% c("3"),]$fine_celltype<-"endo_artery"
-dat_sub@meta.data[dat_sub@meta.data$stromal_endo_subclusters %in% c("0","4"),]$fine_celltype<-"endo_vein"
-dat_sub@meta.data[dat_sub@meta.data$stromal_endo_subclusters %in% c("2"),]$fine_celltype<-"endo_capillary"
-dat_sub@meta.data[dat_sub@meta.data$stromal_endo_subclusters %in% c("5"),]$fine_celltype<-"endo_TEC"
-dat_sub@meta.data[dat_sub@meta.data$stromal_endo_subclusters %in% c("7"),]$fine_celltype<-"endo_lymphatic"
+dat_sub@meta.data[dat_sub@meta.data$stromal_endo_subclusters %in% c("5"),]$fine_celltype<-"endo_unknown"
+dat_sub@meta.data[dat_sub@meta.data$stromal_endo_subclusters %in% c("4"),]$fine_celltype<-"endo_artery"
+dat_sub@meta.data[dat_sub@meta.data$stromal_endo_subclusters %in% c("7","2","0"),]$fine_celltype<-"endo_vein"
+dat_sub@meta.data[dat_sub@meta.data$stromal_endo_subclusters %in% c("1"),]$fine_celltype<-"endo_capillary"
+dat_sub@meta.data[dat_sub@meta.data$stromal_endo_subclusters %in% c("3"),]$fine_celltype<-"endo_TEC"
+dat_sub@meta.data[dat_sub@meta.data$stromal_endo_subclusters %in% c("6"),]$fine_celltype<-"endo_lymphatic"
 plt_dim<-DimPlot(dat_sub,group.by=c("stromal_endo_subclusters","fine_celltype"),label=TRUE)
 ggsave(plt_dim,file="tenx_dcis.stromal.endo.fine_celltype.umap.pdf",width=8)
 
@@ -275,7 +273,7 @@ saveRDS(dat_sub, file = "tenx_dcis.stromal.endo.rds")
 ## Peri/VSMC
 
 ```R
-dat_sub<-subset(dat,coarse_celltype %in% c("perivasc"))
+dat_sub<-subset(obj,coarse_celltype %in% c("perivasc"))
 dat_sub<-cluster_object(obj=dat_sub,dims=1:15,prefix="stromal_periVSMC")
 saveRDS(dat_sub,file = "tenx_dcis.stromal.periVSMC.rds")
 
@@ -309,8 +307,8 @@ ggsave(plt_dim+plt+plot_layout(design=layout),file="tenx_dcis.stromal.peri.fine_
 
 #labelling endo subtypes
 dat_sub@meta.data$fine_celltype<-"suspected_doublet"
-dat_sub@meta.data[dat_sub@meta.data$stromal_peri_subclusters %in% c("1","2","4"),]$fine_celltype<-"peri"
-dat_sub@meta.data[dat_sub@meta.data$stromal_peri_subclusters %in% c("0"),]$fine_celltype<-"VSMC"
+dat_sub@meta.data[dat_sub@meta.data$stromal_peri_subclusters %in% c("1","2"),]$fine_celltype<-"peri"
+dat_sub@meta.data[dat_sub@meta.data$stromal_peri_subclusters %in% c("0","4"),]$fine_celltype<-"VSMC"
 dat_sub@meta.data[dat_sub@meta.data$stromal_peri_subclusters %in% c("3"),]$fine_celltype<-"periVSMC_unknown"
 
 plt_dim<-DimPlot(dat_sub,group.by=c("stromal_peri_subclusters","fine_celltype"),label=TRUE)
@@ -324,7 +322,7 @@ saveRDS(dat_sub, file = "tenx_dcis.stromal.peri.rds")
 ## Myeloid
 
 ```R
-dat_sub<-subset(dat,coarse_celltype %in% c("myeloid"))
+dat_sub<-subset(obj,coarse_celltype %in% c("myeloid"))
 dat_sub<-cluster_object(obj=dat_sub,dims=1:15,prefix="immune_myeloid")
 
 immune_markers<-list()
@@ -367,17 +365,17 @@ ggsave(plt_dim+plt+plot_layout(design=layout),file="tenx_dcis.immune.myeloid.fin
 
 #labelling endo subtypes
 dat_sub@meta.data$fine_celltype<-"suspected_doublet"
-dat_sub@meta.data[dat_sub@meta.data$immune_myeloid_subclusters %in% c("0"),]$fine_celltype<-"myeloid_mono"
-dat_sub@meta.data[dat_sub@meta.data$immune_myeloid_subclusters %in% c("5"),]$fine_celltype<-"myeloid_macro1"
-dat_sub@meta.data[dat_sub@meta.data$immune_myeloid_subclusters %in% c("3","2"),]$fine_celltype<-"myeloid_TAM"
-dat_sub@meta.data[dat_sub@meta.data$immune_myeloid_subclusters %in% c("3","2"),]$fine_celltype<-"myeloid_macro2"
+dat_sub@meta.data[dat_sub@meta.data$immune_myeloid_subclusters %in% c("4"),]$fine_celltype<-"myeloid_mono"
+dat_sub@meta.data[dat_sub@meta.data$immune_myeloid_subclusters %in% c("2","1","10"),]$fine_celltype<-"myeloid_macro1" #APOC INTERFERON
+dat_sub@meta.data[dat_sub@meta.data$immune_myeloid_subclusters %in% c("7","6"),]$fine_celltype<-"myeloid_macro2" #LYVE1 CCL4
+
 dat_sub@meta.data[dat_sub@meta.data$immune_myeloid_subclusters %in% c("9"),]$fine_celltype<-"myeloid_cycling"
-dat_sub@meta.data[dat_sub@meta.data$immune_myeloid_subclusters %in% c("10"),]$fine_celltype<-"myeloid_neutrophil"
-dat_sub@meta.data[dat_sub@meta.data$immune_myeloid_subclusters %in% c("6"),]$fine_celltype<-"myeloid_mast"
-dat_sub@meta.data[dat_sub@meta.data$immune_myeloid_subclusters %in% c("8"),]$fine_celltype<-"myeloid_DC"
+dat_sub@meta.data[dat_sub@meta.data$immune_myeloid_subclusters %in% c("11"),]$fine_celltype<-"myeloid_neutrophil"
+dat_sub@meta.data[dat_sub@meta.data$immune_myeloid_subclusters %in% c("8"),]$fine_celltype<-"myeloid_mast"
+dat_sub@meta.data[dat_sub@meta.data$immune_myeloid_subclusters %in% c("0"),]$fine_celltype<-"myeloid_DC"
 
 plt_dim<-DimPlot(dat_sub,group.by=c("immune_myeloid_subclusters","fine_celltype"),label=TRUE)
-ggsave(plt_dim,file="tenx_dcis.immune.myeloid.fine_celltype.umap.pdf",width=8)
+ggsave(plt_dim,file="tenx_dcis.immune.myeloid.fine_celltype.umap.pdf",width=15)
 
 saveRDS(dat_sub,file = "tenx_dcis.immune.myeloid.rds")
 ```
@@ -386,7 +384,7 @@ saveRDS(dat_sub,file = "tenx_dcis.immune.myeloid.rds")
 ## T cells
 
 ```R
-dat_sub<-subset(dat,coarse_celltype %in% c("tcell"))
+dat_sub<-subset(obj,coarse_celltype %in% c("tcell"))
 dat_sub<-cluster_object(obj=dat_sub,dims=1:15,prefix="immune_tcell")
 
 immune_markers<-list()
@@ -433,13 +431,16 @@ ggsave(plt_dim+plt+plot_layout(design=layout),file="tenx_dcis.immune.tcell.fine_
 
 #labelling tcell subtypes
 dat_sub@meta.data$fine_celltype<-"suspected_doublet"
-dat_sub@meta.data[dat_sub@meta.data$immune_tcell_subclusters %in% c("8"),]$fine_celltype<-"tcell_nk"
-dat_sub@meta.data[dat_sub@meta.data$immune_tcell_subclusters %in% c("6","4","3"),]$fine_celltype<-"tcell_cd8"
+dat_sub@meta.data[dat_sub@meta.data$immune_tcell_subclusters %in% c("9"),]$fine_celltype<-"tcell_nk"
+dat_sub@meta.data[dat_sub@meta.data$immune_tcell_subclusters %in% c("5","4","3","1"),]$fine_celltype<-"tcell_cd8"
+dat_sub@meta.data[dat_sub@meta.data$immune_tcell_subclusters %in% c("8"),]$fine_celltype<-"tcell_cycling"
+dat_sub@meta.data[dat_sub@meta.data$immune_tcell_subclusters %in% c("4"),]$fine_celltype<-"tcell_interferon"
+dat_sub@meta.data[dat_sub@meta.data$immune_tcell_subclusters %in% c("6"),]$fine_celltype<-"tcell_gdT"
 dat_sub@meta.data[dat_sub@meta.data$immune_tcell_subclusters %in% c("2"),]$fine_celltype<-"tcell_treg"
-dat_sub@meta.data[dat_sub@meta.data$immune_tcell_subclusters %in% c("0","1","5","7"),]$fine_celltype<-"tcell_cd4"
+dat_sub@meta.data[dat_sub@meta.data$immune_tcell_subclusters %in% c("0","8","7"),]$fine_celltype<-"tcell_cd4"
 
 plt_dim<-DimPlot(dat_sub,group.by=c("immune_tcell_subclusters","fine_celltype"),label=TRUE)
-ggsave(plt_dim,file="tenx_dcis.immune.tcell.fine_celltype.umap.pdf",width=8)
+ggsave(plt_dim,file="tenx_dcis.immune.tcell.fine_celltype.umap.pdf",width=15)
 
 saveRDS(dat_sub,file = "tenx_dcis.immune.tcell.rds")
 
@@ -448,7 +449,7 @@ saveRDS(dat_sub,file = "tenx_dcis.immune.tcell.rds")
 ## B cell
 
 ```R
-dat_sub<-subset(dat,coarse_celltype %in% c("bcell"))
+dat_sub<-subset(obj,coarse_celltype %in% c("bcell"))
 #have to remove samples from layers list with no b cells
 layersList <- lapply(dat_sub@assays$RNA@layers,function(x){dim(x)})
 dat_sub@assays$RNA@layers[names(layersList[sapply(layersList, is.null)])] <- NULL
@@ -503,6 +504,11 @@ ggsave(plt_dim+plt+plot_layout(design=layout),file="tenx_dcis.immune.bcell.fine_
 #labelling bcell subtypes
 dat_sub@meta.data$fine_celltype<-"bcell"
 
+#labelling tcell subtypes
+dat_sub@meta.data$fine_celltype<-"suspected_doublet"
+dat_sub@meta.data[dat_sub@meta.data$immune_bcell_subclusters %in% c("0","1"),]$fine_celltype<-"bcell"
+dat_sub@meta.data[dat_sub@meta.data$immune_bcell_subclusters %in% c("2","3"),]$fine_celltype<-"plasma"
+
 plt_dim<-DimPlot(dat_sub,group.by=c("immune_bcell_subclusters","fine_celltype"),label=TRUE)
 ggsave(plt_dim,file="tenx_dcis.immune.bcell.fine_celltype.umap.pdf",width=8)
 
@@ -512,7 +518,7 @@ saveRDS(dat_sub,file = "tenx_dcis.immune.bcell.rds")
 # Plasma cells
 
 ```R
-dat_sub<-subset(dat,coarse_celltype %in% c("plasma"))
+dat_sub<-subset(obj,coarse_celltype %in% c("plasma"))
 layersList <- lapply(dat_sub@assays$RNA@layers,function(x){dim(x)})
 dat_sub@assays$RNA@layers[names(layersList[sapply(layersList, is.null)])] <- NULL
 dat_sub<-cluster_object(obj=dat_sub,dims=1:15,prefix="immune_plasma")
@@ -526,7 +532,7 @@ dat_sub$immune_plasma_subclusters<-dat_sub$seurat_clusters
 plt_dim<-DimPlot(dat_sub,group.by="immune_plasma_subclusters",label=TRUE)
 
 table(dat_sub$immune_plasma_subclusters,useNA="ifany")
-dat_sub<-subset(dat_sub,cells=Cells(dat_sub)[!is.na(dat_sub$immune_plasma_subclusters)])
+#dat_sub<-subset(dat_sub,cells=Cells(dat_sub)[!is.na(dat_sub$immune_plasma_subclusters)])
 
 
 plt_list<-lapply(1:length(immune_markers),function(x) {
@@ -563,7 +569,7 @@ saveRDS(dat_sub,file = "tenx_dcis.immune.plasma.rds")
 dat<-readRDS("tenx_dcis.rds")
 
 fine_celltype_list<-lapply(
-    c("./stromal/tenx_dcis.stromal.fibro.rds", "./stromal/tenx_dcis.stromal.endo.rds","./stromal/tenx_dcis.stromal.peri.rds","./immune/tenx_dcis.immune.myeloid.rds","./immune/tenx_dcis.immune.tcell.rds","./immune/tenx_dcis.immune.bcell.rds","./immune/tenx_dcis.immune.plasma.rds"),
+    c("tenx_dcis.stromal.fibro.rds", "tenx_dcis.stromal.endo.rds","tenx_dcis.stromal.peri.rds","tenx_dcis.immune.myeloid.rds","tenx_dcis.immune.tcell.rds","tenx_dcis.immune.bcell.rds","tenx_dcis.immune.plasma.rds"),
     function(x){
         tmp<-readRDS(x)
         return(tmp$fine_celltype)
@@ -573,31 +579,31 @@ fine_celltype_list<-lapply(
 fine_celltype<-unlist(fine_celltype_list)
 
 dat<-AddMetaData(dat,col.name="fine_celltype",metadata=fine_celltype)
-
-dat@meta.data[dat@meta.data$broad_celltype=="lumhr",]$fine_celltype<-"lumhr"
-dat@meta.data[dat@meta.data$broad_celltype=="lumsec",]$fine_celltype<-"lumsec"
-dat@meta.data[dat@meta.data$broad_celltype=="basal",]$fine_celltype<-"basal"
+dat@meta.data[dat@meta.data$coarse_celltype=="lumhr",]$fine_celltype<-"lumhr"
+dat@meta.data[dat@meta.data$coarse_celltype=="lumsec",]$fine_celltype<-"lumsec"
+dat@meta.data[dat@meta.data$coarse_celltype=="basal",]$fine_celltype<-"basal"
 
 saveRDS(dat,"tenx_dcis.rds")
 
 #go through and label doublet clusters more
-obj<-readRDS("tenx_dcis.rds")
-obj<-cluster_object(obj=dat,dims=1:15,res=0.8,prefix="coarse_celltype")
-obj@meta.data[obj@meta.data$seurat_clusters %in% c("33","30","35","21","25","27","28","24","26"),]$broad_celltype<-"suspected_doublet"
-obj@meta.data[obj@meta.data$seurat_clusters %in% c("33","30","35","21","25","27","28","24","26"),]$fine_celltype<-"suspected_doublet"
+#obj<-cluster_object(obj=dat,dims=1:15,res=0.8,prefix="coarse_celltype")
+#obj@meta.data[obj@meta.data$seurat_clusters %in% c("33","30","35","21","25","27","28","24","26"),]$broad_celltype<-"suspected_doublet"
+#obj@meta.data[obj@meta.data$seurat_clusters %in% c("33","30","35","21","25","27","28","24","26"),]$fine_celltype<-"suspected_doublet"
 
-plt<-DimPlot(obj,group.by=c("seurat_clusters","broad_celltype","fine_celltype"),label=T)
+plt<-DimPlot(dat,group.by=c("seurat_clusters","coarse_celltype","fine_celltype"),label=T)
 ggsave(plt,file="tenx_dcis.celltypes.final.pdf",width=40,height=20,limitsize=F)
-saveRDS(obj,"tenx_dcis.rds")
+saveRDS(dat,"tenx_dcis.rds")
+
 
 #clean umap with no doublets
-obj<-subset(obj,broad_celltype != "suspected_doublet")
-plt<-DimPlot(obj,group.by=c("broad_celltype","fine_celltype"),label=T)
+obj<-subset(dat,coarse_celltype != "suspected_doublet")
+obj<-cluster_object(obj=obj,dims=1:15,prefix="fine_celltype")
+
+plt<-DimPlot(obj,group.by=c("seurat_clusters","coarse_celltype","fine_celltype"),label=T)
 ggsave(plt,file="tenx_dcis.celltypes.final.pf.pdf",width=40,height=20,limitsize=F)
 saveRDS(obj,"tenx_dcis.pf.rds")
 
 
-
 ```
 
-Moved pdf and seurat object into subdirectories by broad celltypes.
+Moved pdf and seurat object into subdirectories by coarse celltypes.

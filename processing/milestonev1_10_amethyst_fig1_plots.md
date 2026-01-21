@@ -1,7 +1,3 @@
-#```bash
-#singularity shell --bind /data/rmulqueen/projects/scalebio_dcis ~/singularity/amethyst.sif
-#```
-#using local install now
 
 ```R
 #source("/data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/amethyst_custom_functions.R") #to load in
@@ -15,26 +11,6 @@ setwd(wd)
 
 obj<-readRDS(file="06_scaledcis.cnv_clones.amethyst.rds")
 rna<-readRDS("/data/rmulqueen/projects/scalebio_dcis/rna/tenx_dcis.pf.rds")
-table(rna@meta.data$sample) %in% table(obj@metadata$Sample)
-rna$original_rna_sample_name<-rna$sample
-rna$Sample<-rna$sample
-
-#set names to be the same in RNA data
-rna@meta.data[rna@meta.data$Sample=="BCMDCIS102T-4h",]$Sample<-"BCMDCIS102T_24hTis"
-rna@meta.data[rna@meta.data$Sample=="BCMDCIS35T-3h",]$Sample<-"BCMDCIS35T"
-rna@meta.data[rna@meta.data$Sample=="BCMDCIS49T-24hTis",]$Sample<-"BCMDCIS49T"
-rna@meta.data[rna@meta.data$Sample=="DCIS-79T",]$Sample<-"BCMDCIS79T_24hTis_DCIS"
-rna@meta.data[rna@meta.data$Sample=="IDC-79T",]$Sample<-"BCMDCIS79T_24hTis_IDC"
-rna@meta.data[rna@meta.data$Sample=="BCMDCIS80T",]$Sample<-"BCMDCIS80T_24hTis"
-rna@meta.data[rna@meta.data$Sample=="BCMDCIS82T-24hTis",]$Sample<-"BCMDCIS82T_24hTis"
-rna@meta.data[rna@meta.data$Sample=="BCMDCIS94T-24hTis",]$Sample<-"BCMDCIS94T_24hTis"   
-rna@meta.data[rna@meta.data$Sample=="BCMDCIS99T",]$Sample<-"BCMDCIS99T"  
-rna@meta.data[rna@meta.data$Sample=="DCIS-92T",]$Sample<-"BCMDCIS92T_24hTis"  
-rna@meta.data[rna@meta.data$Sample=="HBCA-16R",]$Sample<-"BCMHBCA16R-3h"
-rna@meta.data[rna@meta.data$Sample=="HBCA-19T",]$Sample<-"BCMHBCA19R-4h"
-rna@meta.data[rna@meta.data$Sample=="HBCA-83L",]$Sample<-"BCMHBCA83L-3h"
-
-saveRDS(rna,"/data/rmulqueen/projects/scalebio_dcis/rna/tenx_dcis.pf.rds")
 
 ####################################################
 #           Fig 1 Sample Heatmap                  #

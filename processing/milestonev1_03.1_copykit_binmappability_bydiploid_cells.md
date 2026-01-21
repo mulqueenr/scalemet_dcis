@@ -14,6 +14,9 @@ TO TRY:
 - rerun with larger genome bins (500kb), all diploid (check for bias), then 41t (check for subclonal fidelity)
 - use 220kb bins then matrix multiply by bin mappability weighting (scale bin counts 0-1 then divide)
 
+*Ended up using the diploid coverage per bin to remove outlier mapping bins (those over mean +/- 1.5 SD away). Didn't use diploid mapping for bin-level correction.*
+
+
 ### Start environment.
 #```bash
 #singularity shell --bind /data/rmulqueen/projects/scalebio_dcis ~/singularity/amethyst.sif
@@ -46,7 +49,7 @@ merged_dat_folder="merged_data"
 wd=paste(sep="/",project_data_directory,merged_dat_folder)
 setwd(wd)
 obj<-readRDS(file="05_scaledcis.fine_celltype.amethyst.rds")
-write.table(as.data.frame(obj@metadata),file="05_scaledcis.fine_celltype.amethyst.metadata.csv",header=T,sep=",")
+#write.table(as.data.frame(obj@metadata),file="05_scaledcis.fine_celltype.amethyst.metadata.csv",header=T,sep=",")
 
 #make output directory
 system(paste0("mkdir -p ",project_data_directory,"/copykit" ))
@@ -182,9 +185,7 @@ varbin_counts_list<-readRDS(file=paste0("/data/rmulqueen/projects/scalebio_dcis/
 
 #hg38_grangeslist[["hg38_200kb"]]<-readRDS(file=paste0("/data/rmulqueen/projects/scalebio_dcis/ref/copykit.met_windows.",resolution,".diploidcorrected.ref.rds"))
 hg38_grangeslist[["hg38_500kb"]]<-readRDS(file=paste0("/data/rmulqueen/projects/scalebio_dcis/ref/copykit.met_windows.",resolution,".diploidcorrected.ref.rds"))
-
-# Reading hg38 VarBin ranges
-hg38_grangeslist <- hg38_grangeslist
+hg38_grangeslist[["hg38_250kb"]]<-readRDS(file=paste0("/data/rmulqueen/projects/scalebio_dcis/ref/copykit.met_windows.",resolution,".diploidcorrected.ref.rds"))
 
 hg38_rg <- switch(resolution,
     "55kb" = hg38_grangeslist[["hg38_50kb"]],
@@ -210,7 +211,7 @@ if (remove_Y == TRUE) {
 ref<-as(rg,"GRanges")
 
 
-varbin_counts_list <-mclapply(varbin_counts_list_all_fields,
+varbin_counts_list <-mclapply(varbin_counts_list,
                                 function(x) 
                                 GenomicRanges::countOverlaps(
                                 query=ref,
