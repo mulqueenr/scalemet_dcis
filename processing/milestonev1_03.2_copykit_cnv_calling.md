@@ -937,4 +937,37 @@ cluster_all_samples_cnv(obj=obj,resolution="500kb",ploidy_filt=c("aneuploid"),pr
 
 ```
 
-#add alluvial plot of cnv comparing 220kb and 500kb
+Plot an alluvial plot of clones per sample at two resolutions (220kb and 500kb)
+
+```R
+library(amethyst)
+library(ggalluvial)
+library(ggplot2)
+
+obj<-readRDS(file="06_scaledcis.cnv_clones.amethyst.rds")
+meta<-obj@metadata
+
+
+clone_res_alluvial<-function(metadata=meta,sample_name="BCMDCIS66T"){
+    metadata<-metadata[metadata$Sample %in% c(sample_name),]
+
+    met<-table(metadata$cnv_clonename_500kb, metadata$cnv_clonename_220kb) %>% as.data.frame
+    colnames(met)<-c("cnv_clonename_500kb","cnv_clonename_220kb","Freq")
+
+    plt<-ggplot(data = met, aes(axis1 = cnv_clonename_220kb, axis2 = cnv_clonename_500kb, y = Freq)) +
+        scale_x_discrete(limits = c("cnv_clonename_220kb","cnv_clonename_500kb"), expand = c(.2, .05)) +
+        xlab("Clones Per Resolution") +
+        geom_alluvium(aes(fill = cnv_clonename_500kb)) +
+        geom_stratum() +
+        geom_text(stat = "stratum", aes(label = after_stat(stratum))) +
+        theme_minimal() +
+        ggtitle(sample_name[1])
+    
+    ggsave(plt,file=paste0("/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/copykit/",sample_name[1],"/copykit.",sample_name[1],".alluvial.cancerclone.pdf"),width=20)
+}
+
+
+lapply(unique(meta$Sample),function(x) clone_res_alluvial(sample_name=x))
+clone_res_alluvial(sample_name=c("BCMDCIS79T_24hTis_DCIS","BCMDCIS79T_24hTis_IDC"))
+
+```

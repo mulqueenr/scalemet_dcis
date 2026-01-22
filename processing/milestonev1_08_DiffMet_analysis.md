@@ -8,7 +8,8 @@
 see DNA methylation outliers in normal breast tissue  identify field defects that are enriched in cancer 2015
 
 # Applying bartlett.test()
-result = bartlett.test(len ~ interaction(supp, dose), 
+result = bartlett.test(len ~ interaction(supp, dose)
+, 
                                   data = ToothGrowth)
 
 ```R
@@ -189,6 +190,7 @@ dmr_celltype_by_all<-function(obj){
         theme_classic()
     ggsave(plt,file=paste0(dmr_celltype_outdir,"/","celltype_allcellsm",".dmr_counts.pdf"))
 }
+
 dmr_clone_by_clone<-function(obj,sample_name){
     #set dir
     clone_outdir=paste0(dmr_clones_outdir,"/",sample_name)

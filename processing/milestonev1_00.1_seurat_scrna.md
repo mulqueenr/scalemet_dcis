@@ -565,7 +565,6 @@ saveRDS(dat_sub,file = "tenx_dcis.immune.plasma.rds")
 
 ```R
 
-
 dat<-readRDS("tenx_dcis.rds")
 
 fine_celltype_list<-lapply(
@@ -606,4 +605,54 @@ saveRDS(obj,"tenx_dcis.pf.rds")
 
 ```
 
-Moved pdf and seurat object into subdirectories by coarse celltypes.
+
+Additional final plots for manuscript
+
+```R
+library(Seurat)
+library(hdf5r)
+library(ggplot2)
+library(patchwork)
+library(amethyst)
+library(dplyr)
+setwd("/data/rmulqueen/projects/scalebio_dcis/rna")
+
+obj<-readRDS("tenx_dcis.pf.rds")
+
+#this metadata is apriori, but im just loading from amethyst object because i'm lazy, will just replace with hard code for timeline consistency
+#nondiegetic file loading (from 04 step)
+met<-readRDS(file="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/merged_data/07_scaledcis.integrated_celltyping.amethyst.rds")
+meta<-met@metadata %>% group_by(Sample) %>% slice_head(n=1) %>% as.data.frame() %>% select(sample,Sample,Dx,Age,Race_Ethnicity,Menopause,BRCA,ER,PR,HER2,Grade,Group)
+#read in sample metadata from amethyst methylation data
+#add diagnosis meta
+
+unique(obj@meta.data$sample) %in% meta$Sample
+row.names(meta)<-meta$Sample
+obj@meta.data$Dx<-meta[obj@meta.data$sample,]$Dx
+obj@meta.data$Age<-meta[obj@meta.data$sample,]$Age
+obj@meta.data$Race_Ethnicity<-meta[obj@meta.data$sample,]$Race_Ethnicity
+obj@meta.data$Menopause<-meta[obj@meta.data$sample,]$Menopause
+obj@meta.data$BRCA<-meta[obj@meta.data$sample,]$BRCA
+obj@meta.data$ER<-meta[obj@meta.data$sample,]$ER
+obj@meta.data$PR<-meta[obj@meta.data$sample,]$PR
+obj@meta.data$HER2<-meta[obj@meta.data$sample,]$HER2
+obj@meta.data$Grade<-meta[obj@meta.data$sample,]$Grade
+obj@meta.data$Group<-meta[obj@meta.data$sample,]$Group
+
+res=0.2
+dims=1:20
+
+obj <- FindVariableFeatures(obj, selection.method = "vst", nfeatures = 2000)
+obj <- RunPCA(obj, features = VariableFeatures(object = obj))
+obj <- FindNeighbors(obj, dims = dims)
+obj <- RunUMAP(obj, dims = dims)
+
+for(i in c("coarse_celltype","fine_celltype","Group")){
+    plt_dim<-DimPlot(obj,group.by=i,label=TRUE,raster=FALSE)
+    ggsave(plt_dim,file=paste0("tenx_dcis.pf.final.",i,".umap.pdf"),width=10)
+    }
+
+
+saveRDS(obj,"tenx_dcis.pf.rds")
+
+```

@@ -1,11 +1,22 @@
-integrate with liger 
-https://welch-lab.github.io/liger/articles/rna_methylation.html
+Integration of seurat object with methylation object.
 
+1. Using cell type level DMRs 
+2. assign DMRs to genes by overlap 
+3. window per cell for those genes 
+4. filter RNA to just those genes 
+5. integrate with liger following:
+https://welch-lab.github.io/liger/articles/rna_methylation.html
 https://pmc.ncbi.nlm.nih.gov/articles/PMC8132955/
 
+Use integration to finalize cell typing. Note some cell types were mislabelled based on small set of marker genes originally used. 
+Using integration data for final classifications.
+
+```R
 BiocManager::install("HDF5Array")
 install.packages('leidenAlg')
 install.packages('rliger')
+```
+
 
 ```R
 #source("/data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/amethyst_custom_functions.R") #to load in
@@ -22,6 +33,8 @@ library(rliger)
 library(Matrix)
 library(parallel)
 library(patchwork)
+library(ComplexHeatmap)
+library(circlize)
 set.seed(111)
 options(future.globals.maxSize= 80000*1024^2) #80gb limit for parallelizing
 task_cpus=300
@@ -172,29 +185,88 @@ ggsave((plt1|plt2)/(plt3|plt4),file=paste0(project_data_directory,"/integration/
 
 saveRDS(rna.met,file=paste0(project_data_directory,"/integration/","scaledcis.met_rna.integrated.liger.rds"))
 
+rna.met<-readRDS(file=paste0(project_data_directory,"/integration/","scaledcis.met_rna.integrated.liger.rds"))
+
+
+#plot confusion of clusters for met to rna
+#plot 2 heatmaps next to each other
+meta_rna<-rna.met@cellMeta[rna.met@cellMeta$dataset=="rna",]
+meta_met<-rna.met@cellMeta[rna.met@cellMeta$dataset=="met",]
+
+rna_confusion<-table(meta_rna$leiden_cluster,meta_rna$fine_celltype)
+rna_confusion <- rna_confusion/rowSums(rna_confusion)
+rna_confusion<-round(rna_confusion,2)
+
+met_confusion<-table(meta_met$leiden_cluster,meta_met$fine_celltype)
+met_confusion <- met_confusion/rowSums(met_confusion)
+met_confusion<-round(met_confusion,2)
+#pivot to long format for plotting (or just use complexheatmap)\
+
+col_fun = colorRamp2(c(0, 0.5, 1), c("white", "red", "darkred"))
+
+plt1<-Heatmap(rna_confusion,col=col_fun,border = TRUE,rect_gp = gpar(col = "gray", lwd = 1),cluster_columns=FALSE)
+plt2<-Heatmap(met_confusion,col=col_fun,border = TRUE,rect_gp = gpar(col = "gray", lwd = 1),cluster_columns=FALSE)
+
+pdf(paste0(project_data_directory,"/integration/","scaledcis.met_confusion.liger.pdf"))
+print(plt1+plt2)
+dev.off()
+
+
+#correct met cell type info using confusion matrix
+meta_met$corrected_celltype<-NA
+meta_met[meta_met$leiden_cluster %in% c("13","7"),]$corrected_celltype<-"basal"
+meta_met[meta_met$leiden_cluster %in% c("19","1","15","11","9"),]$corrected_celltype<-"lumhr"
+meta_met[meta_met$leiden_cluster %in% c("16","21"),]$corrected_celltype<-"lumsec"
+meta_met[meta_met$leiden_cluster %in% c("14"),]$corrected_celltype<-"endo_vein"
+meta_met[meta_met$leiden_cluster %in% c("20"),]$corrected_celltype<-"plasma"
+meta_met[meta_met$leiden_cluster %in% c("25","2"),]$corrected_celltype<-"tcell_cd4"
+meta_met[meta_met$leiden_cluster %in% c("17"),]$corrected_celltype<-"tcell_nk"
+meta_met[meta_met$leiden_cluster %in% c("0"),]$corrected_celltype<-"tcell_cd8"
+meta_met[meta_met$leiden_cluster %in% c("12","6","4"),]$corrected_celltype<-"fibro"
+meta_met[meta_met$leiden_cluster %in% c("5"),]$corrected_celltype<-"fibro_CAF"
+meta_met[meta_met$leiden_cluster %in% c("10"),]$corrected_celltype<-"myeloid"
+meta_met[meta_met$leiden_cluster %in% c("3"),]$corrected_celltype<-"endo"
+meta_met[meta_met$leiden_cluster %in% c("3"),]$corrected_celltype<-"endo"
+meta_met[meta_met$leiden_cluster %in% c("23"),]$corrected_celltype<-"epithelial"
+meta_met[meta_met$leiden_cluster %in% c("18"),]$corrected_celltype<-"bcell"
+meta_met[meta_met$leiden_cluster %in% c("24"),]$corrected_celltype<-"myeloid_mast"
+meta_met[meta_met$leiden_cluster %in% c("22"),]$corrected_celltype<-"suspected_doublet"
+meta_met[meta_met$leiden_cluster %in% c("8"),]$corrected_celltype<-"peri"
+
+
+met_confusion_corrected<-table(meta_met$leiden_cluster,meta_met$corrected_celltype)
+met_confusion_corrected <- met_confusion_corrected/rowSums(met_confusion_corrected)
+met_confusion_corrected<-round(met_confusion_corrected,2)
+plt3<-Heatmap(met_confusion_corrected,col=col_fun,border = TRUE,rect_gp = gpar(col = "gray", lwd = 1),cluster_columns=FALSE)
+
+
+pdf(paste0(project_data_directory,"/integration/","scaledcis.met_confusion.corrected.liger.pdf"))
+print(plt1+plt2+plt3)
+dev.off()
+
+
+#plot dim reduc
+rna.met@cellMeta$corrected_met<-NA
+rna.met@cellMeta[row.names(meta_met),]$corrected_met<-meta_met$corrected_celltype
+plt1<-plotDatasetDimRed(rna.met)
+plt2<-plotClusterDimRed(rna.met,"corrected_met")
+plt3<-plotClusterDimRed(rna.met,"sample")
+plt4<-plotClusterDimRed(rna.met)
+
+ggsave((plt1|plt2)/(plt3|plt4),file=paste0(project_data_directory,"/integration/","scaledcis.met_rna.integrated.corrected_celltype.umap.pdf"),width=25,height=25)
+saveRDS(rna.met,file=paste0(project_data_directory,"/integration/","scaledcis.met_rna.integrated.liger.rds"))
+
+
+#correct celltypes in amethyst object
+meta<-rna.met@cellMeta[rna.met@cellMeta$dataset=="met",]
+row.names(meta)<-gsub(pattern="met_",replace="",row.names(meta))
+obj@metadata$integrated_celltype<-NA
+obj@metadata[row.names(meta),]$integrated_celltype<-meta$corrected_met
+#and convert lumhr aneuploid back to cancer celltype
+obj@metadata[obj@metadata$cnv_ploidy_500kb=="aneuploid",]$integrated_celltype<-"cancer"
+
+saveRDS(obj,file="07_scaledcis.integrated_celltyping.amethyst.rds")
+
 
 ```
 
-Need to figure out best way to summarize methylation over genes. I think its 
-cell type level DMRs > assign DMRs to genes by overlap > window per cell for those genes > filter RNA to just those genes
-
-
-Important parameters of quantile_norm are as follows:
-
-knn_k. This sets the number of nearest neighbors for the within-dataset KNN graph. The default is 20.
-
-quantiles. This sets the number of quantiles to use for quantile normalization. The default is 50.
-
-min_cells. This indicates the minimum number of cells to consider a cluster as shared across datasets. The default is 20.
-
-dims.use. This sets the indices of factors to use for quantile normalization. The user can pass in a vector of indices indicating specific factors. This is helpful for excluding factors capturing biological signals such as the cell cycle or technical signals such as mitochondrial genes. The default is all k of the factors.
-
-do.center. This indicates whether to center when scaling cell factor loadings. The default is FALSE. This option should be set to TRUE when cell factor loadings have a mean above zero, as with dense data such as DNA methylation.
-
-max_sample. This sets the maximum number of cells used for quantile normalization of each cluster and factor. The default is 1000.
-
-refine.knn. This indicates whether to increase robustness of cluster assignments using KNN graph. The default is TRUE. Disabling this option makes the function run faster but may increase the amount of spurious alignment in divergent datasets.
-
-eps. This sets the error bound of the nearest neighbor search. The default is 0.9. Lower values give more accurate nearest neighbor graphs but take much longer to compute. We find that this parameter affects result quality very little.
-
-ref_dataset. This indicates the name of the dataset to be used as a reference for quantile normalization. By default, the dataset with the largest number of cells is used.

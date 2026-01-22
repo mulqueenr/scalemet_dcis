@@ -6,6 +6,7 @@
 
 ```R
 library(amethyst)
+library(GenomicRanges)
 #set environment and read in data
 set.seed(111)
 options(future.globals.maxSize= 80000*1024^2) #80gb limit for parallelizing
