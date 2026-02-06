@@ -5,6 +5,8 @@ wget https://data.broadinstitute.org/Trinity/CTAT_SINGULARITY/InferCNV/infercnv-
 ```
 
 Run locally
+Note, went forward with copykat for output instead.
+
 ```R
 
 setwd("/data/rmulqueen/projects/scalebio_dcis/rna")
@@ -48,6 +50,9 @@ gene_order<-read.csv(file="gene_order.infercnv.txt",sep="\t",header=F,row.names=
 #infercnv
 #make directory
 system(paste0("mkdir ","./infercnv/"))
+
+
+
 infercnv_per_sample<-function(dat,sample_name="BCMDCIS80T"){
   system(paste0("mkdir -p ",paste0("./infercnv/",sample_name)))
   dat<-subset(obj,sample==sample_name) #subset data to sample specified by x and outname
@@ -71,7 +76,6 @@ infercnv_per_sample<-function(dat,sample_name="BCMDCIS80T"){
     delim="\t",
     ref_group_names=c("TRUE"))
 
-
   infercnv_obj = infercnv::run(infercnv_obj,
     cutoff=0.1, # cutoff=1 works well for Smart-seq2, and cutoff=0.1 works well for 10x Genomics
     out_dir=paste0("./infercnv/",sample_name), 
@@ -80,8 +84,9 @@ infercnv_per_sample<-function(dat,sample_name="BCMDCIS80T"){
     HMM=TRUE,
     HMM_report_by="cell",
     resume_mode=F,
+    analysis_mode='subclusters',
     HMM_type='i6',
-    num_threads=50)
+    num_threads=200)
   saveRDS(infercnv_obj,paste0("./infercnv/",sample_name,"/",sample_name,".inferCNV.rds"))
   }
 }

@@ -1,7 +1,13 @@
-Use diploid cells to blacklist regions beyond 3 SD from mean
 
-## Finding expected reads per diploid bin
+# Finding expected reads per diploid bin
 
+From running the standard bins for copykit (both 220kb and 500kb) it is clear that some bins have mappability issues due to the bisulfite conversion. Using diploid cells (HBCA samples and non epithelial DCIS and IDC) to calculate coverage across bins.
+
+Tried multiple ways to account for this, but finally just ended up doing 500kb bins (less cell dropout due to lower read counts) and remove bins with excessively high or low mapping based on the diploid counts.
+
+Things I tried (and decided against):
+
+### Resize windows by coverage
 Running copykit read counting diploid cells, then applying mappability correction for cnv clones.
 Plan is:
 - Run on standard 220kb windows
@@ -9,18 +15,15 @@ Plan is:
 - Tile (subdivide/split 200kb windows by 10)
 - Count up to median reads to merge window fractions into new windows
 This controls for mappability, then just add into granges object as new ref
+(This ended up decreasing CNV calls substantially for some reason.)
 
-TO TRY:
-- rerun with larger genome bins (500kb), all diploid (check for bias), then 41t (check for subclonal fidelity)
-- use 220kb bins then matrix multiply by bin mappability weighting (scale bin counts 0-1 then divide)
+### Normalize by mappability per bin
+- use 220kb bins then matrix multiply by bin mappability weighting (scale bin counts 0-1 then divide) (This created more noisy coverage, mappability is not linear per read count per cell)
 
-*Ended up using the diploid coverage per bin to remove outlier mapping bins (those over mean +/- 1.5 SD away). Didn't use diploid mapping for bin-level correction.*
+### Final decision:
 
+*Ended up using the diploid coverage per bin to remove outlier mapping bins (those over mean +/- 1.5 SD away). Didn't use diploid mapping for bin-level correction. But did plot it as annotation bar.*
 
-### Start environment.
-#```bash
-#singularity shell --bind /data/rmulqueen/projects/scalebio_dcis ~/singularity/amethyst.sif
-#```
 
 ## Read in diploid cells from amethyst metadata
 ```R

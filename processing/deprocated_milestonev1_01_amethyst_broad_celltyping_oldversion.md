@@ -1,9 +1,22 @@
-```bash
-singularity shell --bind /data/rmulqueen/projects/scalebio_dcis ~/singularity/amethyst.sif
-```
+Running intial clustering to identify cell type compartments (to help with CNV calling)
+
 
 ```R
-source("/data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/amethyst_custom_functions.R") #to load in
+#source("/data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/amethyst_custom_functions.R") #to load in
+library(amethyst)
+library(data.table)
+library(dplyr)
+library(msigdbr)
+library(fgsea)
+library(ggplot2)
+library(GenomicRanges)
+library(Matrix)
+library(parallel)
+library(patchwork)
+library(ComplexHeatmap)
+library(circlize)
+library(patchwork)
+
 set.seed(111)
 options(future.globals.maxSize= 80000*1024^2) #80gb limit for parallelizing
 
@@ -29,6 +42,31 @@ dat_list<-mclapply(amethyst_files, function(x) {
     return(obj)},mc.cores=20)
 
 dat <- combineObject(objList = dat_list, genomeMatrices=window_name)
+```
+
+
+########################################
+## Run 5kb windows on all samples to cluster
+########################################
+
+Goal here is to identify cell type compartments (epithelial, stromal, immune).
+
+This will be used to:
+1. generate clusters of cells for refined DMR calling
+2. help with CNV calling 
+3. validating the RNA integration
+
+Using large windows (5kb) so coverage has less of an effect.
+
+```R
+dat@genomeMatrices[["initial_cluster_5kb_win"]] <- makeWindows(dat, 
+                                                     stepsize = 5000,
+                                                     type = "CG", 
+                                                     metric = "score", 
+                                                     threads = 300, 
+                                                     index = "chr_cg", 
+                                                     nmin = 2) 
+
 ```
 
 ########################################
@@ -252,7 +290,7 @@ ggsave(plt_out ,file="03_scaledcis.dmr_cluster.test.marker.pdf",width=30,height=
 dat@metadata$broad_celltype<-"lumhr" #10, 4, 5, 18, 16, 21, 19, 14, 6
 dat@metadata[dat@metadata$cluster_id %in% c("7","20","11"),]$broad_celltype<-"basal"
 dat@metadata[dat@metadata$cluster_id %in% c("17","8","2"),]$broad_celltype<-"lumsec"
-dat@metadata[dat@metadata$cluster_id %in% c("12","1","9"),]$broad_celltype<-"fibro"
+dat@metadata[dat@metadata$cluster_id %in% c("12","1","9"),]$broad_celltype<-"stromal"
 dat@metadata[dat@metadata$cluster_id %in% c("15","3","13"),]$broad_celltype<-"immune"
 
 saveRDS(dat,file="04_scaledcis.broad_celltype.amethyst.rds")
