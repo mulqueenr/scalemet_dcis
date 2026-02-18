@@ -322,6 +322,8 @@ saveRDS(dat_sub, file = "tenx_dcis.stromal.peri.rds")
 ## Myeloid
 
 ```R
+obj<-readRDS(file = "tenx_dcis.rds")
+
 dat_sub<-subset(obj,coarse_celltype %in% c("myeloid"))
 dat_sub<-cluster_object(obj=dat_sub,dims=1:15,prefix="immune_myeloid")
 
@@ -342,11 +344,15 @@ immune_markers[["myeloid_cDC1"]]<-c('CLEC9A', 'XCR1', 'DNASE1L3', 'IDO1', 'LGALS
 immune_markers[["myeloid_cDC2"]]<-c('FCER1A', 'IL1R2', 'CLEC10A', 'CD1C', 'CST7', 'GPAT3', 'DAPP1', 'CFP', 'EREG', 'CCL22', 'LGALS2', 'JAML', 'PID1', 'AREG', 'IL7R', 'AC020656.1', 'IL1R1', 'MARCKSL1', 'ADAM19', 'SLC7A11')
 immune_markers[["myeloid_mDC"]]<-c('LAMP3', 'BIRC3', 'LACRT', 'NUB1', 'CCR7', 'MARCKSL1', 'IDO1', 'DAPP1', 'POGLUT1', 'LINC01539', 'GPR157', 'IL12B', 'LAD1', 'KIF2A', 'FSCN1', 'IL7R', 'TXN', 'DUSP5', 'FOXD4L1', 'CD200', 'RAB9A')
 immune_markers[["myeloid_pDC"]]<-c('CD5', 'LYPD8', 'PRL', 'AC136475.3', 'LINC01087', 'AC006058.1', 'BDKRB2', 'POTEI', 'DSP', 'AC026369.3', 'GZMB', 'TNFSF4', 'CD2', 'TIGIT', 'LTB', 'TMEM45A', 'PGR', 'CD3G', 'AC015936.1', 'ACOT7')
+immune_markers[["myeloid_TAM"]]<-c('SDS', 'LAIR1', 'FCGR3A', 'SH3PXD2B', 'C1QB', 'FGL2', 'SGPL1', 'ADA2', 'AXL', 'TTYH3', 'TREM2', 'AOAH', 'ACP5', 'RAB20', 'SLC16A10', 'SATB1', 'FPR3', 'HLA-DOA', 'OLFML2B', 'CCDC107', 'MMP9', 'CALHM6', 'PLA2G7', 'GNA13', 'ARL4C', 'ZNF331', 'JMY', 'C2', 'A2M', 'STAT1')
+
+#TAM list from Message Aatish Thennavan
 
 dat_sub<-FindClusters(dat_sub,res=0.4)
 dat_sub$immune_myeloid_subclusters<-dat_sub$seurat_clusters
 plt_dim<-DimPlot(dat_sub,group.by="immune_myeloid_subclusters",label=TRUE)
 
+library(Seurat)
 plt_list<-lapply(1:length(immune_markers),function(x) {
     plt<-DotPlot(dat_sub, 
         features = immune_markers[x], 
@@ -361,13 +367,17 @@ layout <- "
 A######
 BBBBBBB"
 
-ggsave(plt_dim+plt+plot_layout(design=layout),file="tenx_dcis.immune.myeloid.fine_celltype.dotplot.pdf",width=0.25*length(unlist(immune_markers)),height=10,limitsize=FALSE)
+detach("package:Seurat",unload=TRUE) #seurat and patchwork have some incompatibility
+library(patchwork)
+ggsave(plt_dim+plt+patchwork::plot_layout(design=layout),file="tenx_dcis.immune.myeloid.fine_celltype.dotplot.pdf",width=0.25*length(unlist(immune_markers)),height=10,limitsize=FALSE) 
 
-#labelling endo subtypes
+
+#labelling myeloid subtypes
 dat_sub@meta.data$fine_celltype<-"suspected_doublet"
 dat_sub@meta.data[dat_sub@meta.data$immune_myeloid_subclusters %in% c("4"),]$fine_celltype<-"myeloid_mono"
-dat_sub@meta.data[dat_sub@meta.data$immune_myeloid_subclusters %in% c("2","1","10"),]$fine_celltype<-"myeloid_macro1" #APOC INTERFERON
-dat_sub@meta.data[dat_sub@meta.data$immune_myeloid_subclusters %in% c("7","6"),]$fine_celltype<-"myeloid_macro2" #LYVE1 CCL4
+
+dat_sub@meta.data[dat_sub@meta.data$immune_myeloid_subclusters %in% c("2","1","10"),]$fine_celltype<-"myeloid_macro" #APOC INTERFERON
+dat_sub@meta.data[dat_sub@meta.data$immune_myeloid_subclusters %in% c("7","6"),]$fine_celltype<-"myeloid_TAM" #LYVE1 CCL4
 
 dat_sub@meta.data[dat_sub@meta.data$immune_myeloid_subclusters %in% c("9"),]$fine_celltype<-"myeloid_cycling"
 dat_sub@meta.data[dat_sub@meta.data$immune_myeloid_subclusters %in% c("11"),]$fine_celltype<-"myeloid_neutrophil"
@@ -377,9 +387,26 @@ dat_sub@meta.data[dat_sub@meta.data$immune_myeloid_subclusters %in% c("0"),]$fin
 plt_dim<-DimPlot(dat_sub,group.by=c("immune_myeloid_subclusters","fine_celltype"),label=TRUE)
 ggsave(plt_dim,file="tenx_dcis.immune.myeloid.fine_celltype.umap.pdf",width=15)
 
+
 saveRDS(dat_sub,file = "tenx_dcis.immune.myeloid.rds")
+
 ```
 
+```R
+#nondiegetic code update, adding TAMs (based mostly on TREM2) into PF seurat object
+rna<-readRDS("/data/rmulqueen/projects/scalebio_dcis/rna/tenx_dcis.pf.rds")
+rna@meta.data[row.names(dat_sub@meta.data),]$fine_celltype<-dat_sub$fine_celltype
+rna$myeloid_clus<-NA
+rna@meta.data[row.names(dat_sub@meta.data),]$myeloid_clus<-dat_sub$immune_myeloid_subclusters
+
+dat_sub<-AddMetaData(dat_sub,rna@meta.data)
+saveRDS(rna,"tenx_dcis.pf.rds")
+
+plt_dim<-DimPlot(dat_sub,group.by=c("immune_myeloid_subclusters","fine_celltype","Group"),label=TRUE)
+ggsave(plt_dim,file="tenx_dcis.immune.myeloid.fine_celltype.umap.pdf",width=15)
+
+
+```
 
 ## T cells
 
@@ -655,4 +682,6 @@ for(i in c("coarse_celltype","fine_celltype","Group")){
 
 saveRDS(obj,"tenx_dcis.pf.rds")
 
+table(rna$fine_celltype,rna$Group)
+#confirms strong enrichment for CAFs TECs and TAMs in IDC/DCIS
 ```

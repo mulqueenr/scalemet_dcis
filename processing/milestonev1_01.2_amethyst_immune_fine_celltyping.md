@@ -7,6 +7,476 @@ Running subclustering on just immune cells for finer cell typing
 
 Output percent methylation as bedgraph to view in IGV over marker genes as well
 
+
+# Prepare RNA marker genes per cell type
+
+From processing/milestonev1_00.2_seurat_scrna_copykat.md seurat object.
+
+```R
+
+#compare dmr sites with rna marker genes overlap
+library(Seurat)
+library(GenomicRanges)
+
+rna<-readRDS("/data/rmulqueen/projects/scalebio_dcis/rna/tenx_dcis.pf.rds")
+
+#just run on all cell types
+table(rna$fine_celltype)
+rna$celltype<-NA
+rna$celltype<-rna$fine_celltype
+Idents(rna)<-rna$celltype
+table(Idents(rna))
+rna <- NormalizeData(rna, normalization.method = "LogNormalize", scale.factor = 10000)
+rna <- ScaleData(rna)
+rna <- JoinLayers(rna)
+rna_markers<-FindAllMarkers(rna,assay="RNA",only.pos=TRUE)
+saveRDS(rna_markers,file="/data/rmulqueen/projects/scalebio_dcis/rna/tenx_dcis.rna_markers.rds")
+```
+
+
+# Read in methylation data and additional libraries
+
+```R
+set.seed(111)
+options(future.globals.maxSize= 80000*1024^2) #80gb limit for parallelizing
+
+#source("/data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/amethyst_custom_functions.R") #to load in
+library(amethyst)
+library(data.table)
+library(dplyr)
+library(msigdbr)
+library(fgsea)
+library(ggplot2)
+library(GenomicRanges)
+library(Matrix)
+library(parallel)
+library(patchwork)
+library(ComplexHeatmap)
+library(circlize)
+library(patchwork)
+task_cpus=300
+project_data_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1"
+merged_dat_folder="merged_data"
+wd=paste(sep="/",project_data_directory,merged_dat_folder)
+setwd(wd)
+system(paste0("mkdir -p ",project_data_directory,"/fine_celltyping"))
+dat<-readRDS(file="05_scaledcis.coarse_clusters.amethyst.rds")
+```
+
+# immune Cells
+
+Wrapping each step into a function, so I can run it on stromal cell types as well.
+
+## Subcluster on just immune cells
+
+Set up variables for output.
+```R
+prefix="immune"
+output_directory=paste0(project_data_directory,"/fine_celltyping/",prefix)
+```
+
+```R
+celltype_umap<-function(obj=dat,prefix="allcells",dims=12,regressCov=TRUE,k_pheno=50,neigh=25,dist=1e-5,method="cosine",output_directory,window_name){
+  print("Running IRLBA reduction...")
+  obj@reductions[[paste(window_name,"irlba",sep="_")]] <- runIrlba(obj, genomeMatrices = c(window_name), dims = dims, replaceNA = c(0))
+
+  if(regressCov){
+    print("Running regression...")
+  obj@reductions[[paste(window_name,"irlba_regressed",sep="_")]] <- regressCovBias(obj, reduction = paste(window_name,"irlba",sep="_")) 
+  } else {
+      print("Skipping regression...")
+  obj@reductions[[paste(window_name,"irlba_regressed",sep="_")]] <- obj@reductions[[paste(window_name,"irlba",sep="_")]]
+  }
+
+  obj <- amethyst::runCluster(obj, k_phenograph = k_pheno, reduction = paste(window_name,"irlba_regressed",sep="_")) 
+
+  print(paste("Running UMAP...",as.character(neigh),as.character(dist),as.character(method)))
+  obj <- amethyst::runUmap(obj, neighbors = neigh, dist = dist, method = method, reduction = paste(window_name,"irlba_regressed",sep="_")) 
+
+  outname=paste(prefix,"integrated_celltype",dims,as.character(regressCov),k_pheno,neigh,as.character(dist),method,sep="_")
+  print(paste("Plotting...",outname))
+
+  p1 <- dimFeature(obj, colorBy = sample, reduction = "umap") + ggtitle(paste(window_name,"Samples"))
+  p2 <- dimFeature(obj, colorBy = log10(cov), pointSize = 1) + scale_color_gradientn(colors = c("black", "turquoise", "gold", "red"),guide="colourbar") + ggtitle("Coverage distribution")
+  p3 <- dimFeature(obj, colorBy = mcg_pct, pointSize = 1) + scale_color_gradientn(colors = c("black", "turquoise", "gold", "red")) + ggtitle("Global %mCG distribution")
+  p4 <- dimFeature(obj, colorBy = cluster_id, reduction = "umap") + ggtitle(paste(window_name,"Clusters"))
+  p5 <- dimFeature(obj, colorBy = Group, reduction = "umap") + ggtitle(paste(window_name," Group"))
+  p6<-ggplot()
+  ggsave((p1|p2)/(p3|p4)/(p5|p6),file=paste0(output_directory,"/",outname,"_umap.pdf"),width=20,height=30)  
+  return(obj)
+
+}
+
+
+cluster_subset<-function(
+  dat=dat,
+  broad_celltype=c("immune"), #note this is a list
+  output_directory,
+  window_name="coarse_cluster_dmr_sites",
+  #umap function args
+  prefix="immune",
+  dims=12,
+  regressCov=TRUE,
+  k_pheno=50,
+  neigh=25,
+  dist=1e-5,
+  method="cosine"){
+
+  system(paste0("mkdir -p ",output_directory))
+  print(paste("Subsetting object based on broad celltype:",broad_celltype))
+
+  #subset amethyst object to broad celltype
+  dat_sub<-subsetObject(dat,cells=row.names(dat@metadata[dat@metadata$broad_celltype %in% broad_celltype,]))
+
+  #subset to windows with coverage
+  dat_sub@genomeMatrices[[window_name]] <- dat_sub@genomeMatrices[[window_name]][rowSums(!is.na(dat_sub@genomeMatrices[[window_name]])) >= 45, ]
+  est_dim<-dimEstimate(dat_sub, genomeMatrices = c(window_name), dims = c(20), threshold = 0.95)
+  print(paste(est_dim,"estimated dimensions."))
+
+  dat_sub<-celltype_umap(obj=dat_sub,
+                        prefix=paste0("06_",prefix,"finecelltyping"),
+                        dims=dims,
+                        regressCov=regressCov,
+                        k_pheno=k_pheno,
+                        neigh=neigh,
+                        dist=0.01,
+                        method="cosine",
+                        window_name=window_name,
+                        output_directory=output_directory) 
+
+  dat_sub@metadata$fine_cluster_id<-dat_sub@metadata$cluster_id
+  return(dat_sub)
+}
+
+
+dat<-cluster_subset(
+  dat=dat,
+  broad_celltype=c("immune"), #note this is a list
+  window_name="coarse_cluster_dmr_sites",
+  prefix=prefix,
+  dims=8,
+  regressCov=FALSE,
+  k_pheno=100,
+  neigh=15,
+  dist=0.1,
+  method="cosine",
+  output_directory=output_directory)
+
+
+saveRDS(dat,file=paste0(output_directory,"/","06_scaledcis.",prefix,"_finecelltyping.amethyst.rds"))
+dat<-readRDS(file=paste0(output_directory,"/","06_scaledcis.",prefix,"_finecelltyping.amethyst.rds"))
+```
+
+
+## Summarize new immune clusters for marker plotting and calculate DMRs per final subclusters
+
+```R
+
+#updated test DMR function (correction by lauren in later releases of amethyst)
+
+#bigwig output
+bigwig_output<-function(
+    obj,
+    tracks="cg_cluster_tracks"){
+    for(i in 4:ncol(obj@genomeMatrices[[tracks]])){
+        cluster=names(obj@genomeMatrices[[tracks]])[i]
+        out_bw<-as.data.frame(obj@genomeMatrices[[tracks]])
+        out_bw<-out_bw[c("chr","start","end",cluster)]
+        out_bw<-GRanges(out_bw[complete.cases(out_bw),])
+        names(out_bw@elementMetadata)<-"score"
+        out_bw<-out_bw[unique(findOverlaps(out_bw, type = "any", select = "first"))]
+        out_bw <- resize(out_bw, width=1000, fix='start') #resize to avoid 1base overlap
+        genome(out_bw)<-"hg38"
+        hg38_seq_info<-Seqinfo(genome="hg38")
+        seqlengths(out_bw)<-as.data.frame(hg38_seq_info)[hg38_seq_info@seqnames %in% out_bw@seqnames,]$seqlengths
+        print(paste("Saving bigwig for...",cluster))
+        export(out_bw,con=paste0(output_dir,"/",paste(tracks,cluster,"bw",sep=".")),format='bigWig')}
+}
+
+testDMR <- function(sumMatrix, eachVsAll = TRUE, comparisons = NULL, nminTotal = 3,nminGroup = 3) {
+  if (!eachVsAll && is.null(comparisons)) {
+    stop("Please either specify eachVsAll = TRUE or provide a data frame of comparisons to make.")
+  }
+  # filter counts table
+  data.table::setDT(sumMatrix)
+  counts <- data.table::copy(sumMatrix)
+  counts <- counts[rowSums(counts[, .SD, .SDcols = patterns("_c$|_t$")], na.rm = TRUE) >= nminTotal]
+  # fast fisher's exact test developed by @zellerivo; see https://github.com/al2na/methylKit/issues/96
+  fast.fisher <- function (
+    cntg_table) {
+    q <- cntg_table[1, 1]
+    m <- cntg_table[1, 1] + cntg_table[2, 1]
+    n <- cntg_table[1, 2] + cntg_table[2, 2]
+    k <- cntg_table[1, 1] + cntg_table[1, 2]
+    pval_right <- phyper(q = q, m = m, n = n, k = k, lower.tail = FALSE) +
+      (0.5 * dhyper(q, m, n, k))
+    pval_left <- phyper(q = q - 1, m = m, n = n, k = k, lower.tail = TRUE) +
+      (0.5 * dhyper(q, m, n, k))
+    return(ifelse(test = pval_right > pval_left, yes = pval_left *
+                    2, no = pval_right * 2))
+  }
+  if (is.null(comparisons)) {
+    # get unique groups
+    groups <- as.list(sub("_c$", "", colnames(sumMatrix)[grep("_c$", colnames(sumMatrix))]))
+    for (gr in groups) {
+      m_c <- paste0(gr, "_c") # m = member
+      m_t <- paste0(gr, "_t")
+      nm_c <- setdiff(grep("_c$", colnames(counts), value = TRUE), m_c) # nm = nonmember
+      nm_t <- setdiff(grep("_t$", colnames(counts), value = TRUE), m_t)
+      counts <- counts[, `:=`(
+        member_c = get(paste0(gr, "_c")),
+        member_t = get(paste0(gr, "_t")),
+        nonmember_c = rowSums(.SD[, mget(nm_c)]),
+        nonmember_t = rowSums(.SD[, mget(nm_t)])
+      )]
+      # don't test where the minimum observations per group is not met
+      counts <- counts[member_c + member_t <= nminGroup | nonmember_c + nonmember_t <= nminGroup, c("member_c", "member_t", "nonmember_c", "nonmember_t") := .(NA, NA, NA, NA)]
+      # apply fast fishers exact test
+      counts <- counts[, paste0(gr, "_all_pval") := apply(.SD, 1, function(x) fast.fisher(matrix(x, nrow = 2, byrow = TRUE))), .SDcols = c("member_c", "member_t", "nonmember_c", "nonmember_t")]
+      counts <- counts[, paste0(gr, "_all_logFC") := round(log2((member_c / (member_c + member_t)) / (nonmember_c / (nonmember_c + nonmember_t))), 4)]
+      counts <- counts[, c("member_c", "member_t", "nonmember_c", "nonmember_t") := NULL] # this line used to be outside the loop in < v1.0.2, causing nonmember variable buildup :(
+      cat(paste0("Finished group ", gr, "\n"))
+    }
+  } else if (!is.null(comparisons)) {
+    for (i in 1:nrow(comparisons)) {
+      m <- unlist(strsplit(comparisons[i, "A"], ','))
+      nm <- unlist(strsplit(comparisons[i, "B"], ',', fixed = FALSE))
+      name <- comparisons[i, "name"]
+      m_c <- paste0(m, "_c") # m = member
+      m_t <- paste0(m, "_t")
+      nm_c <- paste0(nm, "_c") # n = nonmember
+      nm_t <- paste0(nm, "_t")
+      counts <- counts[, `:=`(
+        member_c = rowSums(.SD[, mget(m_c)]),
+        member_t = rowSums(.SD[, mget(m_t)]),
+        nonmember_c = rowSums(.SD[, mget(nm_c)]),
+        nonmember_t = rowSums(.SD[, mget(nm_t)])
+      )]
+      # don't test where the minimum observations per group is not met
+      counts <- counts[member_c + member_t <= nminGroup | nonmember_c + nonmember_t <= nminGroup, c("member_c", "member_t", "nonmember_c", "nonmember_t") := .(NA, NA, NA, NA)]
+      # apply fast fishers exact test
+      counts <- counts[, paste0(name, "_pval") := apply(.SD, 1, function(x) fast.fisher(matrix(x, nrow = 2, byrow = TRUE))), .SDcols = c("member_c", "member_t", "nonmember_c", "nonmember_t")]
+      counts <- counts[, paste0(name, "_logFC") := round(log2((member_c / (member_c + member_t)) / (nonmember_c / (nonmember_c + nonmember_t))), 4)]
+      counts <- counts[, c("member_c", "member_t", "nonmember_c", "nonmember_t") := NULL]
+      cat(paste0("\nFinished testing ", name, ": ", paste0(m, collapse = ", "), " vs. ", paste0(nm, collapse = ", ")))
+    }
+  }
+  return(counts)
+}
+
+calculate_dmrs<-function(dat=dat,prefix=prefix,output_directory=output_directory){
+  celltype500bpwindows <- calcSmoothedWindows(dat, 
+                                          type = "CG", 
+                                          threads = 100,
+                                          step = 500, 
+                                          smooth = 3,
+                                          genome = "hg38",
+                                          index = "chr_cg",
+                                          groupBy = "fine_cluster_id",
+                                          returnSumMatrix = TRUE, # save sum matrix for DMR analysis
+                                          returnPctMatrix = TRUE)
+
+  saveRDS(celltype500bpwindows,file=paste0(output_directory,"/","06_",prefix,"_finecelltyping.500bp_windows.rds"))
+  
+  dat@genomeMatrices[[paste0("cg_",prefix,"cells_perc")]] <- celltype500bpwindows[["pct_matrix"]]
+
+  #output tracks as bigwig
+  bigwig_output(obj=dat,tracks=paste0("cg_",prefix,"cells_perc"),output_directory=output_directory)
+
+  saveRDS(dat,file=paste0(output_directory,"/","06_scaledcis.",prefix,"_finecelltyping.amethyst.rds"))
+
+
+  pct_mat<-celltype500bpwindows[["pct_matrix"]] 
+  sum_mat<-celltype500bpwindows[["sum_matrix"]] 
+
+  dmrs <- testDMR(sum_mat, # Sum of c and t observations in each genomic window per group
+          eachVsAll = TRUE, # If TRUE, each group found in the sumMatrix will be tested against all others
+          nminTotal = 3, # Min number observations across all groups to include the region in calculations
+          nminGroup = 3) # Min number observations across either members or nonmembers to include the region
+  saveRDS(dmrs,file=paste0(output_directory,"/","06_",prefix,"_finecelltyping",".500bp_dmrs.rds"))
+
+  dmrs <- filterDMR(dmrs, 
+              method = "bonferroni", # c("holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "fdr")
+              filter = FALSE, # If TRUE, removes insignificant results
+              pThreshold = 0.05, # Maxmimum adjusted p value to allow if filter = TRUE
+              logThreshold = 1.5) # Minimum absolute value of the log2FC to allow if filter = TRUE
+
+
+  collapsed_dmrs <- collapseDMR(dat, 
+                        dmrs, 
+                          maxDist = 2000, # Max allowable overlap between DMRs to be considered adjacent
+                          minLength = 500, # Min length of collapsed DMR window to include in the output
+                          reduce = T, # Reduce results to unique observations (recommended)
+                          annotate = T) # Add column with overlapping gene names
+
+
+  saveRDS(collapsed_dmrs,file=paste0(output_directory,"/","06_",prefix,"_finecelltyping.500bp_dmrs.filt_collapsed.rds"))
+
+  rename_dmr_output<-setNames(nm=1:length(unique(collapsed_dmrs$test)),gsub(colnames(sum_mat)[grepl(colnames(sum_mat),pattern="_t$")],pattern="_t",replacement=""))
+  collapsed_dmrs$type <- rename_dmr_output[collapsed_dmrs$test]
+  saveRDS(collapsed_dmrs,file=paste0(output_directory,"/","06_",prefix,"_finecelltyping.500bp_dmrs.filt_collapsed.rds"))
+
+  #plot dmr counts per cluster
+  pal <- colorRampPalette(colors = c("#F9AB60", "#E7576E", "#630661", "#B5DCA5"))
+  COLS <- pal(length(unique(collapsed_dmrs$type)))
+
+  plt<-ggplot(collapsed_dmrs |> dplyr::group_by(type, direction) |> dplyr::summarise(n = n()), 
+      aes(y = type, x = n, fill = type)) + 
+      geom_col() + 
+      facet_grid(vars(direction), scales = "free_y") + 
+      scale_fill_manual(values = COLS) + 
+      theme_classic()
+  ggsave(plt,file=paste0(output_directory,"/","06_",prefix,"_finecelltyping.500bp_dmrs.filt_collapsed.barplot.pdf"))
+  return(collapsed_dmrs)
+
+}
+
+calculate_dmrs(dat=dat,prefix=prefix,output_directory=output_directory)
+```
+
+## DMR site overlap with RNA marker genes
+
+Use RNA markers and DMR markers to define cell types.
+
+```R
+rna_markers<-readRDS(file="/data/rmulqueen/projects/scalebio_dcis/rna/tenx_dcis.rna_markers.rds")
+collapsed_dmrs<-readRDS(file=paste0(output_directory,"/","06_",prefix,"_finecelltyping.500bp_dmrs.filt_collapsed.rds"))
+
+#perform fisher test on set
+row_fisher <- function(i){
+    df<-celltype_dmr_overlaps[i,]
+    p11<-df["dmr_rnamarker_overlap"]
+    p10<-df["dmr_cluster_total"]-df["dmr_rnamarker_overlap"]
+    p01<-df["rna_celltype_total"]
+    p00<-length(Features(rna))
+    mat <- matrix(as.numeric(c(p11,p10,p01,p00)), ncol=2)
+    f <- fisher.test(as.table(mat), alt="greater")
+    return(f$p.value)
+}
+
+dmr_rna_marker_overlap<-function(rna_markers,collapsed_dmrs,prefix,output_directory){
+
+  #overexpressed genes by cell type
+  rna_markers_filt<-rna_markers %>% 
+                      filter(avg_log2FC > 1) %>% 
+                      filter(p_val_adj <0.05) %>% 
+                      group_by(cluster)
+
+
+  #filter collapsed dmrs by padj and extract gene names per type
+  dmr_out<-collapsed_dmrs %>% 
+                  filter(direction=="hypo") %>% 
+                  filter(dmr_padj<0.05) %>% 
+                  filter(abs(dmr_logFC) > 1.5) %>% 
+                  filter(dmr_length<50000) %>% 
+                  filter(!is.na(gene_names)) %>% 
+                  as.data.frame()
+
+  dmr_out$met_feature<-paste(dmr_out$chr,dmr_out$dmr_start,dmr_out$dmr_end,sep="_")
+
+  #overlap with rna markers
+  #expand dmr_out so each row is its own gene name
+  #this will be used to summarize multiple DMRs to their genes
+  dmrs_to_gene_names<-lapply(1:nrow(dmr_out), function(x) {
+    temp<-dmr_out[x,]
+    genes<-unlist(temp$gene_names %>% stringr::str_replace_all(" ","") %>% strsplit(split=","))
+    return(cbind(genes=genes,type=temp$type,met_feature=temp$met_feature))
+  })
+
+  dmr_genes<-as.data.frame(do.call("rbind",dmrs_to_gene_names))
+  colnames(dmr_genes)<-c("gene","cluster","met_feature")
+
+  dmr_genes<-dmr_genes %>% filter(!duplicated(gene,cluster)) %>% group_by(cluster) 
+
+  #count intersect between type in DMRs and cell type in RNA markers
+  rna_markers_filt
+  dmr_genes
+
+  celltype_dmr_overlaps <- dmr_genes %>%
+    inner_join(rna_markers_filt, by = "gene", relationship="many-to-many") %>%
+    group_by(cluster.x,) %>%
+    count(cluster.y, name = "overlap_count") %>%
+    as.data.frame()
+
+  colnames(celltype_dmr_overlaps)<-c("cluster","celltype","dmr_rnamarker_overlap")
+
+  #add count of dmr features passing filter per cluster
+  celltype_dmr_overlaps$dmr_cluster_total<-NA
+  dmr_count<-dmr_genes %>% filter(!duplicated(met_feature)) %>% count() 
+  dmr_count<-setNames(nm=dmr_count$cluster,dmr_count$n)
+  celltype_dmr_overlaps$dmr_cluster_total<-NA
+  celltype_dmr_overlaps$dmr_cluster_total<-dmr_count[celltype_dmr_overlaps$cluster]
+
+  #add count of rna markers passing filter per cell type
+  rna_marker_count<-rna_markers_filt %>% count() 
+  rna_marker_count<-setNames(nm=rna_marker_count$cluster,rna_marker_count$n)
+  celltype_dmr_overlaps$rna_celltype_total<-0
+  celltype_dmr_overlaps$rna_celltype_total<-rna_marker_count[celltype_dmr_overlaps$celltype]
+
+  fishers <- unlist(lapply(1:nrow(celltype_dmr_overlaps),row_fisher))
+  celltype_dmr_overlaps$fishers.pval<-NA
+  celltype_dmr_overlaps$fishers.pval<-fishers
+  celltype_dmr_overlaps<-as.data.frame(celltype_dmr_overlaps)
+
+  dat <- reshape2::dcast(celltype_dmr_overlaps, cluster~celltype,value.var="fishers.pval",fill=1) 
+  dat_counts <- reshape2::dcast(celltype_dmr_overlaps, cluster~celltype,value.var="dmr_rnamarker_overlap",fill=0) 
+
+  row.names(dat)<-dat$cluster
+  row.names(dat_counts)<-dat_counts$cluster
+
+  dmr_counts<-unique(celltype_dmr_overlaps[c("cluster","dmr_cluster_total")])
+  dmr_counts<-setNames(nm=dmr_counts$cluster,dmr_counts$dmr_cluster_total)
+
+  de_counts<-unique(celltype_dmr_overlaps[c("celltype","rna_celltype_total")])
+  de_counts<-setNames(nm=de_counts$celltype,de_counts$rna_celltype_total)
+
+  #negative log10 on dat
+  dat<-dat[2:ncol(dat)]
+  dat_counts<-dat_counts[2:ncol(dat_counts)]
+
+  dat<- -(log10(dat))
+  col_fun=colorRamp2(breaks=quantile(unlist(dat),probs=c(0,0.5,0.9)),colors=c("white","grey","#FF00FF"))
+
+  #add annotation barplots on counts for rna and dmr
+  row_ha = rowAnnotation(dmr_count = anno_barplot(dmr_counts[row.names(dat)]))
+  column_ha = columnAnnotation(de_count = anno_barplot(de_counts[colnames(dat)]))
+
+  #add dot size by overlap
+  cell_fun = function(j, i, x, y, width, height, fill) {
+          grid.rect(x = x, y = y, width = width, height = height, 
+              gp = gpar(col = "grey", fill = NA))
+              grid.text(sprintf("%.1f", dat[i, j]), x = x, y = y)
+      }
+      
+  plt<-Heatmap(dat,
+              cell_fun=cell_fun,
+              top_annotation = column_ha, 
+              right_annotation = row_ha,
+              col=col_fun,
+              name="-log10p")
+
+  #col=col_fun,)
+  pdf(paste0(output_directory,"/","06_",prefix,"_finecelltyping.dmr_rnamarkergene.fisher.pdf"),width=20,height=20)
+  print(plt)
+  dev.off()
+
+
+  #and compare group proportion per cluster
+  dat_met<-readRDS(file=paste0(output_directory,"/","06_scaledcis.immune_finecelltyping.amethyst.rds"))
+  prop_celltype<-table(dat_met@metadata$fine_cluster_id,dat_met@metadata$Group) %>% reshape2::melt()
+  colnames(prop_celltype)<-c("cluster","group","count")
+  plt<-ggplot(prop_celltype,aes(x=as.character(cluster),y=count,fill=group))+geom_bar(position="fill",stat="identity")+theme_minimal()
+  ggsave(plt,file=paste0(output_directory,"/","06_",prefix,"finecelltyping.dmr_rnamarkergene.cellprop.pdf"))
+
+}
+
+rna_markers<-readRDS(file="/data/rmulqueen/projects/scalebio_dcis/rna/tenx_dcis.rna_markers.rds")
+collapsed_dmrs<-readRDS(file=paste0(output_directory,"/","06_",prefix,"_finecelltyping.500bp_dmrs.filt_collapsed.rds"))
+dmr_rna_marker_overlap(rna_markers=rna_markers,collapsed_dmrs=collapsed_dmrs,prefix=prefix,output_directory=output_directory)
+```
+
+# Plotting marker genes over clusters
+
 ```R
 set.seed(111)
 options(future.globals.maxSize= 80000*1024^2) #80gb limit for parallelizing
@@ -31,93 +501,7 @@ merged_dat_folder="merged_data"
 wd=paste(sep="/",project_data_directory,merged_dat_folder)
 setwd(wd)
 
-system(paste0("mkdir -p ",project_data_directory,"/fine_celltyping"))
-
-dat<-readRDS(file="05_scaledcis.coarse_clusters.amethyst.rds")
-rna<-readRDS("/data/rmulqueen/projects/scalebio_dcis/rna/tenx_dcis.pf.rds")
-
-```
-
-# Immune Cells
-
-## Subcluster on just immune cells
-```R
-broad_celltype="immune"
-
-output_directory=paste0(project_data_directory,"/fine_celltyping/",broad_celltype)
-system(paste0("mkdir -p ",output_directory))
-print(paste("Subsetting object based on broad celltype:",broad_celltype))
-dat<-subsetObject(dat,cells=row.names(dat@metadata[dat@metadata$broad_celltype %in% broad_celltype,]))
-
-
-celltype_umap<-function(obj=dat,prefix="allcells",dims=12,regressCov=TRUE,k_pheno=50,neigh=25,dist=1e-5,method="cosine"){
-  print("Running IRLBA reduction...")
-  obj@reductions[[paste(window_name,"irlba",sep="_")]] <- runIrlba(obj, genomeMatrices = c(window_name), dims = dims, replaceNA = c(0))
-  
-  if(regressCov){
-    print("Running regression...")
-  obj@reductions[[paste(window_name,"irlba_regressed",sep="_")]] <- regressCovBias(obj, reduction = paste(window_name,"irlba",sep="_")) 
-  } else {
-      print("Skipping regression...")
-  obj@reductions[[paste(window_name,"irlba_regressed",sep="_")]] <- obj@reductions[[paste(window_name,"irlba",sep="_")]]
-  }
-
-  obj <- amethyst::runCluster(obj, k_phenograph = k_pheno, reduction = paste(window_name,"irlba_regressed",sep="_")) 
-
-  print(paste("Running UMAP...",as.character(neigh),as.character(dist),as.character(method)))
-  obj <- amethyst::runUmap(obj, neighbors = neigh, dist = dist, method = method, reduction = paste(window_name,"irlba_regressed",sep="_")) 
-
-  outname=paste(prefix,"integrated_celltype",dims,as.character(regressCov),k_pheno,neigh,as.character(dist),method,sep="_")
-  print(paste("Plotting...",outname))
-
-  p1 <- dimFeature(obj, colorBy = sample, reduction = "umap") + ggtitle(paste(window_name,"Samples"))
-  p2 <- dimFeature(obj, colorBy = log10(cov), pointSize = 1) + scale_color_gradientn(colors = c("black", "turquoise", "gold", "red"),guide="colourbar") + ggtitle("Coverage distribution")
-  p3 <- dimFeature(obj, colorBy = mcg_pct, pointSize = 1) + scale_color_gradientn(colors = c("black", "turquoise", "gold", "red")) + ggtitle("Global %mCG distribution")
-  p4 <- dimFeature(obj, colorBy = cluster_id, reduction = "umap") + ggtitle(paste(window_name,"Clusters"))
-  p5 <- dimFeature(obj, colorBy = Group, reduction = "umap") + ggtitle(paste(window_name," Group"))
-  p6<-ggplot()
-  ggsave((p1|p2)/(p3|p4)/(p5|p6),file=paste0(outname,"_umap.pdf"),width=20,height=30)  
-  return(obj)
-  }
-
-window_name="coarse_cluster_dmr_sites"
-dat@genomeMatrices[[window_name]] <- dat@genomeMatrices[[window_name]][rowSums(!is.na(dat@genomeMatrices[[window_name]])) >= 45, ]
-est_dim<-dimEstimate(dat, genomeMatrices = c(window_name), dims = c(20), threshold = 0.95)
-print(est_dim)
-#7
-
-dat<-celltype_umap(obj=dat,prefix="06_immune_finecelltyping",dims=8,regressCov=FALSE,k_pheno=50,neigh=5,dist=0.01,method="cosine") 
-dat@metadata$fine_cluster_id<-dat@metadata$cluster_id
-#happy with this immune cell clustering! looks like good structure!
-
-saveRDS(dat,file="06_scaledcis.immune_finecelltyping.amethyst.rds")
-```
-
-## Summarize new immune clusters for marker plotting
-
-
-```R
-celltype500bpwindows <- calcSmoothedWindows(dat, 
-                                        type = "CG", 
-                                        threads = 100,
-                                        step = 500, 
-                                        smooth = 3,
-                                        genome = "hg38",
-                                        index = "chr_cg",
-                                        groupBy = "fine_cluster_id",
-                                        returnSumMatrix = TRUE, # save sum matrix for DMR analysis
-                                        returnPctMatrix = TRUE)
-
-saveRDS(celltype500bpwindows,file=paste0("06_immune_finecelltyping",".500bp_windows.rds"))
-
-dat@genomeMatrices[["cg_immunecells_perc"]] <- celltype500bpwindows[["pct_matrix"]]
-saveRDS(dat,file="06_scaledcis.immune_finecelltyping.amethyst.rds")
-
-
-```
-
-```R
-
+dat<-readRDS(file=paste0(output_directory,"/","06_scaledcis.",prefix,"_finecelltyping.amethyst.rds"))
 
 #modified from histograM
 histograModified <- function(obj,
@@ -130,7 +514,7 @@ histograModified <- function(obj,
     promoter_focus=FALSE,
     cgisland=NULL) {
 
-    if (!is.null(colors)) {pal <- colors} else {pal <- rev(c("#FF0082", "#dbdbdb", "#cccccc", "#999999"))}
+    if (!is.null(colors)) {pal <- colors} else {pal <- c("#FF0082", "#dbdbdb", "#cccccc", "#999999")}
     
     genes<-genes[genes %in% obj@ref$gene_name] #ensure genes are in ref
     p <- vector("list", length(genes)) # empty plot list
@@ -223,41 +607,25 @@ histograModified <- function(obj,
     return(all_genes_plot)
 }
 
-#more broad cell markers
-cell_markers<-list()
-cell_markers[["myeloid"]]<-c("HLA-DRA","HLA-DPA1","CD74")
-cell_markers[["tcell"]]<-c("PTPRC","IKZF1","IL7R","GNLY")
-cell_markers[["bcell"]]=c("CD37","TCL1A","LTB","HLA-DPB1")
-cell_markers[["plasma"]]=c("IGHA2","IGHA1","JCHAIN","IGHM","IGHG1","IGHG4","IGHG3","IGHG2")
-
 #https://www.nature.com/articles/s41588-024-01688-9/figures/2
-cell_markers[["immune"]]<-c("PTPRC","CXCR4") #both good
-cell_markers[["tcell"]]<-c("CD3D","CD3G") #both good
-cell_markers[["tcell_CD4"]]<-c("CD4","CCR4") #not great
-cell_markers[["tcell_CD8"]]<-c("CD8A","CD8B") #cd8b good
-cell_markers[["bcell"]]<-c("MS4A1","CD79A") #both good
-cell_markers[["macro"]]<-c("FCER1G","C1QB","APOE","TREM2","LYVE1","FOLR2","NRP1") #FCER1G good, TREM2 FOLR2 is TAM
+cell_markers[["immune"]]<-c("PTPRC","CXCR4") #good!
+cell_markers[["tcell"]]<-c("CD3D","CD3G","CD3E","IL7R") #good! 4,2,15,12,1,3,11,13,14
+
+cell_markers[["tcell_CD4"]]<-c("SELL","TCF7","CD4","LEF1","CCR4","ITGB1","CD45RO") #not good
+cell_markers[["tcell_CD8"]]<-c("CD8A","CD8B","GZMA","GZMB") #not good
+cell_markers[["tcell_treg"]]<-c("FOXP3","CXCL13","IL2RA","IKZF2") #cd8b good
 
 
+cell_markers[["myeloid"]]<-c("HLA-DRA","HLA-DPA1","CD74") #good! 6,9,5,17
+cell_markers[["bcell"]]<-c("MS4A1","CD79A","CD19","CD79B","CD22") #good! 17,5
 
+#want to find: mono, dc,  macro, neutrophil, mast, TAM (if possible)
 
-immune_markers<-list()
-immune_markers[["myeloid_mono_classical"]]<-c('SERPINB2', 'AQP9', 'FCN1', 'VCAN', 'AC245128.3', 'EREG', 'TNIP3', 'CD300E', 'S100A8', 'S100A9', 'THBS1', 'CYP1B1', 'SLC39A8', 'MAP3K20', 'EHD1', 'LUCAT1', 'FCAR', 'S100A12', 'PID1', 'ACOD1')
-immune_markers[["myeloid_mono_nonclassical"]]<-c('CCDC68', 'CLEC12A', 'CD48', 'OLIG1', 'CDKN1C', 'S100A4', 'KRTAP2-3', 'CD52', 'WARS', 'LINC02432', 'CFP', 'UNC45B', 'APOBEC3A', 'TKT', 'RIPOR2', 'CDA', 'PLAC8', 'FFAR2', 'PAPSS2', 'GK5')
-immune_markers[["myeloid_macro_C3"]]<-c('C3', 'GPR158', 'C1QC', 'C1QB', 'AC079760.2', 'FCGR3A', 'SDS', 'A2M', 'AL590705.1', 'MT3', 'TREM2', 'HLA-DQB2', 'OLR1', 'ZBED9', 'IL4I1', 'DOK5', 'IGLC7', 'PMEPA1', 'IBSP', 'CD9')
-immune_markers[["myeloid_macro_LYVE1"]]<-c('PDK4', 'SELENOP', 'FOLR2', 'LYVE1', 'LILRB5', 'MAF', 'KLF4', 'RNASE1', 'SLC40A1', 'RHOB', 'F13A1', 'MRC1', 'TSC22D3', 'PLTP', 'STAB1', 'NR4A2', 'MS4A4A', 'DAB2', 'CD163', 'CTSC')
-immune_markers[["myeloid_macro_CCL4"]]<-c('CCL4', 'SELENOP', 'FOLR2', 'RNASE1', 'MRC1', 'F13A1', 'LYVE1', 'CD163', 'STAB1', 'CXCL3', 'HMOX1', 'CCL3', 'CXCL2', 'AC010980.2', 'GCLM', 'CD93', 'CTSL', 'PLTP', 'MAFB', 'THBD')
-immune_markers[["myeloid_macro_APOC1"]]<-c('ACP5', 'CYP27A1', 'LIPA', 'PLD3', 'TREM2', 'PLA2G7', 'CD36', 'FABP4', 'GPNMB', 'CCL18', 'NCEH1', 'RARRES1', 'FUCA1', 'APOC1', 'LPL', 'OTOA', 'BLVRB', 'HS3ST2', 'NR1H3', 'CHIT1')
-immune_markers[["myeloid_macro_interferon"]]<-c( 'EPSTI1', 'CXCL10', 'GBP1', 'STAT1', 'CXCL11', 'CXCL9', 'GBP4', 'IFI44L', 'FCGR1A', 'SERPING1', 'IFI6', 'IGSF6', 'IFIH1', 'IDO1', 'RASSF4', 'XAF1', 'APOL6', 'ISG15', 'FYB1', 'PSME2')
-immune_markers[["myeloid_macro_stress"]]<-c( 'HSPA1B', 'BAG3', 'DNAJB1', 'HSPA6', 'MRPL18', 'ZFAND2A', 'CHORDC1', 'SDS', 'CACYBP', 'FKBP4', 'DNAJA4', 'HSPE1', 'RGS1', 'HSPH1', 'HSPA1A', 'OLR1', 'HSPB1', 'CLEC2B', 'CKS2', 'PLEK')
-immune_markers[["myeloid_macro_CTSK"]]<-c( 'AP000904.1', 'CTSK', 'ACP5', 'SLC9B2', 'MMP9', 'DGKI', 'SPP1', 'TCIRG1', 'ATP6V0D2', 'CKB', 'CST3', 'CD109', 'TIMP2', 'JDP2', 'SPARC', 'C9orf16', 'GRN', 'SIGLEC15', 'AK5', 'SNX10')
-immune_markers[["myeloid_cycling"]]<-c( 'MKI67', 'PCLAF', 'CKS1B', 'DIAPH3', 'TYMS', 'TOP2A', 'HIST1H1B', 'ASPM', 'TK1', 'DHFR', 'NUSAP1', 'NCAPG', 'DLGAP5', 'CENPM', 'TPX2', 'RRM2', 'CEP55', 'MYBL2', 'BIRC5', 'CENPF')
-immune_markers[["myeloid_neutrophil"]]<-c('CRISP3', 'ANKRD34B', 'ABCA13', 'CD177', 'ORM1', 'SERPINB4', 'DEFA3', 'DPYS', 'C7', 'AZU1', 'CLC', 'FOXQ1', 'RAB6B', 'SFRP1', 'TWIST1', 'MAP1B', 'SLPI', 'ADH1B', 'FOLR3', 'BTNL9')
-immune_markers[["myeloid_mast"]]<-c('CPA3', 'TPSAB1', 'MS4A2', 'TPSB2', 'HDC', 'IL1RL1', 'GATA2', 'HPGDS', 'GCSAML', 'HPGD', 'ADCYAP1', 'KIT', 'KRT1', 'PRG2', 'CTSG', 'CLU', 'TPSD1', 'CALB2', 'RAB27B', 'SLC18A2')
-immune_markers[["myeloid_cDC1"]]<-c('CLEC9A', 'XCR1', 'DNASE1L3', 'IDO1', 'LGALS2', 'CPNE3', 'WDFY4', 'C1orf54', 'DAPP1', 'RAB11FIP1', 'PPA1', 'CPVL', 'C9orf135', 'FOXB1', 'AC016717.2', 'CST3', 'PLEKHA5', 'GPR157', 'FOXN2', 'NCOA7')
-immune_markers[["myeloid_cDC2"]]<-c('FCER1A', 'IL1R2', 'CLEC10A', 'CD1C', 'CST7', 'GPAT3', 'DAPP1', 'CFP', 'EREG', 'CCL22', 'LGALS2', 'JAML', 'PID1', 'AREG', 'IL7R', 'AC020656.1', 'IL1R1', 'MARCKSL1', 'ADAM19', 'SLC7A11')
-immune_markers[["myeloid_mDC"]]<-c('LAMP3', 'BIRC3', 'LACRT', 'NUB1', 'CCR7', 'MARCKSL1', 'IDO1', 'DAPP1', 'POGLUT1', 'LINC01539', 'GPR157', 'IL12B', 'LAD1', 'KIF2A', 'FSCN1', 'IL7R', 'TXN', 'DUSP5', 'FOXD4L1', 'CD200', 'RAB9A')
-immune_markers[["myeloid_pDC"]]<-c('CD5', 'LYPD8', 'PRL', 'AC136475.3', 'LINC01087', 'AC006058.1', 'BDKRB2', 'POTEI', 'DSP', 'AC026369.3', 'GZMB', 'TNFSF4', 'CD2', 'TIGIT', 'LTB', 'TMEM45A', 'PGR', 'CD3G', 'AC015936.1', 'ACOT7')
+cell_markers[["macro"]]<-c("CD68","FCER1G","TREM2","LYVE1","FOLR2","NRP1") #FCER1G good, TREM2 FOLR2 is TAM 14,8,6,9,16,7,17
+cell_markers[["mono"]]<-c("CD14","CSF1R","FCGR3A","CX3CR1","ITGAM") #FCER1G good, TREM2 FOLR2 is TAM
+cell_markers[["neutrophil"]]<-c("S100A8", "S100A9", "CXCL8","CSF3R","FCGR3B","CD177","MMP9")
+cell_markers[["TAMs"]]<-c("CD163","CD206","MARCO","TREM2")
+immune_markers<-cell_markers
 
 cell_colors=c(
 "bcell"="#65cbe4",
@@ -275,219 +643,102 @@ cgi<-rtracklayer::import(cgisland)
 cgi<-as.data.frame(cgi)
 colnames(cgi)<-c("chr","start","end","strand")
 
+
 #rough ordering by what clustered together
 order<-c(
-"9",
-"1","7","2","10",
-"6",
-"8",
-"5",
-"4",
-"3")
-    
-plt_list<-lapply(names(cell_markers),
+  "4","2", "15",
+  "12",
+  "1","3","11",
+  "13","14","8",
+  "6",
+  "9",
+  "10",
+  "16",
+  "7",
+  "17","5"
+  )
+   
+
+mclapply(names(immune_markers),
 function(celltype){
-    genes<-unlist(cell_markers[celltype])
+    genes<-unlist(immune_markers[celltype])
     genes<-genes[genes %in% dat@ref$gene_name]
     print(paste("Plotting:",celltype))
     print(paste("Genes to plot:",genes))
     plt<-histograModified(obj=dat, 
         baseline="mean",
-        genes = unlist(cell_markers[celltype]),
-        colors= c(cell_colors[celltype], "#dbdbdb","#cccccc", "#999999"),
-        matrix = "cg_immunecells_perc", arrowScale = .03, trackScale = .5,
+        genes = unlist(immune_markers[celltype]),
+        #colors= c(cell_colors[celltype], "#dbdbdb","#cccccc", "#999999"),
+        matrix = paste0("cg_",prefix,"cells_perc"), arrowScale = .03, trackScale = .5,
         legend = F, cgisland=cgi,order=order) + ggtitle(celltype)
-    return(plt)
-})
+    ggsave(plt,
+          file=paste0(output_directory,"/","06_",prefix,"finecelltyping.",celltype,".marker.pdf"),
+          width=3*length(genes),
+          height=ncol(dat@genomeMatrices[[paste0("cg_",prefix,"cells_perc")]])*1,
+          limitsize=F)
 
-plt_out<-wrap_plots(plt_list,ncol=1) 
-ggsave(plt_out ,file="06_immune.finecelltyping.marker.pdf",width=30,height=length(cell_colors)*30,limitsize=F)
+},mc.cores=20)
 
-
-
-celltype_assignment<-c(
-"9"="tcell",
-"1"="tcell","7"="tcell","2"="tcell","10"="tcell",
-"6",
-"8",
-"5",
-"4"="bcell",
-"3")
-```
-
-hard to tell from these markers, trying liger integration on just immune cells
-and trying dmr marker sites
-
-```R
-
-celltype500bpwindows<-readRDS(file=paste0("06_immune_finecelltyping",".500bp_windows.rds"))
-
-pct_mat<-celltype500bpwindows[["pct_matrix"]] 
-sum_mat<-celltype500bpwindows[["sum_matrix"]] 
-
-dmrs <- testDMR(sum_mat, # Sum of c and t observations in each genomic window per group
-        eachVsAll = TRUE, # If TRUE, each group found in the sumMatrix will be tested against all others
-        nminTotal = 3, # Min number observations across all groups to include the region in calculations
-        nminGroup = 3) # Min number observations across either members or nonmembers to include the region
-
-saveRDS(dmrs,file=paste0("06_immune_finecelltyping",".500bp_dmrs.rds"))
-
-dmrs <- filterDMR(dmrs, 
-            method = "bonferroni", # c("holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "fdr")
-            filter = FALSE, # If TRUE, removes insignificant results
-            pThreshold = 0.05, # Maxmimum adjusted p value to allow if filter = TRUE
-            logThreshold = 1.5) # Minimum absolute value of the log2FC to allow if filter = TRUE
-
-collapsed_dmrs <- collapseDMR(dat, 
-                       dmrs, 
-                        maxDist = 2000, # Max allowable overlap between DMRs to be considered adjacent
-                        minLength = 500, # Min length of collapsed DMR window to include in the output
-                        reduce = T, # Reduce results to unique observations (recommended)
-                        annotate = T) # Add column with overlapping gene names
-
-saveRDS(collapsed_dmrs,file=paste0("06_immune_finecelltyping",".500bp_dmrs.filt_collapsed.rds"))
-
-rename_dmr_output<-setNames(nm=1:length(unique(collapsed_dmrs$test)),gsub(colnames(sum_mat)[grepl(colnames(sum_mat),pattern="_t$")],pattern="_t",replacement=""))
-collapsed_dmrs$type <- rename_dmr_output[collapsed_dmrs$test]
-saveRDS(collapsed_dmrs,file=paste0("06_immune_finecelltyping",".500bp_dmrs.filt_collapsed.rds"))
-
-#plot dmr counts per cluster
-pal <- colorRampPalette(colors = c("#F9AB60", "#E7576E", "#630661", "#B5DCA5"))
-COLS <- pal(length(unique(collapsed_dmrs$type)))
-
-plt<-ggplot(collapsed_dmrs |> dplyr::group_by(type, direction) |> dplyr::summarise(n = n()), 
-    aes(y = type, x = n, fill = type)) + 
-    geom_col() + 
-    facet_grid(vars(direction), scales = "free_y") + 
-    scale_fill_manual(values = COLS) + 
-    theme_classic()
-ggsave(plt,file=paste0("06_immune_finecelltyping",".500bp_dmrs.filt_collapsed.barplot.pdf"))
 
 ```
 
-## DMR site overlap with RNA marker genes
+Plot top marker sites based on DMR per group
 
 ```R
-#compare dmr sites with rna marker genes overlap
-library(Seurat)
-library(GenomicRanges)
 
-rna<-readRDS("/data/rmulqueen/projects/scalebio_dcis/rna/tenx_dcis.pf.rds")
-rna<-subset(rna,coarse_celltype %in% c("bcell","myeloid","plasma","tcell"))
-Idents(rna)<-rna$fine_celltype
-rna <- NormalizeData(rna, normalization.method = "LogNormalize", scale.factor = 10000)
-rna <- ScaleData(rna)
-rna <- JoinLayers(rna)
-rna_markers<-FindAllMarkers(rna,assay="RNA",only.pos=TRUE)
+collapsed_dmrs<-readRDS(file=paste0(output_directory,"/","06_",prefix,"_finecelltyping.500bp_dmrs.filt_collapsed.rds"))
 
-#recluster RNA on just immune too
-rna <- FindVariableFeatures(rna, selection.method = "vst", nfeatures = 2000)
-rna <- RunPCA(rna, features = VariableFeatures(object = rna))
-
-#function for umap clustering
-cluster_object<-function(obj=obj,dims=1:15,res=0.2){
-    obj <- FindVariableFeatures(obj, selection.method = "vst", nfeatures = 2000)
-    obj <- RunPCA(obj, features = VariableFeatures(object = obj))
-    obj <- FindNeighbors(obj, dims = dims)
-    obj <- FindClusters(obj, resolution = res)
-    obj <- RunUMAP(obj, dims = dims)
-    return(obj)
-}
-rna<-cluster_object(obj=rna,dims=1:15,res=0.2)
-plt<-DimPlot(obj,group.by="sample",raster=T,label=TRUE)
-ggsave(plt,file=paste("tenx_dcis","umap",prefix,"sample.pdf",sep="."),width=30,height=20,limitsize=FALSE)
-plt<-DimPlot(obj,group.by="fine_celltype",raster=T,label=TRUE)
-ggsave(plt,file=paste("tenx_dcis","umap",prefix,"celltype.pdf",sep="."),width=30,height=20,limitsize=FALSE)
-
-
-#overexpressed genes by cell type
-rna_markers_filt<-rna_markers %>% 
-                    filter(avg_log2FC > 3) %>% 
-                    filter(p_val_adj <0.01) %>% 
-                    group_by(cluster)
-
-
-#filter collapsed dmrs by padj and extract gene names per type
-dmr_out<-collapsed_dmrs %>% 
+collapsed_dmrs %>% 
                 filter(direction=="hypo") %>% 
                 filter(dmr_padj<0.05) %>% 
                 filter(abs(dmr_logFC) > 1.5) %>% 
                 filter(dmr_length<50000) %>% 
-                filter(!is.na(gene_names)) %>% 
-                as.data.frame()
-
-dmr_out$met_feature<-paste(dmr_out$chr,dmr_out$dmr_start,dmr_out$dmr_end,sep="_")
-
-#overlap with rna markers
-#expand dmr_out so each row is its own gene name
-#this will be used to summarize multiple DMRs to their genes
-dmrs_to_gene_names<-lapply(1:nrow(dmr_out), function(x) {
-  temp<-dmr_out[x,]
-  genes<-unlist(temp$gene_names %>% stringr::str_replace_all(" ","") %>% strsplit(split=","))
-  return(cbind(genes=genes,type=temp$type,met_feature=temp$met_feature))
-})
-
-dmr_genes<-as.data.frame(do.call("rbind",dmrs_to_gene_names))
-colnames(dmr_genes)<-c("gene","cluster","met_feature")
-
-dmr_genes<-dmr_genes %>% filter(!duplicated(gene,cluster)) %>% group_by(cluster) 
+                filter(gene_names!="NA") %>% 
+                filter(!grepl(gene_names,pattern=",")) %>% 
+                filter(type=="5") %>% select(gene_names) %>% slice_head(n=20)
 
 
-#count intersect between type in DMRs and cell type in RNA markers
-rna_markers_filt
-dmr_genes
-celltype_dmr_overlaps <- dmr_genes %>%
-  inner_join(rna_markers_filt, by = "gene", relationship="many-to-many") %>%
-  group_by(cluster.x,) %>%
-  count(cluster.y, name = "overlap_count") %>%
-  as.data.frame()
+collapsed_dmrs %>% filter(type=="9") %>% filter(direction=="hypo") %>% filter(dmr_padj<0.05)%>% slice_head(n=20) %>% select(gene_names)
+#tcells https://cellxgene.cziscience.com/e/74520626-b0ba-4ee9-86b5-714649554def.cxg/
 
-colnames(celltype_dmr_overlaps)<-c("cluster","celltype","dmr_rnamarker_overlap")
-
-#add count of dmr features passing filter per cluster
-celltype_dmr_overlaps$dmr_cluster_total<-NA
-dmr_count<-dmr_genes %>% filter(!duplicated(met_feature)) %>% count() 
-dmr_count<-setNames(nm=dmr_count$cluster,dmr_count$n)
-celltype_dmr_overlaps$dmr_cluster_total<-NA
-celltype_dmr_overlaps$dmr_cluster_total<-dmr_count[celltype_dmr_overlaps$cluster]
-
-#add count of rna markers passing filter per cell type
-rna_marker_count<-rna_markers_filt %>% count() 
-rna_marker_count<-setNames(nm=rna_marker_count$cluster,rna_marker_count$n)
-celltype_dmr_overlaps$rna_celltype_total<-NA
-celltype_dmr_overlaps$rna_celltype_total<-rna_marker_count[celltype_dmr_overlaps$celltype]
-
-#perform fisher test on set
-row_fisher <- function(i){
-    df<-celltype_dmr_overlaps[i,]
-    p11<-df["dmr_rnamarker_overlap"]
-    p10<-df["dmr_cluster_total"]-df["dmr_rnamarker_overlap"]
-    p01<-df["rna_celltype_total"]
-    p00<-length(Features(rna))
-    mat <- matrix(as.numeric(c(p11,p10,p01,p00)), ncol=2)
-    f <- fisher.test(as.table(mat), alt="greater")
-    return(f$p.value)
-}
-
-fishers <- unlist(lapply(1:nrow(celltype_dmr_overlaps),row_fisher))
-celltype_dmr_overlaps$fishers.pval<-NA
-celltype_dmr_overlaps$fishers.pval<-fishers
-celltype_dmr_overlaps<-as.data.frame(celltype_dmr_overlaps)
-
-dat <- reshape2::dcast(celltype_dmr_overlaps, cluster~celltype,value.var="fishers.pval",fill=1) 
-
-row.names(dat)<-dat$cluster
-
-#negative log10 on dat
-dat<-dat[2:ncol(dat)]
-dat<- -(log10(dat))
-col_fun=colorRamp2(breaks=quantile(unlist(dat),probs=c(0,0.5,0.9)),colors=c("white","grey","#FF00FF"))
-plt<-Heatmap(dat,col=col_fun)
-pdf(paste0("06_immune_finecelltyping.dmr_rnamarkergene.fisher.pdf"))
-print(plt)
-dev.off()
+#myeloid https://cellxgene.cziscience.com/e/a6388a6f-6076-401b-9b30-7d4306a20035.cxg/
 
 ```
+
+
+```R
+
+
+order<-c(
+"11",
+"6",
+"16",
+"5",
+
+"9"="tcell_nk", #maybe, def a tcell??
+"1"="tcell_cd4","10"="tcell_cd4",
+"2"="tcell_cd8","4"="tcell_cd8",
+"6","8","3","7",
+"5"="bcell_plasma"#cluster finer)
+   
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # Use Liger to integrate DMRs and RNA markers for immune cells
 
@@ -811,6 +1062,7 @@ immune_markers[["myeloid_cDC1"]]<-c('CLEC9A', 'XCR1', 'DNASE1L3', 'IDO1', 'LGALS
 immune_markers[["myeloid_cDC2"]]<-c('FCER1A', 'IL1R2', 'CLEC10A', 'CD1C', 'CST7', 'GPAT3', 'DAPP1', 'CFP', 'EREG', 'CCL22', 'LGALS2', 'JAML', 'PID1', 'AREG', 'IL7R', 'AC020656.1', 'IL1R1', 'MARCKSL1', 'ADAM19', 'SLC7A11')
 immune_markers[["myeloid_mDC"]]<-c('LAMP3', 'BIRC3', 'LACRT', 'NUB1', 'CCR7', 'MARCKSL1', 'IDO1', 'DAPP1', 'POGLUT1', 'LINC01539', 'GPR157', 'IL12B', 'LAD1', 'KIF2A', 'FSCN1', 'IL7R', 'TXN', 'DUSP5', 'FOXD4L1', 'CD200', 'RAB9A')
 immune_markers[["myeloid_pDC"]]<-c('CD5', 'LYPD8', 'PRL', 'AC136475.3', 'LINC01087', 'AC006058.1', 'BDKRB2', 'POTEI', 'DSP', 'AC026369.3', 'GZMB', 'TNFSF4', 'CD2', 'TIGIT', 'LTB', 'TMEM45A', 'PGR', 'CD3G', 'AC015936.1', 'ACOT7')
+immune_markers[["myeloid_TAM"]]<-c('SDS', 'LAIR1', 'FCGR3A', 'SH3PXD2B', 'C1QB', 'FGL2', 'SGPL1', 'ADA2', 'AXL', 'TTYH3', 'TREM2', 'AOAH', 'ACP5', 'RAB20', 'SLC16A10', 'SATB1', 'FPR3', 'HLA-DOA', 'OLFML2B', 'CCDC107', 'MMP9', 'CALHM6', 'PLA2G7', 'GNA13', 'ARL4C', 'ZNF331', 'JMY', 'C2', 'A2M', 'STAT1')
 
 immune_markers[["tcell_cd4_memory"]]<-c('ADAM23', 'NEFL', 'LINC02273', 'ANTXR2', 'MFHAS1', 'AP3M2', 'GPR183', 'PASK', 'S1PR1', 'FTH1', 'GLIPR1', 'SESN3', 'IL7R', 'CCR7', 'SLC2A3', 'DDIT4', 'CD28', 'ANXA1', 'TRAT1', 'KLF2')
 immune_markers[["tcell_cd4_stress"]]<-c('MYADM', 'LMNA', 'ANXA1', 'KLF6', 'HSP90AA1', 'RGCC', 'FAM107B', 'AHNAK', 'HSPH1', 'VIM', 'HSPA8', 'GPR183', 'HSP90AB1', 'S100A10', 'S100A11', 'EZR', 'HSPD1', 'IL7R', 'ANKRD12', 'TUBB4B')
@@ -872,7 +1124,7 @@ dmr<-readRDS(
 #rna markers defined by paired 10x RNA analysis
 rna<-readRDS("/data/rmulqueen/projects/scalebio_dcis/rna/tenx_dcis.rds")
 table(rna$broad_celltype)
-rna<-subset(rna,broad_celltype %in% c("tcell","bcell","plasma","myeloid")) #using all stromal types
+rna<-subset(rna,broad_celltype %in% c("tcell","bcell","plasma","myeloid")) #using all immune types
 rna<-subset(rna,fine_celltype %in% c("suspected_doublet"),invert=TRUE)
 table(rna$fine_celltype)
 

@@ -157,49 +157,51 @@ copykat_per_sample<-function(obj,sample_name="BCMDCIS41T",winsize=25,cores=100){
 
 }
 
-winsize=25
-copykat_per_sample(obj=obj,sample_name=c('BCMDCIS05T'),winsize=winsize)
-copykat_per_sample(obj=obj,sample_name=c('BCMDCIS07T'),winsize=winsize)
-copykat_per_sample(obj=obj,sample_name=c('BCMDCIS102T-4h'),winsize=winsize) #need to correct name
-copykat_per_sample(obj=obj,sample_name=c('BCMDCIS124T'),winsize=winsize)
-copykat_per_sample(obj=obj,sample_name=c('BCMDCIS22T'),winsize=winsize)
-copykat_per_sample(obj=obj,sample_name=c('BCMDCIS28T'),winsize=winsize)
-copykat_per_sample(obj=obj,sample_name=c('BCMDCIS32T'),winsize=winsize)
-copykat_per_sample(obj=obj,sample_name=c('BCMDCIS35T'),winsize=winsize)
-copykat_per_sample(obj=obj,sample_name=c('BCMDCIS41T'),winsize=winsize)
-copykat_per_sample(obj=obj,sample_name=c('BCMDCIS49T'),winsize=winsize)
-copykat_per_sample(obj=obj,sample_name=c('BCMDCIS52T'),winsize=winsize)
-copykat_per_sample(obj=obj,sample_name=c('BCMDCIS65T'),winsize=winsize)
-copykat_per_sample(obj=obj,sample_name=c('BCMDCIS66T'),winsize=winsize)
-copykat_per_sample(obj=obj,sample_name=c('BCMDCIS70T'),winsize=winsize)
-copykat_per_sample(obj=obj,sample_name=c('BCMDCIS74T'),winsize=winsize)
-copykat_per_sample(obj=obj,sample_name=c('BCMDCIS80T'),winsize=winsize)
-copykat_per_sample(obj=obj,sample_name=c('BCMDCIS79T_24hTis_DCIS','BCMDCIS79T_24hTis_IDC'),winsize=winsize)
-copykat_per_sample(obj=obj,sample_name=c('BCMDCIS80T_24hTis'),winsize=winsize)
+winsize=50
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS05T'),winsize=winsize) #subclone 9=c2, 16=c1, 15=c1
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS07T'),winsize=winsize) #superclone 3=c1
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS102T_24hTis'),winsize=winsize) #superclone 10=c2 11=c3
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS124T'),winsize=winsize) #subclone 13=c2
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS22T'),winsize=winsize) #superclone 6=c1
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS28T'),winsize=winsize) #superclone 5=c1, 3=c1, 10=c2
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS32T'),winsize=winsize) #superclone 7=c1, 6=c1
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS35T'),winsize=winsize) #superclone 1=c1 2=c1 4=c1 6=c1
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS41T'),winsize=winsize) #subclone 8=c1 4=c2 3=c2 2=c2 6=c2 7=c3 
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS49T'),winsize=winsize) #superclone 6=c1
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS52T'),winsize=winsize) #all diploid
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS65T'),winsize=winsize) #superclone 5=c1
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS66T'),winsize=winsize) #superclone 6=c3 9=c3 1=c2 7=c2
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS70T'),winsize=winsize) #2=c1 3=c2
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS74T'),winsize=winsize) #8=c4 10=c5 5=c3
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS79T_24hTis_DCIS','BCMDCIS79T_24hTis_IDC'),winsize=winsize) #6=c1 4=c1 5=c1 3=c2
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS80T_24hTis'),winsize=winsize) #all diploid
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS82T_24hTis'),winsize=winsize) #super 10=c1 12=c1
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS92T_24hTis'),winsize=winsize) #5=c1 4=c1
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS94T_24hTis'),winsize=winsize) #c1=11 c2=4 c2=4
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS97T'),winsize=winsize) #5=c4 2=c4
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS99T'),winsize=winsize) #5=c1
 
-opykat_per_sample(obj=obj,sample_name=c('BCMDCIS82T-24hTis'),winsize=winsize) #BCMDCIS82T-24hTis correct name
-copykat_per_sample(obj=obj,sample_name=c('BCMDCIS92T_24hTis'),winsize=winsize)
-
-copykat_per_sample(obj=obj,sample_name=c('BCMDCIS94T-24hTis'),winsize=winsize)
-copykat_per_sample(obj=obj,sample_name=c('BCMDCIS97T'),winsize=winsize)
-copykat_per_sample(obj=obj,sample_name=c('BCMDCIS99T'),winsize=winsize)
-copykat_per_sample(obj=obj,sample_name=c('BCMHBCA03R'),winsize=winsize)
+#done see anything convincing in hbca
+copykat_per_sample(obj=obj,sample_name=c('BCMHBCA03R'),winsize=winsize) 
 copykat_per_sample(obj=obj,sample_name=c('BCMHBCA04R'),winsize=winsize)
 copykat_per_sample(obj=obj,sample_name=c('BCMHBCA09R-3h'),winsize=winsize)
 copykat_per_sample(obj=obj,sample_name=c('BCMHBCA12R-3h'),winsize=winsize)
 copykat_per_sample(obj=obj,sample_name=c('BCMHBCA16R-3h'),winsize=winsize)
 copykat_per_sample(obj=obj,sample_name=c('BCMHBCA17R-3h'),winsize=winsize)
 copykat_per_sample(obj=obj,sample_name=c('BCMHBCA22R-4h'),winsize=winsize)
+copykat_per_sample(obj=obj,sample_name=c('BCMHBCA19R-4h'),winsize=winsize)
 copykat_per_sample(obj=obj,sample_name=c('BCMHBCA26L-24hTis-4h'),winsize=winsize)
 copykat_per_sample(obj=obj,sample_name=c('BCMHBCA29L-2h'),winsize=winsize)
 copykat_per_sample(obj=obj,sample_name=c('BCMHBCA38L-3h'),winsize=winsize)
 copykat_per_sample(obj=obj,sample_name=c('BCMHBCA83L-3h'),winsize=winsize)
 copykat_per_sample(obj=obj,sample_name=c('BCMHBCA85L-3h'),winsize=winsize)
-copykat_per_sample(obj=obj,sample_name=c('ECIS25T'),winsize=winsize)
-copykat_per_sample(obj=obj,sample_name=c('ECIS26T'),winsize=winsize)
-copykat_per_sample(obj=obj,sample_name=c('ECIS36T'),winsize=winsize)
-copykat_per_sample(obj=obj,sample_name=c('ECIS48T'),winsize=winsize)
-copykat_per_sample(obj=obj,sample_name=c('ECIS57T'),winsize=winsize)
+
+
+copykat_per_sample(obj=obj,sample_name=c('ECIS25T'),winsize=winsize) #3=c1 5=c2 1=c1 8=c3
+copykat_per_sample(obj=obj,sample_name=c('ECIS26T'),winsize=winsize) #super 9=c2 1=c1 4=c1 2=c1
+copykat_per_sample(obj=obj,sample_name=c('ECIS36T'),winsize=winsize) #3=c2 #5=c1
+copykat_per_sample(obj=obj,sample_name=c('ECIS48T'),winsize=winsize) #5=c1
+copykat_per_sample(obj=obj,sample_name=c('ECIS57T'),winsize=winsize) #2=c1
 
 ```
 
@@ -210,49 +212,54 @@ Visually pairing RNA and methylation clones as first pass.
 ```R
 
 output_dir="/data/rmulqueen/projects/scalebio_dcis/rna"
-copykat_output<-list.files(path=paste0(output_dir,"/copykat/"),recursive=TRUE,full.names=TRUE,pattern=".100.rds")
 
-#make clones a named list to collapse overclustering or low cell counts/cluster
-winsize=100
-sample_name<-"ECIS26T"
-dat<-readRDS(file=paste0(output_dir,"/copykat/",sample_name[1],"/copykat.",sample_name[1],".",as.character(winsize),".rds"))
-dend<-readRDS(file=paste0(output_dir,"/copykat/",sample_name[1],"/copykat.",sample_name[1],".",as.character(winsize),".dendrogram.rds"))
-
-dend<-dat$hclustering
-
-
-assign_copykit_aneuploid_clonename<-function(sample_name,cancer_clones,split_on="superclones",winsize=150){
+assign_copykat_aneuploid_clonename<-function(sample_name,cancer_clones,split_on="superclones",winsize=50){
     copykat.test<-readRDS(paste0(output_dir,"/copykat/",sample_name[1],"/copykat.",sample_name[1],".",as.character(winsize),".rds"))
     dend<-readRDS(file=paste0(output_dir,"/copykat/",sample_name[1],"/copykat.",sample_name[1],".",as.character(winsize),".dendrogram.rds"))
     CNA.test <- data.frame(copykat.test$CNAmat)
 
-    copykat.test$prediction$subclones<-subclones[copykat.test$prediction$cell.names]
-    copykat.test$prediction$superclones<-superclones[copykat.test$prediction$cell.names]
+    copykat.test$prediction$clonename<-paste(sample_name,"NA",sep="_")
+    copykat.test$prediction$ploidy<-"NA"
 
+
+    if(length(cancer_clones)>0){
+        if(split_on=="subclones"){
+        copykat.test$prediction$clones_split<-"subclones"
+        copykat.test$prediction[copykat.test$prediction$subclones %in% cancer_clones,]$ploidy<-"aneuploid"
+        copykat.test$prediction$clonename<-unlist(paste(sample_name,names(cancer_clones[match(copykat.test$prediction$subclones,cancer_clones)]),sep="_"))
+        copykat.test$prediction$clonename<-gsub("_NA", replacement = "_diploid", x = copykat.test$prediction$clonename)
+        }else{
+        copykat.test$prediction$clones_split<-"superclones"
+        copykat.test$prediction[copykat.test$prediction$superclones %in% cancer_clones,]$ploidy<-"aneuploid"
+        copykat.test$prediction$clonename<-unlist(paste(sample_name,names(cancer_clones[match(copykat.test$prediction$superclones,cancer_clones)]),sep="_"))
+        copykat.test$prediction$clonename<-gsub("_NA", replacement = "_diploid", x = copykat.test$prediction$clonename)
+        }} else {
+        copykat.test$prediction$clones_split<-"all_diploid"
+        copykat.test$prediction$clonename<-paste(sample_name,"diploid",sep="_")
+
+        }
+
+    table(copykat.test$prediction$clonename, copykat.test$prediction$superclones)
     #pred.test is for plotting
     pred.test <- data.frame(copykat.test$prediction)
     cells_in=row.names(t(CNA.test)[4:ncol(CNA.test),])
     pred.test <- pred.test[cells_in,]
     
     #define colors based on data
-    my_palette <- colorRampPalette(col=c("darkblue","lightblue","white","pink","darkred"))(n = 999)
-
+    my_palette <- colorRampPalette(rev(RColorBrewer::brewer.pal(n = 3, name = "RdBu")))(n = 999)
     col_breaks = unlist(c(seq(-1,-0.4,length=50),seq(-0.4,-0.2,length=150),seq(-0.2,0.2,length=600),seq(0.2,0.4,length=150),seq(0.4, 1,length=49)))
     log_col=colorRamp2(col=my_palette,breaks=col_breaks)
-    reads_col=colorRamp2(c(min(log10(read_counts)),
-                            max(log10(read_counts))),
-                            c("white","black"))
 
     superclone_col=setNames(nm=unique(as.character(pred.test$superclones[!is.na(pred.test$superclones)])),
                             colorRampPalette(brewer.pal(9, "Pastel1"))(length(unique(as.character(pred.test$superclones[!is.na(pred.test$superclones)])))))
     subclone_col=setNames(nm=unique(as.character(pred.test$subclones[!is.na(pred.test$subclones)])),
                             colorRampPalette(brewer.pal(9, "Spectral"))(length(unique(as.character(pred.test$subclones[!is.na(pred.test$subclones)])))))
-
+    cancerclone_col=setNames(nm=unique(as.character(pred.test$clonename[!is.na(pred.test$clonename)])),
+                            colorRampPalette(brewer.pal(8, "Pastel2"))(length(unique(as.character(pred.test$clonename[!is.na(pred.test$clonename)])))))
     celltype_col=c(
     'perivasc'='#c1d552',
     'fibro'='#7f1911',
-    'endo'='#f0b243',#'lymphatic'='#f0b243',
-    'vascular'='#d0bd4a',
+    'endo'='#f0b243',
     'tcell'='#2e3fa3',
     'bcell'='#00adea',
     'myeloid'="#55157a",
@@ -263,23 +270,25 @@ assign_copykit_aneuploid_clonename<-function(sample_name,cancer_clones,split_on=
 
     #plot heatmap
     ha = rowAnnotation(
-        reads_annot=log10(read_counts[gsub("[.]","-",cells_in)]),
         celltype_annot=dat@meta.data[gsub("[.]","-",cells_in),]$coarse_celltype,
         superclones_annot=pred.test$superclones,
         subclones_annot=pred.test$subclones,
+        cancerclone=pred.test$clonename,
         col=list(
             celltype_annot=celltype_col,
-            reads_annot=reads_col,
             superclones_annot=superclone_col,
-            subclones_annot=subclone_col
+            subclones_annot=subclone_col,
+            cancerclone_annot=cancerclone_col
         ))
 
-    copykat.test$CNAmat[copykat.test$CNAmat$chrom=="23",]$chrom<-"X"
+    if("23" %in% copykat.test$CNAmat$chrom){
+        copykat.test$CNAmat[copykat.test$CNAmat$chrom=="23",]$chrom<-"X"
+    } 
     grange=makeGRangesFromDataFrame(data.frame(chr=paste0("chr",copykat.test$CNAmat$chrom),
                               start=copykat.test$CNAmat$chrompos,
                               end=copykat.test$CNAmat$chrompos))
     cyto_overlap<-GenomicRanges::findOverlaps(grange,
-                                                makeGRangesFromDataFrame(cyto,keep=TRUE),
+                                                GenomicRanges::makeGRangesFromDataFrame(cyto,keep=TRUE),
                                                 select="first")
     grange$stain <- cyto[cyto_overlap,]$stain
     grange$arm <- substr(cyto[cyto_overlap,]$band,1,1)
@@ -295,131 +304,144 @@ assign_copykit_aneuploid_clonename<-function(sample_name,cancer_clones,split_on=
   plt<-Heatmap(
           t(CNA.test[,4:ncol(CNA.test)]),
           col=log_col,
-          clustering_distance_rows = "manhattan",
+          clustering_distance_rows = "euclidean",
           clustering_method_rows="ward.D2",
           cluster_columns=FALSE,
           left_annotation=ha,
           top_annotation=column_ha,
-          column_split=CNA.test$chrom, 
+          column_split=factor(CNA.test$chrom,levels=c(1:22,"X")), 
           cluster_column_slices=FALSE,
           show_row_names=FALSE,
           cluster_rows=TRUE,
-          row_split=pred.test$superclones,
+          row_split=pred.test$clonename,
           show_column_names=FALSE)
 
-  pdf(file=paste0(output_dir,"/copykat/",sample_name[1],"/copykat.",sample_name[1],".",as.character(winsize),".heatmap.pdf"),width=20)
-  print(plt)
-  dev.off()
-
-    #plot heatmap
-    ha = rowAnnotation(
-        reads=log10(tmp@colData$unique_reads),
-        cg_perc=tmp@colData$mcg_pct,
-        celltype=tmp@colData$fine_celltype,
-        superclones=as.character(tmp@colData$superclones),
-        subclones=as.character(tmp@colData$subclones),
-        cancerclone=as.character(tmp@colData$clonename),
-        col= list(
-            celltype=celltype_col,
-            reads=reads_col,
-            cg_perc=cg_perc_col,
-            superclones=superclone_col,
-            subclones=subclone_col,
-            cancerclone_col
-        ))
-
-    cyto_overlap<-GenomicRanges::findOverlaps(tmp@rowRanges,
-                                                makeGRangesFromDataFrame(cyto,keep=TRUE),
-                                                select="first")
-    tmp@rowRanges$stain <- cyto[cyto_overlap,]$stain
-
-    arm_col=c("p"="grey","q"="darkgrey")
-    band_col=c("acen"="#99746F","gneg"="white","gpos100"="black","gpos25"="lightgrey","gpos50"="grey","gpos75"="darkgrey","gvar"="#446879")
-    dip_cov=colorRamp2(c(0.5,1,1.5), 
-                            c("white","grey","black"))
-    column_ha = HeatmapAnnotation(
-        mappability=tmp@rowRanges$diploid_cov,
-        arm = tmp@rowRanges$arm,
-        band = tmp@rowRanges$stain,
-        col=list(mappability=dip_cov,arm=arm_col,band=band_col))
-
-    plt<-Heatmap(
-        t(tmp@assays@data$logr),
-        clustering_distance_rows = "manhattan", #CHANGING THIS
-        left_annotation=ha,col=log_col,
-        row_split=as.character(tmp@colData$clonename),
-        show_column_names=FALSE,show_row_names=FALSE,
-        top_annotation=column_ha,cluster_columns=FALSE,cluster_column_slices=FALSE,column_split=seqnames(tmp@rowRanges),
-        name="logr")
-
-    pdf(paste0("/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/copykit/",sample_name,"/copykit.",sample_name,".",resolution,".cancerclone.pdf"),width=20)
+    pdf(file=paste0(output_dir,"/copykat/",sample_name[1],"/copykat.",sample_name[1],".",as.character(winsize),".cancerclone.heatmap.pdf"),width=20)
     print(plt)
     dev.off()
 
-    saveRDS(tmp,file=paste0("/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/copykit/",sample_name,"/copykit.",sample_name,".",resolution,".rds"))
+    saveRDS(copykat.test,file=paste0(output_dir,"/copykat/",sample_name[1],"/copykat.",sample_name[1],".",as.character(winsize),".rds"))
+
 }
 
 
-assign_copykit_aneuploid_clonename(sample_name="BCMDCIS05T",cancer_clones=c("c1"='2',"c2"='3',"c2"='4')) #done
-assign_copykit_aneuploid_clonename(sample_name='BCMDCIS07T',cancer_clones=c()) #done all diploid #x loss?
-assign_copykit_aneuploid_clonename(sample_name='BCMDCIS102T_24hTis',cancer_clones=c("c1"='3','c2'='4')) #done some x loss?
-assign_copykit_aneuploid_clonename(sample_name='BCMDCIS124T',cancer_clones=c("c1="='2',"c2"='4')) 
-assign_copykit_aneuploid_clonename(sample_name='BCMDCIS22T',cancer_clones=c("c1"='2','c2'='4')) 
-assign_copykit_aneuploid_clonename(sample_name='BCMDCIS28T',,cancer_clones=c("c1"='5',"c2"='3','c2'='6','c2'='7')) 
-assign_copykit_aneuploid_clonename(sample_name='BCMDCIS32T',cancer_clones=c()) #all diploid
-assign_copykit_aneuploid_clonename(sample_name='BCMDCIS35T',cancer_clones=c("c1"='1',"c1"='2',"c1"='3',"c1"='5',"c1"='6',"c1"='7',"c1"='8'))
-assign_copykit_aneuploid_clonename(sample_name='BCMDCIS41T',split_on='subclones',cancer_clones=c('c1'='4','c1'='6',
-                                                                                        'c2'='1',
-                                                                                        'c3'='3','c3'='7',
-                                                                                        'c4'='2')) 
-#assign_copykit_aneuploid_clonename(sample_name='BCMDCIS49T',cancer_clones=c()) #not run
-assign_copykit_aneuploid_clonename(sample_name='BCMDCIS52T',cancer_clones=c('c1'='3','c2'='2','c2'='4')) 
-assign_copykit_aneuploid_clonename(sample_name='BCMDCIS65T',cancer_clones=c('c1'='5')) 
-assign_copykit_aneuploid_clonename(sample_name='BCMDCIS66T',cancer_clones=c('c1'='2',
-                                                                            'c2'='4','c2'='11',
-                                                                            'c3'='14','c3'='12','c3'='7','c3'='15','c3'='13','c3'='8','c3'='5'))                                   
-assign_copykit_aneuploid_clonename(sample_name='BCMDCIS70T',cancer_clones=c('c1'='2','c1'='3','c1'='4')) 
-assign_copykit_aneuploid_clonename(sample_name='BCMDCIS74T',cancer_clones=c('c1'='11','c1'='8','c1'='9',
-                                                                            'c2'='6',
-                                                                            'c3'='10',
-                                                                            'c4'='3',
-                                                                            'c5'='2',
-                                                                            'c6'='4',
-                                                                            'c8'='12',
-                                                                            'c9'='7')) #lotsa clear evolution in this one
-assign_copykit_aneuploid_clonename(sample_name='BCMDCIS79T_24hTis_DCIS',cancer_clones=c('c1'='2','c2'='4')) 
-assign_copykit_aneuploid_clonename(sample_name='BCMDCIS80T_24hTis',cancer_clones=c('c1'='3',
-                                                                                    'c1'='5','c1'='4')) 
-assign_copykit_aneuploid_clonename(sample_name='BCMDCIS82T_24hTis',cancer_clones=c('c1'='3','c1'='4','c1'='2')) 
-assign_copykit_aneuploid_clonename(sample_name='BCMDCIS92T_24hTis',cancer_clones=c('c1'='3','c1'='4')) 
-assign_copykit_aneuploid_clonename(sample_name='BCMDCIS94T_24hTis',split_on='subclones',cancer_clones=c('c1'='5','c1'='4',
-                                                                                                        'c2'='3')) 
-assign_copykit_aneuploid_clonename(sample_name='BCMDCIS97T',cancer_clones=c('c1'='11','c1'='5','c1'='10','c1'='12','c1'='17','c1'='7',
-                                                                            'c2'='6','c2'='2','c2'='8',
-                                                                            'c4'='15',
-                                                                            'c3'='9')) 
-assign_copykit_aneuploid_clonename(sample_name='BCMDCIS99T',cancer_clones=c('c1'='4')) 
-assign_copykit_aneuploid_clonename(sample_name='BCMHBCA03R',cancer_clones=c('c1'='6')) 
-assign_copykit_aneuploid_clonename(sample_name='BCMHBCA04R',split_on='subclones',cancer_clones=c('c1'='5','c2'='6','c2'='7')) 
-assign_copykit_aneuploid_clonename(sample_name='BCMHBCA09R-3h',cancer_clones=c()) 
-assign_copykit_aneuploid_clonename(sample_name='BCMHBCA12R-3h',cancer_clones=c()) 
-assign_copykit_aneuploid_clonename(sample_name='BCMHBCA16R-3h',cancer_clones=c()) 
-assign_copykit_aneuploid_clonename(sample_name='BCMHBCA17R-3h',cancer_clones=c()) 
-assign_copykit_aneuploid_clonename(sample_name='BCMHBCA19R-4h',cancer_clones=c()) 
-assign_copykit_aneuploid_clonename(sample_name='BCMHBCA22R-4h',cancer_clones=c()) 
-assign_copykit_aneuploid_clonename(sample_name='BCMHBCA26L-24hTis-4h',cancer_clones=c()) #i dont see any cancer clones previously split_on="subclones",cancer_clones=c('c1'='6')
-assign_copykit_aneuploid_clonename(sample_name='BCMHBCA29L-2h',cancer_clones=c()) 
-assign_copykit_aneuploid_clonename(sample_name='BCMHBCA38L-3h',cancer_clones=c()) 
-assign_copykit_aneuploid_clonename(sample_name='BCMHBCA83L-3h',cancer_clones=c('c1'='4')) 
-assign_copykit_aneuploid_clonename(sample_name='BCMHBCA85L-3h',cancer_clones=c()) 
-assign_copykit_aneuploid_clonename(sample_name='ECIS25T',split_on="subclones",cancer_clones=c('c1'='7','c1'='4','c1'='6',
-                                                                                            'c2'='5','c2'='1','c2'='8',
-                                                                                            'c3'='9','c3'='2')) 
-assign_copykit_aneuploid_clonename(sample_name='ECIS26T',cancer_clones=c('c1'='3','c1'='17','c1'='15','c1'='9','c1'='10','c1'='5','c1'='11',
-                                                                        'c1'='13','c1'='4','c1'='1','c1'='6','c1'='16','c1'='7','c1'='8',
-                                                                        'c2'='14')) 
 
-assign_copykit_aneuploid_clonename(sample_name='ECIS36T',,cancer_clones=c('c1'='1','c2'='4','c3'='2')) 
-assign_copykit_aneuploid_clonename(sample_name='ECIS48T',cancer_clones=c('c1'='5')) #might have a cancer precursor in the diploid pop chr16 loss in some lumhr, 1q gain in lumsec?
-assign_copykit_aneuploid_clonename(sample_name='ECIS57T',cancer_clones=c('c1'='2','c1'='3','c1'='4')) 
+assign_copykat_aneuploid_clonename(sample_name="BCMDCIS05T",
+                                    cancer_clones=c('c1'='8','c1'='10'))
+assign_copykat_aneuploid_clonename(sample_name='BCMDCIS07T',
+                                    cancer_clones=c('c1'='3')) 
+assign_copykat_aneuploid_clonename(sample_name='BCMDCIS102T_24hTis', split_on='subclones',
+                                    cancer_clones=c("c2"='10','c2'='13','c2'='12')) 
+assign_copykat_aneuploid_clonename(sample_name='BCMDCIS124T',split_on="subclones", 
+                                    cancer_clones=c("c2="='13')) 
+assign_copykat_aneuploid_clonename(sample_name='BCMDCIS22T',
+                                    cancer_clones=c("c1"='6')) 
+assign_copykat_aneuploid_clonename(sample_name='BCMDCIS28T',split_on='subclones',
+                                    cancer_clones=c("c1"='5',"c1"='3','c2'='10')) 
+assign_copykat_aneuploid_clonename(sample_name='BCMDCIS32T',
+                                    cancer_clones=c()) 
+assign_copykat_aneuploid_clonename(sample_name='BCMDCIS35T',
+                                    cancer_clones=c("c1"='1',"c1"='2',"c1"='4',"c1"='6'))
+assign_copykat_aneuploid_clonename(sample_name='BCMDCIS41T',split_on='subclones',
+                                    cancer_clones=c('c1'='8',
+                                                    'c2'='4','c2'='3','c2'='2','c2'='6',
+                                                    'c3'='7')) 
+assign_copykat_aneuploid_clonename(sample_name='BCMDCIS49T', 
+                                    cancer_clones=c())   
+assign_copykat_aneuploid_clonename(sample_name='BCMDCIS52T',cancer_clones=c('c1'='4')) 
+assign_copykat_aneuploid_clonename(sample_name='BCMDCIS65T',cancer_clones=c('c1'='4')) 
+assign_copykat_aneuploid_clonename(sample_name='BCMDCIS66T',
+                                    cancer_clones=c(
+                                    'c2'='1','c2'='7',
+                                    'c3'='6','c3'='9'))         
+
+assign_copykat_aneuploid_clonename(sample_name='BCMDCIS70T',
+                                    cancer_clones=c('c1'='2','c1'='3')) 
+
+assign_copykat_aneuploid_clonename(sample_name='BCMDCIS74T',
+                                    cancer_clones=c('c3'='5',
+                                                    'c4'='8',
+                                                    'c5'='10'))
+assign_copykat_aneuploid_clonename(sample_name='BCMDCIS79T_24hTis_DCIS',
+                                    cancer_clones=c('c1'='6','c1'='4','c2'='3','c2'='5')) 
+assign_copykat_aneuploid_clonename(sample_name='BCMDCIS80T_24hTis',
+                                    cancer_clones=c()) 
+assign_copykat_aneuploid_clonename(sample_name='BCMDCIS82T_24hTis',
+                                            cancer_clones=c('c1'='10','c1'='12'))
+assign_copykat_aneuploid_clonename(sample_name='BCMDCIS92T_24hTis',
+                                            cancer_clones=c('c1'='5','c1'='4')) 
+assign_copykat_aneuploid_clonename(sample_name='BCMDCIS94T_24hTis',
+                                            cancer_clones=c('c1'='11','c2'='4',
+                                                    'c2'='5')) 
+assign_copykat_aneuploid_clonename(sample_name='BCMDCIS97T',
+                                    cancer_clones=c('c4'='5','c4'='2')) 
+assign_copykat_aneuploid_clonename(sample_name='BCMDCIS99T',cancer_clones=c('c1'='5')) 
+assign_copykat_aneuploid_clonename(sample_name='BCMHBCA03R',cancer_clones=c()) 
+assign_copykat_aneuploid_clonename(sample_name='BCMHBCA04R',cancer_clones=c()) 
+assign_copykat_aneuploid_clonename(sample_name='BCMHBCA09R-3h',cancer_clones=c()) 
+assign_copykat_aneuploid_clonename(sample_name='BCMHBCA12R-3h',cancer_clones=c()) 
+assign_copykat_aneuploid_clonename(sample_name='BCMHBCA16R-3h',cancer_clones=c()) 
+assign_copykat_aneuploid_clonename(sample_name='BCMHBCA17R-3h',cancer_clones=c()) 
+assign_copykat_aneuploid_clonename(sample_name='BCMHBCA19R-4h',cancer_clones=c()) 
+assign_copykat_aneuploid_clonename(sample_name='BCMHBCA22R-4h',cancer_clones=c()) 
+assign_copykat_aneuploid_clonename(sample_name='BCMHBCA26L-24hTis-4h',cancer_clones=c()) 
+assign_copykat_aneuploid_clonename(sample_name='BCMHBCA29L-2h',cancer_clones=c()) 
+assign_copykat_aneuploid_clonename(sample_name='BCMHBCA38L-3h',cancer_clones=c()) 
+assign_copykat_aneuploid_clonename(sample_name='BCMHBCA83L-3h',cancer_clones=c()) 
+assign_copykat_aneuploid_clonename(sample_name='BCMHBCA85L-3h',cancer_clones=c()) 
+assign_copykat_aneuploid_clonename(sample_name='ECIS25T',
+                                    cancer_clones=c('c1'='3','c1'='1',
+                                                    'c2'='5',
+                                                    'c3'='8')) 
+
+assign_copykat_aneuploid_clonename(sample_name='ECIS26T',split_on="subclones",
+                                    cancer_clones=c('c1'='4','c1'='1','c1'='2','c1'='8',
+                                                    'c2'='9')) 
+
+assign_copykat_aneuploid_clonename(sample_name='ECIS36T',
+                                    cancer_clones=c('c1'='1','c2'='3','c2'='2')) 
+
+                                                   
+assign_copykat_aneuploid_clonename(sample_name='ECIS48T',cancer_clones=c('c1'='5')) 
+assign_copykat_aneuploid_clonename(sample_name='ECIS57T',cancer_clones=c('c1'='2')) 
+
+
+
 ```
+
+## Assign cancer to cells in Seurat Object
+
+```R
+library(copykat)
+library(Seurat)
+library(parallel)
+setwd("/data/rmulqueen/projects/scalebio_dcis/rna")
+obj<-readRDS("tenx_dcis.pf.rds")
+output_dir="/data/rmulqueen/projects/scalebio_dcis/rna"
+winsize=50
+
+
+cnv_meta<-mclapply(unique(obj$sample),function(sample_name){
+    copykat.test<-readRDS(paste0(output_dir,"/copykat/",sample_name,"/copykat.",sample_name,".",as.character(winsize),".rds"))
+    out<-data.frame(cellid=copykat.test$prediction$cell.names,
+                rna_clonename=copykat.test$prediction$clonename,
+                rna_ploidy=copykat.test$prediction$ploidy)
+    row.names(out)<-out$cellid
+    return(out)
+
+},mc.cores=50)
+
+
+cnv_meta<-do.call("rbind",cnv_meta)
+
+obj<-AddMetaData(obj,meta=cnv_meta)
+obj$rna_ploidy<-ifelse(endsWith(obj$rna_clonename,suffix="diploid"),"diploid","aneuploid")
+obj@meta.data[obj$rna_ploidy=="aneuploid" & !is.na(obj$rna_ploidy),]$fine_celltype<-"cancer"
+obj@meta.data[obj$rna_ploidy=="aneuploid" & !is.na(obj$rna_ploidy),]$coarse_celltype<-"cancer"
+saveRDS(obj,"tenx_dcis.pf.rds")
+
+
+```
+
+
+
