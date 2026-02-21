@@ -135,6 +135,7 @@ saveRDS(dat,file="02_scaledcis.5kbpwin.passfilt.amethyst.rds")
 Writing as a function so I can tweak some parameters more easily.
 
 ```R
+#note that calculate_DMR returns an RDS of all files, but returns a DMR matrix on just the hypomethylated regions (which has improved clustering heuristically)
 calculate_DMR<-function(dat=dat,project_data_directory=project_data_directory,groupBy="cluster_id",prefix="5kbp_initial_clusters"){
   #calculate 500bp windows by groupBy
   celltype500bpwindows <- calcSmoothedWindows(dat, 
@@ -325,23 +326,24 @@ saveRDS(dat,file="03_scaledcis.5kbpclus_dmrs.amethyst.rds") #step 4 in iterative
 #use DMRs from initial clusters to refine clustering
 window_name=paste0(prefix,"_dmr_sites")
 dat@genomeMatrices[[window_name]] <- dat@genomeMatrices[[window_name]][rowSums(!is.na(dat@genomeMatrices[[window_name]])) >= 45, ]
+dim(dat@genomeMatrices[[window_name]])
 est_dim<-dimEstimate(dat, genomeMatrices = c(window_name), dims = c(20), threshold = 0.95)
 print(est_dim)
 #10
 
 dat<-celltype_umap(obj=dat,
                   prefix="04_dmrclustering",
-                  dims=10,
+                  dims=11,
                   regressCov=FALSE,
-                  k_pheno=100,
-                  neigh=20,
-                  dist=0.01,
+                  k_pheno=60,
+                  neigh=7,
+                  dist=0.001,
                   method="cosine",
                   window_name=window_name,
-                  output_directory=getwd()) #current fav
+                  output_directory=getwd())
 
 dat@metadata$coarse_cluster_id<-dat@metadata$cluster_id
-saveRDS(dat,file="04_scaledcis.5kbpclus_dmrs.amethyst.rds") #step 5 in iterative clustering
+saveRDS(dat,file="04_scaledcis.coarse_cluster.amethyst.rds") #step 5 in iterative clustering
 ```
 
 Calculate final coarse cluster DMRs 
@@ -352,23 +354,8 @@ dat<-calculate_DMR(dat=dat,
                     project_data_directory=project_data_directory,
                     groupBy="coarse_cluster_id",
                     prefix=prefix)
-
-#final coarse cluster umap plotting
-window_name=paste0(prefix,"_dmr_sites")
-dat@genomeMatrices[[window_name]] <- dat@genomeMatrices[[window_name]][rowSums(!is.na(dat@genomeMatrices[[window_name]])) >= 45, ]
-est_dim<-dimEstimate(dat, genomeMatrices = c(window_name), dims = c(20), threshold = 0.95)
-print(est_dim)
-#10
-
-p1 <- dimFeature(dat, colorBy = sample, reduction = "umap") + ggtitle(paste(window_name,"Samples"))
-p2 <- dimFeature(dat, colorBy = log10(cov), pointSize = 1) + scale_color_gradientn(colors = c("black", "turquoise", "gold", "red"),guide="colourbar") + ggtitle("Coverage distribution")
-p3 <- dimFeature(dat, colorBy = mcg_pct, pointSize = 1) + scale_color_gradientn(colors = c("black", "turquoise", "gold", "red")) + ggtitle("Global %mCG distribution")
-p4 <- dimFeature(dat, colorBy = coarse_cluster_id, reduction = "umap") + ggtitle(paste(window_name,"Clusters"))
-p5 <- dimFeature(dat, colorBy = Group, reduction = "umap") + ggtitle(paste(window_name," Group"))
-p6<-ggplot()
-ggsave((p1|p2)/(p3|p4)/(p5|p6),file=paste0("05_scaledcis.coarse_clusters.umap.pdf"),width=20,height=30)  
-
 saveRDS(dat,file="05_scaledcis.coarse_clusters.amethyst.rds") #step 7 in iterative clustering
+
 ```
 
 Plot markers per cluster for initial cell typing
@@ -479,20 +466,15 @@ histograModified <- function(obj,
     return(all_genes_plot)
 }
 
-
 cell_markers<-list()
-cell_markers[["basal"]]<-c("CARMN","ACTA2","KRT17","KRT14","DST","KRT5")
-cell_markers[["lumhr"]]<-c("AREG","AZGP1","KRT18","AGR2","PIP","ANKRD30A")
+cell_markers[["tcell"]]<-c("PTPRC","IKZF1","IL7R","CD3D","CD3E","CD3G") 
+cell_markers[["bcell"]]<-c("CD79A","CD79B","MS4A1","HLA-DRA","HLA-DPA1","HLA−DPB1") 
+cell_markers[["myeloid"]]<-c("LYZ","CD68","CSF1R","FOLR2","FUT4","FCGR3A","TREM2","FCGR1A") #neutrophils monocytes/macrophages DC mast TAMs
+cell_markers[["fibro"]]<-c("DCN","APOD","LUM","COL1A2","COL1A1","FAP","PDGFRA") #fibro and caf
+cell_markers[["endo"]]=c("CLDN5","BTNL9","PTPRB","VWF")
 cell_markers[["lumsec"]]<-c("GABRP","ELF5","CCL28","KRT15","KIT","MMP7","LTF","SLPI")
-cell_markers[["fibro"]]<-c("DCN","APOD","LUM","COL1A2","COL1A1","FAP")
-cell_markers[["endo"]]=c("CCL21","TFF3","MMRN1","CLDN5","AL357507.1","PKHD1L1","KLHL4","LINC02147","RHOJ","ST6GALNAC3","MMRN1","MECOM","BTNL9","MCTP1","PTPRB","VWF","ADGRL4","LDB2")
-cell_markers[["perivasc"]]=c("RGS6","KCNAB1","COL25A1","ADGRL3","PRKG1","MYL9","ADIRF","NR2F2-AS1","AC012409.2")
-cell_markers[["myeloid"]]<-c("HLA-DRA","HLA-DPA1","CD74")
-cell_markers[["tcell"]]<-c("PTPRC","IKZF1","IL7R","GNLY")
-cell_markers[["mast"]]<-c("NTM","SYTL3","SLC24A3","TPSB2","HDC")
-cell_markers[["bcell"]]=c("CD37","TCL1A","LTB","HLA-DPB1","HLA-DRA","HLA-DPA1")
-cell_markers[["plasma"]]=c("IGHA2","IGHA1","JCHAIN","IGHM","IGHG1","IGHG4","IGHG3","IGHG2")
-cell_markers[["adipo"]]=c("PDE3B","ACACB","WDPCP","PCDH9","CLSTN2","ADIPOQ","TRHDE")
+cell_markers[["basal"]]<-c("CARMN","ACTA2","KRT17","KRT14","KRT5")
+cell_markers[["lumhr"]]<-c("EPCAMP","AREG","AZGP1","KRT18","AGR2","PIP","ANKRD30A","FOXA1","ESR1","PGR")
 
 cell_colors=c(
 "basal"="#844c9d",
@@ -503,6 +485,7 @@ cell_colors=c(
 "perivasc"="#eaba67",
 "myeloid"="#8088c2",
 "tcell"="#1d87c8",
+"lymphocytes"="#1d87c8",
 "mast"="#dcd0ff",
 "bcell"="#65cbe4",
 "plasma"="#7ecdc2",
@@ -518,17 +501,17 @@ colnames(cgi)<-c("chr","start","end","strand")
 
 #rough ordering by what clustered together
 order<-c(
-"1","5","7",
-"17","18",
-"2",
-"10","9",
-"8",
-"19",
-"6","20",
-"14",
-"12","11","13",
-"16","15",
-"4","3")
+"1","4", #tcell
+"16", #bcell
+"6", #myeloid
+"8","3","15", #fibro
+"12",#endo
+"11","9", #basal
+"14","13", #lumsec
+"5", #lumhr
+"10","2","17","7" #cancer
+)
+
     
 mclapply(names(cell_markers),
 function(celltype){
@@ -539,119 +522,49 @@ function(celltype){
     plt<-histograModified(obj=dat, 
         baseline="mean",
         genes = unlist(cell_markers[celltype]),
-        #colors= c(cell_colors[celltype], "#dbdbdb","#cccccc", "#999999"),
-        matrix = paste0("cg_",prefix,"cells_perc"), arrowScale = .03, trackScale = .5,
+        colors= c(cell_colors[celltype], "#dbdbdb","#cccccc", "#999999"),
+        matrix = paste0("cg_",prefix,"_tracks"), arrowScale = .03, trackScale = .5,
         legend = F, cgisland=cgi,order=order) + ggtitle(celltype)
     ggsave(plt,
-          file=paste0(output_directory,"/","06_",prefix,"finecelltyping.",celltype,".marker.pdf"),
+          file=paste0(wd,"/","05_",prefix,".",celltype,".marker.pdf"),
           width=3*length(genes),
-          height=ncol(dat@genomeMatrices[[paste0("cg_",prefix,"cells_perc")]])*1,
+          height=ncol(dat@genomeMatrices[[paste0("cg_",prefix,"_tracks")]])*1,
           limitsize=F)
-
 },mc.cores=20)
 
-
-plt_out<-wrap_plots(plt_list,ncol=1) 
-ggsave(plt_out ,file="05_scaledcis.coarse_clusters.marker.pdf",width=30,height=length(cell_colors)*30,limitsize=F)
-
-
-#assigning coarse cell types
-dat@metadata$broad_celltype<-"lumhr" #2, 10, 9, 8, 19, 6, 20, i suspect 10 and 9 are normal, rest are cancer
-dat@metadata[dat@metadata$coarse_cluster_id %in% c("12","13","11"),]$broad_celltype<-"basal"
-dat@metadata[dat@metadata$coarse_cluster_id %in% c("15","16"),]$broad_celltype<-"lumsec"
-dat@metadata[dat@metadata$coarse_cluster_id %in% c("4","3"),]$broad_celltype<-"fibroblast"
-dat@metadata[dat@metadata$coarse_cluster_id %in% c("14"),]$broad_celltype<-"endothelial"
-dat@metadata[dat@metadata$coarse_cluster_id %in% c("18","17","7","1","5"),]$broad_celltype<-"immune"
-
+#assigning broad cell types
+dat@metadata$broad_celltype<-NA
+dat@metadata[dat@metadata$coarse_cluster_id %in% c("1","4"),]$broad_celltype<-"tcell"
+dat@metadata[dat@metadata$coarse_cluster_id %in% c("16"),]$broad_celltype<-"bcell"
+dat@metadata[dat@metadata$coarse_cluster_id %in% c("6"),]$broad_celltype<-"myeloid"
+dat@metadata[dat@metadata$coarse_cluster_id %in% c("8","3","15"),]$broad_celltype<-"fibroblast"
+dat@metadata[dat@metadata$coarse_cluster_id %in% c("12"),]$broad_celltype<-"endothelial"
+dat@metadata[dat@metadata$coarse_cluster_id %in% c("11","9"),]$broad_celltype<-"basal"
+dat@metadata[dat@metadata$coarse_cluster_id %in% c("14","13"),]$broad_celltype<-"lumsec"
+dat@metadata[dat@metadata$coarse_cluster_id %in% c("5"),]$broad_celltype<-"lumhr"
+dat@metadata[dat@metadata$coarse_cluster_id %in% c("10","2","17","7"),]$broad_celltype<-"cancer"
 saveRDS(dat,file="05_scaledcis.coarse_clusters.amethyst.rds")
+
+#umap plot of celltypes to confirm
+p1 <- dimFeature(dat, colorBy = broad_celltype, reduction = "umap")
+ggsave(p1,file="05_scaledcis.coarse_clusters.celltype.umap.pdf",width=10,height=10)  
+
 
 ```
 
-## Add DMR site information per coarse cluster
-This will be used 
 
-```R
-#################################
-#Get DMR per Celltypes
-#################################
-
-dmr_outdir=paste(sep="/",project_data_directory,"DMR_analysis")
-dmr_celltype_outdir=paste(sep="/",dmr_outdir,"dmr_coarse_cluster")
-collapsed_dmrs<-readRDS(file=paste0(dmr_celltype_outdir,"/","coarse_cluster",".dmr_filt_collapse.rds"))
-
-#reading in pre-computed windows per cell type, to determine DMRs
-#from scalemet_dcis/processing/milestonev1_08_DiffMet_analysis.md
-
-#filter DMRS that are different by cell type to
-# significant 
-# gene overlap
-# hypomethylated
-# logFC atleast 1.5
-
-table(collapsed_dmrs$type)
-#   1     10     11     12     13     14     15     16     17     18     19 
-#184447 185076 182009 177556 175150 173075 184027 167856 178465 157240 173844 
-#     2     20      3      4      5      6      7      8      9 
-#158315 161403 181188 176171 182814 171735 173040 137075 182240 
-
-dmrs_for_subtyping <- collapsed_dmrs %>% 
-                          filter(direction=="hypo") %>%
-                          filter(dmr_padj < 0.05) %>%
-                          filter(abs(dmr_logFC) > 1.5) %>% 
-                          filter(dmr_length<50000) %>% 
-                          group_by(type) 
-
-table(dmrs_for_subtyping$type)
-#  1   10   11   12   13   14   15   16   17   18   19    2   20    3    4    5 
-#1385 3330 3714 4934 4394 3913 5510 6089 2707 2945  445 3208 4929 3931 3056 1426 
-#   6    7    8    9 
-#4879 1119 2147 3131 
-
-#merge dmrs that overlap regardless of cluster
-dmr_out<-dmrs_for_subtyping %>% 
-        as.data.frame() %>% 
-        select(chr,dmr_start,dmr_end) %>% 
-        distinct(chr,dmr_start,dmr_end) %>% 
-        makeGRangesFromDataFrame(keep.extra.columns=TRUE) %>%
-        reduce()
-
-dmr_out<-dmr_out[width(dmr_out)<50000,]
-summary(width(dmr_out))
-#Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-#    501    8501   18501   21103   32501   49501 
-#22713 ranges
-
-#convert to bed file for calculation of windows
-dmr_bed<-data.frame(chr=seqnames(dmr_out),start=start(dmr_out),end=end(dmr_out))
-
-
-#create new matrix from DMR sites for refined clustering
-dat@genomeMatrices[["coarse_cluster_dmr_sites"]] <- makeWindows(dat, 
-                                                     bed = dmr_bed,
-                                                     type = "CG", 
-                                                     metric = "score", 
-                                                     threads = 50, 
-                                                     index = "chr_cg", 
-                                                     nmin = 2) 
-
-saveRDS(dat,file="05_scaledcis.coarse_clusters.amethyst.rds")
-
-# Use these coarse_cluster_dmr_sites methylation sites for subclustering for immune and stromal cells.
-
-```
-
-<!--
 ```R
 
 #run 3d plotting just for fun
 dim3d<-uwot::umap(
-  X=dat@reductions$nakshatri_dmr_sites_irlba_regressed,
-  n_neighbors = 15,
+  X=dat@reductions[["5kbp_initial_clusters_dmr_sites_irlba"]],
+  n_neighbors = 7,
   n_components = 3,
-  metric = "euclidean",
+  metric = "cosine",
   seed = 123,
   n_threads=50,
 )
+
 
 dim3d<-as.data.frame(dim3d)
 colnames(dim3d)<-c("X","Y","Z")
@@ -662,7 +575,6 @@ dim3d$r_col<-unlist(col2rgb(dim3d$hex_color)["red",])
 dim3d$g_col<-unlist(col2rgb(dim3d$hex_color)["green",])
 dim3d$b_col<-unlist(col2rgb(dim3d$hex_color)["blue",])
 
-write.table(dim3d,col.names=T,file="03_scaledcis.broad_celltypes.3dumap.csv",sep=",",row.names=F)
+write.table(dim3d,col.names=T,file="05_scaledcis.broad_celltype.3dumap.csv",sep=",",row.names=F)
 
 ```
--->

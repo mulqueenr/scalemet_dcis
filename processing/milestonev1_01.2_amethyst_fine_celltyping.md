@@ -1,17 +1,14 @@
 Running subclustering on just immune cells for finer cell typing
 
-1. using RNA based marker genes for hypomethylation over genes
-2. overlapping dmrs and rna marker genes (fishers exact test)
-3. ranking RNA marker genes and DMRs for better markers
-4. integration with rliger
-
-Output percent methylation as bedgraph to view in IGV over marker genes as well
-
+1. subset out major cell types
+2. perform reclustering on dmrs for just those cells
+3. generate new subclusters and summarize DMRs per subcluster
+4. overlap hypomethylated DMRs with RNA marker genes
+5. generate methylation plots over canonical marker genes
 
 # Prepare RNA marker genes per cell type
 
 From processing/milestonev1_00.2_seurat_scrna_copykat.md seurat object.
-
 ```R
 
 #compare dmr sites with rna marker genes overlap
@@ -35,12 +32,11 @@ saveRDS(rna_markers,file="/data/rmulqueen/projects/scalebio_dcis/rna/tenx_dcis.r
 
 
 # Read in methylation data and additional libraries
-
+From processing/milestonev1_01_amethyst_coarse_celltyping.md
 ```R
+
 set.seed(111)
 options(future.globals.maxSize= 80000*1024^2) #80gb limit for parallelizing
-
-#source("/data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/amethyst_custom_functions.R") #to load in
 library(amethyst)
 library(data.table)
 library(dplyr)
@@ -54,26 +50,31 @@ library(patchwork)
 library(ComplexHeatmap)
 library(circlize)
 library(patchwork)
+library(GeneOverlap)
+
 task_cpus=300
 project_data_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1"
 merged_dat_folder="merged_data"
 wd=paste(sep="/",project_data_directory,merged_dat_folder)
 setwd(wd)
 system(paste0("mkdir -p ",project_data_directory,"/fine_celltyping"))
-dat<-readRDS(file="05_scaledcis.coarse_clusters.amethyst.rds")
+
+
+cell_colors=c(
+"basal"="#844c9d",
+"lumhr"="#e23e96",
+"cancer"="#39FF14",
+"lumsec"="#ff6498",
+"fibro"="#f58e90",
+"endo"="#5bbb5a",
+"myeloid"="#8088c2",
+"tcell"="#1d87c8",
+"bcell"="#65cbe4")
+
 ```
-
-# immune Cells
-
-Wrapping each step into a function, so I can run it on stromal cell types as well.
 
 ## Subcluster on just immune cells
-
-Set up variables for output.
-```R
-prefix="immune"
-output_directory=paste0(project_data_directory,"/fine_celltyping/",prefix)
-```
+Wrapping each step into a function, so I can run it on stromal cell types as well.
 
 ```R
 celltype_umap<-function(obj=dat,prefix="allcells",dims=12,regressCov=TRUE,k_pheno=50,neigh=25,dist=1e-5,method="cosine",output_directory,window_name){
@@ -96,17 +97,16 @@ celltype_umap<-function(obj=dat,prefix="allcells",dims=12,regressCov=TRUE,k_phen
   outname=paste(prefix,"integrated_celltype",dims,as.character(regressCov),k_pheno,neigh,as.character(dist),method,sep="_")
   print(paste("Plotting...",outname))
 
-  p1 <- dimFeature(obj, colorBy = sample, reduction = "umap") + ggtitle(paste(window_name,"Samples"))
-  p2 <- dimFeature(obj, colorBy = log10(cov), pointSize = 1) + scale_color_gradientn(colors = c("black", "turquoise", "gold", "red"),guide="colourbar") + ggtitle("Coverage distribution")
-  p3 <- dimFeature(obj, colorBy = mcg_pct, pointSize = 1) + scale_color_gradientn(colors = c("black", "turquoise", "gold", "red")) + ggtitle("Global %mCG distribution")
-  p4 <- dimFeature(obj, colorBy = cluster_id, reduction = "umap") + ggtitle(paste(window_name,"Clusters"))
-  p5 <- dimFeature(obj, colorBy = Group, reduction = "umap") + ggtitle(paste(window_name," Group"))
+  p1 <- dimFeature(obj, colorBy = sample, reduction = "umap",pointSize=3) + ggtitle(paste(window_name,"Samples"))
+  p2 <- dimFeature(obj, colorBy = log10(cov), pointSize = 3) + scale_color_gradientn(colors = c("black", "turquoise", "gold", "red"),guide="colourbar") + ggtitle("Coverage distribution")
+  p3 <- dimFeature(obj, colorBy = mcg_pct, pointSize = 3) + scale_color_gradientn(colors = c("black", "turquoise", "gold", "red")) + ggtitle("Global %mCG distribution")
+  p4 <- dimFeature(obj, colorBy = cluster_id, reduction = "umap",pointSize=3) + ggtitle(paste(window_name,"Clusters"))
+  p5 <- dimFeature(obj, colorBy = Group, reduction = "umap",pointSize=3) + ggtitle(paste(window_name," Group"))
   p6<-ggplot()
   ggsave((p1|p2)/(p3|p4)/(p5|p6),file=paste0(output_directory,"/",outname,"_umap.pdf"),width=20,height=30)  
   return(obj)
 
 }
-
 
 cluster_subset<-function(
   dat=dat,
@@ -119,78 +119,73 @@ cluster_subset<-function(
   regressCov=TRUE,
   k_pheno=50,
   neigh=25,
+  perc_cell_cov_per_window=0.01, #required window coverage for clustering (1%)
   dist=1e-5,
   method="cosine"){
 
+  print(paste("Making fine celltyping directory:",output_directory))
   system(paste0("mkdir -p ",output_directory))
   print(paste("Subsetting object based on broad celltype:",broad_celltype))
 
   #subset amethyst object to broad celltype
   dat_sub<-subsetObject(dat,cells=row.names(dat@metadata[dat@metadata$broad_celltype %in% broad_celltype,]))
 
-  #subset to windows with coverage
-  dat_sub@genomeMatrices[[window_name]] <- dat_sub@genomeMatrices[[window_name]][rowSums(!is.na(dat_sub@genomeMatrices[[window_name]])) >= 45, ]
+  #subset to windows with 5% coverage
+  req_cov<-as.integer(nrow(dat_sub@metadata)*perc_cell_cov_per_window)
+  print(paste("Requiring",perc_cell_cov_per_window,"of cells for window coverage filter:",as.character(req_cov),"cells."))
+  dat_sub@genomeMatrices[[window_name]] <- dat_sub@genomeMatrices[[window_name]][rowSums(!is.na(dat_sub@genomeMatrices[[window_name]])) >= req_cov, ]
+  print(paste("Matrix windows passing filter:",nrow(dat_sub@genomeMatrices[[window_name]])))
+
+  #estimate dims
   est_dim<-dimEstimate(dat_sub, genomeMatrices = c(window_name), dims = c(20), threshold = 0.95)
   print(paste(est_dim,"estimated dimensions."))
 
   dat_sub<-celltype_umap(obj=dat_sub,
-                        prefix=paste0("06_",prefix,"finecelltyping"),
+                        prefix=paste0("06_",prefix,".finecelltyping"),
                         dims=dims,
                         regressCov=regressCov,
                         k_pheno=k_pheno,
                         neigh=neigh,
-                        dist=0.01,
-                        method="cosine",
+                        dist=dist,
+                        method=method,
                         window_name=window_name,
                         output_directory=output_directory) 
 
-  dat_sub@metadata$fine_cluster_id<-dat_sub@metadata$cluster_id
+  dat_sub@metadata$fine_cluster_id<-paste(prefix,dat_sub@metadata$cluster_id,sep="_")
   return(dat_sub)
 }
 
-
-dat<-cluster_subset(
-  dat=dat,
-  broad_celltype=c("immune"), #note this is a list
-  window_name="coarse_cluster_dmr_sites",
-  prefix=prefix,
-  dims=8,
-  regressCov=FALSE,
-  k_pheno=100,
-  neigh=15,
-  dist=0.1,
-  method="cosine",
-  output_directory=output_directory)
-
-
-saveRDS(dat,file=paste0(output_directory,"/","06_scaledcis.",prefix,"_finecelltyping.amethyst.rds"))
-dat<-readRDS(file=paste0(output_directory,"/","06_scaledcis.",prefix,"_finecelltyping.amethyst.rds"))
-```
-
-
-## Summarize new immune clusters for marker plotting and calculate DMRs per final subclusters
-
-```R
-
-#updated test DMR function (correction by lauren in later releases of amethyst)
-
-#bigwig output
 bigwig_output<-function(
-    obj,
-    tracks="cg_cluster_tracks"){
+                        obj,
+                        tracks="cg_cluster_tracks",
+                        prefix,
+                        output_directory){
+            hg38_seq_info<-Seqinfo(genome="hg38")
+
+    #https://genome.ucsc.edu/FAQ/FAQformat.html#format1
     for(i in 4:ncol(obj@genomeMatrices[[tracks]])){
+        #set genomic ranges
         cluster=names(obj@genomeMatrices[[tracks]])[i]
         out_bw<-as.data.frame(obj@genomeMatrices[[tracks]])
         out_bw<-out_bw[c("chr","start","end",cluster)]
+        colnames(out_bw)<-c("chrom","chromStart","chromEnd","score")
         out_bw<-GRanges(out_bw[complete.cases(out_bw),])
-        names(out_bw@elementMetadata)<-"score"
-        out_bw<-out_bw[unique(findOverlaps(out_bw, type = "any", select = "first"))]
-        out_bw <- resize(out_bw, width=1000, fix='start') #resize to avoid 1base overlap
         genome(out_bw)<-"hg38"
-        hg38_seq_info<-Seqinfo(genome="hg38")
         seqlengths(out_bw)<-as.data.frame(hg38_seq_info)[hg38_seq_info@seqnames %in% out_bw@seqnames,]$seqlengths
+        out_bw<- resize(out_bw, width=499, fix='start') #resize to avoid 1base overlap
+        out_bw<-trim(out_bw)
+
+        #track_line <- new("GraphTrackLine",
+        #                  autoScale=FALSE,
+        #                  color=col2rgb(color)[,1],
+        #                  graphType="bar",viewLimits=c(0,100),
+        #                  name = cluster)
+
         print(paste("Saving bigwig for...",cluster))
-        export(out_bw,con=paste0(output_dir,"/",paste(tracks,cluster,"bw",sep=".")),format='bigWig')}
+        rtracklayer::export(object=out_bw,
+                          #trackLine=track_line,
+                          con=paste0(output_directory,"/","06_",prefix,".",paste(tracks,cluster,"bw",sep=".")))
+      }
 }
 
 testDMR <- function(sumMatrix, eachVsAll = TRUE, comparisons = NULL, nminTotal = 3,nminGroup = 3) {
@@ -267,7 +262,7 @@ testDMR <- function(sumMatrix, eachVsAll = TRUE, comparisons = NULL, nminTotal =
 calculate_dmrs<-function(dat=dat,prefix=prefix,output_directory=output_directory){
   celltype500bpwindows <- calcSmoothedWindows(dat, 
                                           type = "CG", 
-                                          threads = 100,
+                                          threads = 200,
                                           step = 500, 
                                           smooth = 3,
                                           genome = "hg38",
@@ -277,14 +272,15 @@ calculate_dmrs<-function(dat=dat,prefix=prefix,output_directory=output_directory
                                           returnPctMatrix = TRUE)
 
   saveRDS(celltype500bpwindows,file=paste0(output_directory,"/","06_",prefix,"_finecelltyping.500bp_windows.rds"))
-  
-  dat@genomeMatrices[[paste0("cg_",prefix,"cells_perc")]] <- celltype500bpwindows[["pct_matrix"]]
+  dat@genomeMatrices[[paste0("cg_",prefix,"_cells_perc")]] <- celltype500bpwindows[["pct_matrix"]]
 
-  #output tracks as bigwig
-  bigwig_output(obj=dat,tracks=paste0("cg_",prefix,"cells_perc"),output_directory=output_directory)
-
+  #output tracks as bigBed
+  bigwig_output(obj=dat,
+                tracks=paste0("cg_",prefix,"_cells_perc"),
+                output_directory=output_directory,
+                prefix=prefix)
+  #save subset amethyst file
   saveRDS(dat,file=paste0(output_directory,"/","06_scaledcis.",prefix,"_finecelltyping.amethyst.rds"))
-
 
   pct_mat<-celltype500bpwindows[["pct_matrix"]] 
   sum_mat<-celltype500bpwindows[["sum_matrix"]] 
@@ -301,15 +297,12 @@ calculate_dmrs<-function(dat=dat,prefix=prefix,output_directory=output_directory
               pThreshold = 0.05, # Maxmimum adjusted p value to allow if filter = TRUE
               logThreshold = 1.5) # Minimum absolute value of the log2FC to allow if filter = TRUE
 
-
   collapsed_dmrs <- collapseDMR(dat, 
                         dmrs, 
                           maxDist = 2000, # Max allowable overlap between DMRs to be considered adjacent
                           minLength = 500, # Min length of collapsed DMR window to include in the output
                           reduce = T, # Reduce results to unique observations (recommended)
                           annotate = T) # Add column with overlapping gene names
-
-
   saveRDS(collapsed_dmrs,file=paste0(output_directory,"/","06_",prefix,"_finecelltyping.500bp_dmrs.filt_collapsed.rds"))
 
   rename_dmr_output<-setNames(nm=1:length(unique(collapsed_dmrs$test)),gsub(colnames(sum_mat)[grepl(colnames(sum_mat),pattern="_t$")],pattern="_t",replacement=""))
@@ -331,30 +324,8 @@ calculate_dmrs<-function(dat=dat,prefix=prefix,output_directory=output_directory
 
 }
 
-calculate_dmrs(dat=dat,prefix=prefix,output_directory=output_directory)
-```
 
-## DMR site overlap with RNA marker genes
-
-Use RNA markers and DMR markers to define cell types.
-
-```R
-rna_markers<-readRDS(file="/data/rmulqueen/projects/scalebio_dcis/rna/tenx_dcis.rna_markers.rds")
-collapsed_dmrs<-readRDS(file=paste0(output_directory,"/","06_",prefix,"_finecelltyping.500bp_dmrs.filt_collapsed.rds"))
-
-#perform fisher test on set
-row_fisher <- function(i){
-    df<-celltype_dmr_overlaps[i,]
-    p11<-df["dmr_rnamarker_overlap"]
-    p10<-df["dmr_cluster_total"]-df["dmr_rnamarker_overlap"]
-    p01<-df["rna_celltype_total"]
-    p00<-length(Features(rna))
-    mat <- matrix(as.numeric(c(p11,p10,p01,p00)), ncol=2)
-    f <- fisher.test(as.table(mat), alt="greater")
-    return(f$p.value)
-}
-
-dmr_rna_marker_overlap<-function(rna_markers,collapsed_dmrs,prefix,output_directory){
+dmr_rna_marker_overlap<-function(dat,rna_markers,collapsed_dmrs,prefix,output_directory){
 
   #overexpressed genes by cell type
   rna_markers_filt<-rna_markers %>% 
@@ -386,69 +357,47 @@ dmr_rna_marker_overlap<-function(rna_markers,collapsed_dmrs,prefix,output_direct
   dmr_genes<-as.data.frame(do.call("rbind",dmrs_to_gene_names))
   colnames(dmr_genes)<-c("gene","cluster","met_feature")
 
-  dmr_genes<-dmr_genes %>% filter(!duplicated(gene,cluster)) %>% group_by(cluster) 
-
+  #make nested lists for overlap
+  dmr_list<-list()
+  for(x in unique(dmr_genes$cluster)){
+      genes<-dmr_genes[dmr_genes$cluster==x,]$gene
+      dmr_list[[x]]<-genes[!duplicated(genes)]
+    }
+  
+  rna_markers_list<-list()
+  for(x in unique(rna_markers_filt$cluster)){
+      genes<-rna_markers_filt[rna_markers_filt$cluster==x,]$gene
+      rna_markers_list[[x]]<-genes[!duplicated(genes)]
+    }
   #count intersect between type in DMRs and cell type in RNA markers
-  rna_markers_filt
-  dmr_genes
 
-  celltype_dmr_overlaps <- dmr_genes %>%
-    inner_join(rna_markers_filt, by = "gene", relationship="many-to-many") %>%
-    group_by(cluster.x,) %>%
-    count(cluster.y, name = "overlap_count") %>%
-    as.data.frame()
+  gene_overlap<-newGOM(dmr_list,
+                  rna_markers_list,
+                  genome.size=length(unique(dat@ref$gene_name)))
+  
+  saveRDS(gene_overlap,paste0(output_directory,"/","06_",prefix,"_finecelltyping.dmr_rnamarkergene.overlap.rds"))
 
-  colnames(celltype_dmr_overlaps)<-c("cluster","celltype","dmr_rnamarker_overlap")
+  gene_overlap_pval <- getMatrix(gene_overlap, name="pval")
+  gene_overlap_count <- getMatrix(gene_overlap, name="intersection")
 
-  #add count of dmr features passing filter per cluster
-  celltype_dmr_overlaps$dmr_cluster_total<-NA
-  dmr_count<-dmr_genes %>% filter(!duplicated(met_feature)) %>% count() 
-  dmr_count<-setNames(nm=dmr_count$cluster,dmr_count$n)
-  celltype_dmr_overlaps$dmr_cluster_total<-NA
-  celltype_dmr_overlaps$dmr_cluster_total<-dmr_count[celltype_dmr_overlaps$cluster]
+  dmr_counts<-unlist(lapply(dmr_list,length))
+  de_counts<-unlist(lapply(rna_markers_list,length))
 
-  #add count of rna markers passing filter per cell type
-  rna_marker_count<-rna_markers_filt %>% count() 
-  rna_marker_count<-setNames(nm=rna_marker_count$cluster,rna_marker_count$n)
-  celltype_dmr_overlaps$rna_celltype_total<-0
-  celltype_dmr_overlaps$rna_celltype_total<-rna_marker_count[celltype_dmr_overlaps$celltype]
-
-  fishers <- unlist(lapply(1:nrow(celltype_dmr_overlaps),row_fisher))
-  celltype_dmr_overlaps$fishers.pval<-NA
-  celltype_dmr_overlaps$fishers.pval<-fishers
-  celltype_dmr_overlaps<-as.data.frame(celltype_dmr_overlaps)
-
-  dat <- reshape2::dcast(celltype_dmr_overlaps, cluster~celltype,value.var="fishers.pval",fill=1) 
-  dat_counts <- reshape2::dcast(celltype_dmr_overlaps, cluster~celltype,value.var="dmr_rnamarker_overlap",fill=0) 
-
-  row.names(dat)<-dat$cluster
-  row.names(dat_counts)<-dat_counts$cluster
-
-  dmr_counts<-unique(celltype_dmr_overlaps[c("cluster","dmr_cluster_total")])
-  dmr_counts<-setNames(nm=dmr_counts$cluster,dmr_counts$dmr_cluster_total)
-
-  de_counts<-unique(celltype_dmr_overlaps[c("celltype","rna_celltype_total")])
-  de_counts<-setNames(nm=de_counts$celltype,de_counts$rna_celltype_total)
-
-  #negative log10 on dat
-  dat<-dat[2:ncol(dat)]
-  dat_counts<-dat_counts[2:ncol(dat_counts)]
-
-  dat<- -(log10(dat))
-  col_fun=colorRamp2(breaks=quantile(unlist(dat),probs=c(0,0.5,0.9)),colors=c("white","grey","#FF00FF"))
+  gene_overlap_pval<- -(log10(gene_overlap_pval))
+  col_fun=colorRamp2(breaks=quantile(unlist(gene_overlap_pval),probs=c(0,0.5,0.9)),colors=c("white","grey","#FF00FF"))
 
   #add annotation barplots on counts for rna and dmr
-  row_ha = rowAnnotation(dmr_count = anno_barplot(dmr_counts[row.names(dat)]))
-  column_ha = columnAnnotation(de_count = anno_barplot(de_counts[colnames(dat)]))
-
+  row_ha = rowAnnotation(dmr_count = anno_barplot(dmr_counts[row.names(gene_overlap_pval)]))
+  column_ha = columnAnnotation(de_count = anno_barplot(de_counts[colnames(gene_overlap_pval)]))
+      
   #add dot size by overlap
   cell_fun = function(j, i, x, y, width, height, fill) {
           grid.rect(x = x, y = y, width = width, height = height, 
               gp = gpar(col = "grey", fill = NA))
-              grid.text(sprintf("%.1f", dat[i, j]), x = x, y = y)
+              grid.text(gene_overlap_count[i,j], x = x, y = y)
       }
-      
-  plt<-Heatmap(dat,
+
+  plt<-Heatmap(gene_overlap_pval,
               cell_fun=cell_fun,
               top_annotation = column_ha, 
               right_annotation = row_ha,
@@ -460,20 +409,255 @@ dmr_rna_marker_overlap<-function(rna_markers,collapsed_dmrs,prefix,output_direct
   print(plt)
   dev.off()
 
-
   #and compare group proportion per cluster
-  dat_met<-readRDS(file=paste0(output_directory,"/","06_scaledcis.immune_finecelltyping.amethyst.rds"))
-  prop_celltype<-table(dat_met@metadata$fine_cluster_id,dat_met@metadata$Group) %>% reshape2::melt()
+  prop_celltype<-table(dat@metadata$fine_cluster_id,dat@metadata$Group) %>% reshape2::melt()
   colnames(prop_celltype)<-c("cluster","group","count")
-  plt<-ggplot(prop_celltype,aes(x=as.character(cluster),y=count,fill=group))+geom_bar(position="fill",stat="identity")+theme_minimal()
-  ggsave(plt,file=paste0(output_directory,"/","06_",prefix,"finecelltyping.dmr_rnamarkergene.cellprop.pdf"))
+  plt<-ggplot(prop_celltype,aes(x=as.character(cluster),y=count,fill=group))+geom_bar(position="stack",stat="identity")+theme_minimal()
+  ggsave(plt,file=paste0(output_directory,"/","06_",prefix,".finecelltyping.dmr_rnamarkergene.cellprop.pdf"))
 
 }
-
-rna_markers<-readRDS(file="/data/rmulqueen/projects/scalebio_dcis/rna/tenx_dcis.rna_markers.rds")
-collapsed_dmrs<-readRDS(file=paste0(output_directory,"/","06_",prefix,"_finecelltyping.500bp_dmrs.filt_collapsed.rds"))
-dmr_rna_marker_overlap(rna_markers=rna_markers,collapsed_dmrs=collapsed_dmrs,prefix=prefix,output_directory=output_directory)
 ```
+
+## T cells
+
+```R
+#Set up variables for output.
+prefix="tcell"
+output_directory=paste0(project_data_directory,"/fine_celltyping/",prefix)
+dat<-readRDS(file="05_scaledcis.coarse_clusters.amethyst.rds")
+
+#define subclusters
+dat<-cluster_subset(
+  dat=dat,
+  broad_celltype=c("tcell"), #note this is a list
+  window_name="coarse_cluster_dmr_sites",
+  prefix=prefix,
+  dims=15,
+  regressCov=FALSE,
+  k_pheno=30,
+  neigh=8,
+  dist=0.01,
+  perc_cell_cov_per_window=0.2,
+  method="cosine",
+  output_directory=output_directory)
+
+saveRDS(dat,file=paste0(output_directory,"/","06_scaledcis.",prefix,"_finecelltyping.amethyst.rds"))
+dat<-readRDS(file=paste0(output_directory,"/","06_scaledcis.",prefix,"_finecelltyping.amethyst.rds"))
+
+
+#calculate dmrs per fine celltype grouping
+collapsed_dmrs<-calculate_dmrs(dat=dat,
+                prefix=prefix,
+                output_directory=output_directory)
+
+#trying reclustering on initial dmrs for cell type
+#filter on sig, and width
+collapsed_dmrs<-readRDS(collapsed_dmrs,file=paste0(output_directory,"/","06_",prefix,"_finecelltyping.500bp_dmrs.filt_collapsed.rds"))
+filt_init_dmrs <- collapsed_dmrs %>% filter(dmr_padj<0.05) %>% GRanges() 
+filt_init_dmrs$width <- width(filt_init_dmrs)
+filt_init_dmrs <- filt_init_dmrs %>% as.data.frame() %>% filter(width<50000) %>% select(seqnames,start,end)
+window_name<-paste0("cg_",prefix,"_dmrs")
+dat@genomeMatrices[[window_name]] <- makeWindows(dat, 
+                                                     bed=filt_init_dmrs,
+                                                     type = "CG", 
+                                                     metric = "score", 
+                                                     threads = 100, 
+                                                     index = "chr_cg", 
+                                                     nmin = 2) 
+
+
+#define subclusters
+dat<-cluster_subset(
+        dat=dat,
+        broad_celltype=c("tcell"), #note this is a list and can include multiple cell types
+        window_name=window_name,
+        prefix=paste0(prefix,".dmr"),
+        dims=15,
+        regressCov=FALSE,
+        k_pheno=30,
+        neigh=8,
+        dist=0.01,
+        perc_cell_cov_per_window=0.2,
+        method="cosine",
+        output_directory=output_directory)
+#pretty sure this distant cluster is not a tcell check pan-myeloid markers
+
+## DMR site overlap with RNA marker genes 
+rna_markers<-readRDS(file="/data/rmulqueen/projects/scalebio_dcis/rna/tenx_dcis.rna_markers.rds")
+dmr_rna_marker_overlap(dat,rna_markers,collapsed_dmrs,prefix,output_directory)
+collapsed_dmrs<-readRDS(collapsed_dmrs,file=paste0(output_directory,"/","06_",prefix,"_finecelltyping.500bp_dmrs.filt_collapsed.rds"))
+#Using bigwig tracks to validate other metrics.
+#Final celltype assignment and marker plotting for proof.
+
+#3 is cd8 (CD4 methylated) RUNX3
+#others are cd4+ (CD4)
+#6 is myeloid (plasma? expressed CD84, CD1D CD74 suggests Breg) MXB1 JCHAIN
+
+#look through collapsed_dmr for final cell typing (or just stick with cd8 and cd4
+#maybe can separate out 10 4 7 CD4+ from 5 2 11 1 CD4+
+#maybe 8 is special too?)
+#check for THEMIS (nk is THEMIS negative)
+```
+
+## B cell
+
+```R
+#Set up variables for output.
+prefix="bcell"
+output_directory=paste0(project_data_directory,"/fine_celltyping/",prefix)
+dat<-readRDS(file="05_scaledcis.coarse_clusters.amethyst.rds")
+
+#define subclusters
+dat<-cluster_subset(
+  dat=dat,
+  broad_celltype=c("bcell"), #note this is a list
+  window_name="coarse_cluster_dmr_sites",
+  prefix=prefix,
+  dims=19,
+  regressCov=FALSE,
+  k_pheno=50,
+  neigh=10,
+  dist=0.1,
+  perc_cell_cov_per_window=0.05,
+  method="cosine",
+  output_directory=output_directory)
+
+#just looks like bcells to me, no diff
+saveRDS(dat,file=paste0(output_directory,"/","06_scaledcis.",prefix,"_finecelltyping.amethyst.rds"))
+```
+
+
+## myeloid
+
+```R
+#Set up variables for output.
+prefix="myeloid"
+output_directory=paste0(project_data_directory,"/fine_celltyping/",prefix)
+dat<-readRDS(file="05_scaledcis.coarse_clusters.amethyst.rds")
+
+#define subclusters
+dat<-cluster_subset(
+  dat=dat,
+  broad_celltype=c("myeloid"), #note this is a list
+  window_name="coarse_cluster_dmr_sites",
+  prefix=prefix,
+  dims=16,
+  regressCov=FALSE,
+  k_pheno=70,
+  neigh=5,
+  dist=0.1,
+  perc_cell_cov_per_window=0.05,
+  method="cosine",
+  output_directory=output_directory)
+
+#just looks like bcells to me, no diff
+saveRDS(dat,file=paste0(output_directory,"/","06_scaledcis.",prefix,"_finecelltyping.amethyst.rds"))
+
+
+#calculate dmrs per fine celltype grouping
+collapsed_dmrs<-calculate_dmrs(dat=dat,
+                prefix=prefix,
+                output_directory=output_directory)
+
+#pretty sure this distant cluster is not a tcell check pan-myeloid markers
+
+## DMR site overlap with RNA marker genes 
+rna_markers<-readRDS(file="/data/rmulqueen/projects/scalebio_dcis/rna/tenx_dcis.rna_markers.rds")
+dmr_rna_marker_overlap(dat,rna_markers,collapsed_dmrs,prefix,output_directory)
+saveRDS(dat,file=paste0(output_directory,"/","06_scaledcis.",prefix,"_finecelltyping.amethyst.rds"))
+
+```
+
+
+## endothelial
+
+```R
+#Set up variables for output.
+prefix="endothelial"
+output_directory=paste0(project_data_directory,"/fine_celltyping/",prefix)
+dat<-readRDS(file="05_scaledcis.coarse_clusters.amethyst.rds")
+
+#define subclusters
+dat<-cluster_subset(
+  dat=dat,
+  broad_celltype=c("endothelial"), #note this is a list
+  window_name="coarse_cluster_dmr_sites",
+  prefix=prefix,
+  dims=20,
+  regressCov=FALSE,
+  k_pheno=70,
+  neigh=10,
+  dist=0.01,
+  perc_cell_cov_per_window=0.1,
+  method="cosine",
+  output_directory=output_directory)
+
+saveRDS(dat,file=paste0(output_directory,"/","06_scaledcis.",prefix,"_finecelltyping.amethyst.rds"))
+
+
+#calculate dmrs per fine celltype grouping
+collapsed_dmrs<-calculate_dmrs(dat=dat,
+                prefix=prefix,
+                output_directory=output_directory)
+
+
+## DMR site overlap with RNA marker genes 
+rna_markers<-readRDS(file="/data/rmulqueen/projects/scalebio_dcis/rna/tenx_dcis.rna_markers.rds")
+dmr_rna_marker_overlap(dat,rna_markers,collapsed_dmrs,prefix,output_directory)
+saveRDS(dat,file=paste0(output_directory,"/","06_scaledcis.",prefix,"_finecelltyping.amethyst.rds"))
+
+```
+
+
+## fibroblast
+
+```R
+#Set up variables for output.
+prefix="fibroblast"
+output_directory=paste0(project_data_directory,"/fine_celltyping/",prefix)
+dat<-readRDS(file="05_scaledcis.coarse_clusters.amethyst.rds")
+
+#define subclusters
+dat<-cluster_subset(
+  dat=dat,
+  broad_celltype=c("endothelial"), #note this is a list
+  window_name="coarse_cluster_dmr_sites",
+  prefix=prefix,
+  dims=16,
+  regressCov=FALSE,
+  k_pheno=70,
+  neigh=5,
+  dist=0.1,
+  perc_cell_cov_per_window=0.05,
+  method="cosine",
+  output_directory=output_directory)
+
+#just looks like bcells to me, no diff
+saveRDS(dat,file=paste0(output_directory,"/","06_scaledcis.",prefix,"_finecelltyping.amethyst.rds"))
+
+
+#calculate dmrs per fine celltype grouping
+collapsed_dmrs<-calculate_dmrs(dat=dat,
+                prefix=prefix,
+                output_directory=output_directory)
+
+#pretty sure this distant cluster is not a tcell check pan-myeloid markers
+
+## DMR site overlap with RNA marker genes 
+rna_markers<-readRDS(file="/data/rmulqueen/projects/scalebio_dcis/rna/tenx_dcis.rna_markers.rds")
+dmr_rna_marker_overlap(dat,rna_markers,collapsed_dmrs,prefix,output_directory)
+saveRDS(dat,file=paste0(output_directory,"/","06_scaledcis.",prefix,"_finecelltyping.amethyst.rds"))
+
+```
+
+
+```
+
+
+Use RNA markers and DMR markers to define cell types.
+
+Using library GeneOverlap because I always get turned around when making contingency tables.
+
 
 # Plotting marker genes over clusters
 

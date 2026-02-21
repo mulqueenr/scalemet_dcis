@@ -782,13 +782,14 @@ saveRDS(obj,file="06_scaledcis.cnv_clones.amethyst.rds")
 
 Plot all clones together (with clustering for shared cross-patient cnvs)
 
-#220kb
+#500kb
 ```R
 library(ComplexHeatmap)
 library(copykit)
 library(circlize)
 library(RColorBrewer)
 library(dplyr)
+library(amethyst)
 #set environment and read in data
 set.seed(111)
 options(future.globals.maxSize= 80000*1024^2) #80gb limit for parallelizing
@@ -804,6 +805,7 @@ output_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v
 
 #read in all logr from copykit
 read_logr_copykit<-function(x){
+    print(paste("Reading in logr:",x))
     tmp<-readRDS(x)
     logr<-tmp@assays@data$logr
     return(logr)
@@ -812,9 +814,9 @@ read_logr_copykit<-function(x){
 
 #read in all meta data from copykit
 read_meta_copykit<-function(x){
-    print(x)
+    print(paste("Reading in metadata:",x))
     tmp<-readRDS(x)
-    meta<-as.data.frame(tmp@colData[c("sample_name","reads_assigned_bins","plate_info","subclones","fine_celltype","clonename","ploidy")])
+    meta<-as.data.frame(tmp@colData[c("sample_name","reads_assigned_bins","plate_info","fine_celltype","ploidy","clonename")])
     return(meta)
 }
 
@@ -912,7 +914,7 @@ cluster_all_samples_cnv<-function(obj=obj,resolution="220kb",ploidy_filt=c("aneu
     col=log_col,
     cluster_columns=FALSE,
     cluster_rows=TRUE,
-    clustering_distance_rows="manhattan",
+    clustering_distance_rows="euclidean",
     show_row_names = FALSE, row_title_rot = 0,
     show_column_names = FALSE,
     cluster_row_slices = TRUE,
@@ -939,6 +941,10 @@ cluster_all_samples_cnv(obj=obj,resolution="220kb",ploidy_filt=c("aneuploid"),pr
 cluster_all_samples_cnv(obj=obj,resolution="500kb",ploidy_filt=c("aneuploid","diploid"))
 #500kb aneuploid cells
 cluster_all_samples_cnv(obj=obj,resolution="500kb",ploidy_filt=c("aneuploid"),prefix="all_samples_aneuploid")
+
+
+
+cnv_pc<-prcomp(cell_logr)
 
 ```
 
