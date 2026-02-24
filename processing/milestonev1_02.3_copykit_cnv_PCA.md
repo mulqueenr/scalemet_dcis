@@ -3,10 +3,6 @@ Not quite sure what to do here. Running PCA on CNV events to group common events
 - Make barplot per PC loading for aneuploid cells (see if sample specific)
 - Bin cells by PC loading and do differential methylation?
 
-```bash
-singularity shell --bind /data/rmulqueen/projects/scalebio_dcis ~/singularity/amethyst.sif
-```
-
 # Generate CopyKit for each sample
 
 ```R

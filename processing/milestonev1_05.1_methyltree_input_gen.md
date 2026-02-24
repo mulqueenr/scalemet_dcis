@@ -15,7 +15,7 @@ project_data_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_miles
 merged_dat_folder="merged_data"
 wd=paste(sep="/",project_data_directory,merged_dat_folder)
 setwd(wd)
-obj<-readRDS(file="06_scaledcis.cnv_clones.amethyst.rds")
+obj<-readRDS(file="06_scaledcis.celltype.amethyst.rds")
 
 
 #make output directory
@@ -101,7 +101,7 @@ methyltree_output<-function(obj=obj,
           values_drop_na = TRUE)
 
     #make a metadata sheet with cluster info
-    out_metadata<-obj_met@metadata[,c("pass","fine_celltype","cg_cov","mcg_pct","cnv_clonename")]
+    out_metadata<-obj_met@metadata[,c("pass","celltype","cg_cov","mcg_pct","cnv_clonename_500kb")]
     colnames(out_metadata)<-c("HQ","celltype","nCG","met_rate","cnv_clonename") #match names
     out_metadata$sample<-row.names(out_metadata) #sample (cell) names
     out_metadata$met_rate<-out_metadata$met_rate/100 #percentage to rate

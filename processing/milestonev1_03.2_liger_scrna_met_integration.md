@@ -10,15 +10,19 @@ Could also potentially run DMRs on broad_celltypes assigned. But I'm going to st
 https://welch-lab.github.io/liger/articles/rna_methylation.html
 https://pmc.ncbi.nlm.nih.gov/articles/PMC8132955/
 
+
+# TO ADD FILTER DMRS TO JUST THOSE REAL CLOSE TO PROMOTERS (OVERLAP OR WITHIN 2KBP) OR JUST DO PROMOTERS AND FILTER OUT CGI
+# OR 3' END OF GENE
+
 Use integration to inform cell typing. Note some cell types were mislabelled based on small set of marker genes originally used. 
 Using integration data, marker genes, clones and clustering for final calls. 
 
 Add filter from RNA to limit genes that just overlap piggybacking?
 
 ```R
-BiocManager::install("HDF5Array")
-install.packages('leidenAlg')
-install.packages('rliger')
+#BiocManager::install("HDF5Array")
+#install.packages('leidenAlg')
+#install.packages('rliger')
 ```
 
 
@@ -47,10 +51,91 @@ merged_dat_folder="merged_data"
 wd=paste(sep="/",project_data_directory,merged_dat_folder)
 setwd(wd)
 
-obj<-readRDS(file="06_scaledcis.cnv_clones.amethyst.rds")
+obj<-readRDS(file="06_scaledcis.celltype.amethyst.rds")
 
+
+#summarize windows over promoters (+2kb)
+#filter to exclude CG Island overlap
+#filter to RNA markers as well
+#run liger
+
+# Create from raw score matrices RNA (counts)
+rna<-readRDS("/data/rmulqueen/projects/scalebio_dcis/rna/tenx_dcis.pf.rds")
+Idents(rna)<-rna$fine_celltype
+rna_dat<-JoinLayers(rna[["RNA"]])
+rna_dat <- NormalizeData(rna_dat, normalization.method = "LogNormalize", scale.factor = 10000)
+rna_dat <- ScaleData(rna_dat, features = row.names(met_dat))
+rna_markers<-FindAllMarkers(rna_dat,assay="RNA",only.pos=TRUE)
+rna_markers_filt<-rna_markers %>% group_by(cluster) %>% filter(avg_log2FC > 3) %>% filter(p_val_adj <0.01) %>% as.data.frame()
+rna_markers_filt<-rna_markers_filt[!duplicated(rna_markers_filt$gene),]
+saveRDS(rna_dat,file=paste0(project_data_directory,"/integration/","rna_markers_filt.rds"))
+
+#filter met_dat to only genes in rna markers
+met_dat<-met_dat[row.names(met_dat) %in% unique(rna_markers_filt$gene),]
+
+#get raw RNA values on filtered methylation genes
+rna_dat<-LayerData(rna_dat,features=row.names(met_dat),assay="RNA",layer="counts")
+saveRDS(rna_dat,file=paste0(project_data_directory,"/integration/","scaledcis.gene_rna.mat.rds"))
+
+rna$broad_celltype<-rna$fine_celltype
+rna$coarse_cluster_id <- "NA"
+rna$mcg_pct <- "NA"
+
+
+#create shared metadata, add coarse_cluster_id to meta
+meta<-rbind(obj@metadata[c("sample","broad_celltype","coarse_cluster_id","mcg_pct")],rna@meta.data[c("sample","broad_celltype","coarse_cluster_id","mcg_pct")])
+
+#make liger object
+met.liger <- createLiger(rawData=list(met=met_dat,rna=rna_dat), 
+                        modal=c("meth","rna"),cellMeta=meta,
+                        removeMissing=FALSE)
+
+#now follow liger for integration
+rna.met <- met.liger %>% 
+            rliger::normalize() %>%
+            rliger::selectGenes(useDatasets = "met") %>%
+            rliger::scaleNotCenter()
+
+rna.met <- rliger::runIntegration(rna.met, k = 20)
+rna.met <- rliger::quantileNorm(rna.met)
+rna.met <- runCluster(rna.met)
+rna.met <- runUMAP(rna.met)
+
+plt1<-plotDatasetDimRed(rna.met,splitBy="dataset")
+ggsave(wrap_plots(plt1),file=paste0(project_data_directory,"/integration/","scaledcis.met_rna.","dataset",".integrated.umap.pdf"),width=20,height=10)
+
+plt2<-plotClusterDimRed(rna.met,splitBy="dataset","broad_celltype")
+ggsave(wrap_plots(plt2),file=paste0(project_data_directory,"/integration/","scaledcis.met_rna.","celltype",".integrated.umap.pdf"),width=20,height=10)
+
+plt3<-plotClusterDimRed(rna.met,splitBy="dataset","sample")
+ggsave(wrap_plots(plt3),file=paste0(project_data_directory,"/integration/","scaledcis.met_rna.","sample",".integrated.umap.pdf"),width=20,height=10)
+
+plt4<-plotClusterDimRed(rna.met,splitBy="dataset","coarse_cluster_id")
+ggsave(wrap_plots(plt4),file=paste0(project_data_directory,"R/integration/","scaledcis.met_rna.","coarse_cluster_id",".integrated.umap.pdf"),width=20,height=10)
+
+plt5<-plotClusterDimRed(rna.met,slot="cellMeta","mcg_pct")
+ggsave(wrap_plots(plt5),file=paste0(project_data_directory,"/integration/","scaledcis.met_rna.","mcg",".integrated.umap.pdf"),width=20,height=10)
+
+
+
+plots <- plotGeneDimRed(rna.met, c("PTPRC", "RCOR3"), splitBy = "dataset",
+                        titles = c(names(rna.met), names(rna.met)))
+
+saveRDS(rna.met,file=paste0(project_data_directory,"/integration/","scaledcis.met_rna.integrated.liger.rds"))
+
+rna.met<-readRDS(file=paste0(project_data_directory,"/integration/","scaledcis.met_rna.integrated.liger.rds"))
+
+
+
+
+```
+
+
+deprocated stuff
+
+```
 #################################
-#Get DMR per Celltypes
+#Use DMR per Celltypes
 #################################
 
 #reading in pre-computed windows per cell type, to determine DMRs
@@ -166,73 +251,6 @@ met_dat[which(is.na(met_dat),arr.ind=TRUE)]<-0
 
 system(paste0("mkdir -p ",project_data_directory,"/integration/"))
 saveRDS(met_dat,file=paste0(project_data_directory,"/integration/","scaledcis.gene_dmr_methylation.mat.rds"))
-
-# Create from raw score matrices RNA (counts)
-rna<-readRDS("/data/rmulqueen/projects/scalebio_dcis/rna/tenx_dcis.pf.rds")
-Idents(rna)<-rna$fine_celltype
-rna_dat<-JoinLayers(rna[["RNA"]])
-rna_dat<-subset(rna_dat,features=row.names(met_dat))
-rna_dat <- NormalizeData(rna_dat, normalization.method = "LogNormalize", scale.factor = 10000)
-rna_dat <- ScaleData(rna_dat, features = row.names(met_dat))
-rna_markers<-FindAllMarkers(rna_dat,assay="RNA",only.pos=TRUE)
-
-rna_markers_filt<-rna_markers %>% group_by(cluster) %>% filter(avg_log2FC > 3) %>% filter(p_val_adj <0.01) %>% as.data.frame()
-rna_markers_filt<-rna_markers_filt[!duplicated(rna_markers_filt$gene),]
-
-#filter met_dat to only genes in rna markers
-met_dat<-met_dat[row.names(met_dat) %in% unique(rna_markers_filt$gene),]
-
-#get raw RNA values on filtered methylation genes
-rna_dat<-LayerData(rna_dat,features=row.names(met_dat),assay="RNA",layer="counts")
-saveRDS(rna_dat,file=paste0(project_data_directory,"/integration/","scaledcis.gene_rna.mat.rds"))
-
-rna$broad_celltype<-rna$fine_celltype
-rna$coarse_cluster_id <- "NA"
-rna$mcg_pct <- "NA"
-
-
-#create shared metadata, add coarse_cluster_id to meta
-meta<-rbind(obj@metadata[c("sample","broad_celltype","coarse_cluster_id","mcg_pct")],rna@meta.data[c("sample","broad_celltype","coarse_cluster_id","mcg_pct")])
-
-#make liger object
-met.liger <- createLiger(rawData=list(met=met_dat,rna=rna_dat), 
-                        modal=c("meth","rna"),cellMeta=meta,
-                        removeMissing=FALSE)
-
-#now follow liger for integration
-rna.met <- met.liger %>% 
-            rliger::normalize() %>%
-            rliger::selectGenes(useDatasets = "met") %>%
-            rliger::scaleNotCenter()
-
-rna.met <- rliger::runIntegration(rna.met, k = 20)
-rna.met <- rliger::quantileNorm(rna.met)
-rna.met <- runCluster(rna.met)
-rna.met <- runUMAP(rna.met)
-
-plt1<-plotDatasetDimRed(rna.met,splitBy="dataset")
-ggsave(wrap_plots(plt1),file=paste0(project_data_directory,"/integration/","scaledcis.met_rna.","dataset",".integrated.umap.pdf"),width=20,height=10)
-
-plt2<-plotClusterDimRed(rna.met,splitBy="dataset","broad_celltype")
-ggsave(wrap_plots(plt2),file=paste0(project_data_directory,"/integration/","scaledcis.met_rna.","celltype",".integrated.umap.pdf"),width=20,height=10)
-
-plt3<-plotClusterDimRed(rna.met,splitBy="dataset","sample")
-ggsave(wrap_plots(plt3),file=paste0(project_data_directory,"/integration/","scaledcis.met_rna.","sample",".integrated.umap.pdf"),width=20,height=10)
-
-plt4<-plotClusterDimRed(rna.met,splitBy="dataset","coarse_cluster_id")
-ggsave(wrap_plots(plt4),file=paste0(project_data_directory,"R/integration/","scaledcis.met_rna.","coarse_cluster_id",".integrated.umap.pdf"),width=20,height=10)
-
-plt5<-plotClusterDimRed(rna.met,slot="cellMeta","mcg_pct")
-ggsave(wrap_plots(plt5),file=paste0(project_data_directory,"/integration/","scaledcis.met_rna.","mcg",".integrated.umap.pdf"),width=20,height=10)
-
-
-
-plots <- plotGeneDimRed(rna.met, c("PTPRC", "RCOR3"), splitBy = "dataset",
-                        titles = c(names(rna.met), names(rna.met)))
-
-saveRDS(rna.met,file=paste0(project_data_directory,"/integration/","scaledcis.met_rna.integrated.liger.rds"))
-
-rna.met<-readRDS(file=paste0(project_data_directory,"/integration/","scaledcis.met_rna.integrated.liger.rds"))
 
 
 col_fun = colorRamp2(c(0, 0.5, 1), c("white", "red", "darkred"))
