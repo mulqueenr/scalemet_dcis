@@ -41,7 +41,33 @@ merged_dat_folder="merged_data"
 wd=paste(sep="/",project_data_directory,merged_dat_folder)
 setwd(wd)
 
-obj<-readRDS(file="06_scaledcis.celltype.amethyst.rds")
+obj<-readRDS(file="07_scaledcis.cnv_clones.amethyst.rds")
+
+#color assignment is fluor as cancer associated cell type, rest muted versions
+celltype_col=c(
+"cancer"="#ff00ff",
+"basal"="#92278F",
+"lumsec"="#AD8CFF",
+"lumhr"="#FF6AD5",
+
+"TEC"="#ff8000",
+"endothelial"="#ffab5f",
+
+"CAF"="#ff2222",
+"pericyte_VSMC"="#FA7876",
+"fibroblast"="#9b1c31",
+
+"TAM"="#ccff00",
+"TAM2"="#00ff80",
+"monocyte"="#98d3b9",
+"macrophage"="#00af5f",
+"DC"="#008080",
+
+"nk_tnk"="#00ffff",
+"tcell_cd4"="#00bae5",
+"tcell_cd8"="#1800ff",
+"tcell_cd8_2"="#0016b7",
+"bcell"="#87ceeb")
 
 ```
 
@@ -51,7 +77,7 @@ processing/milestonev1_01.2_amethyst_fine_celltyping.md
 
 ```R
 
-celltype_umap<-function(obj=dat,prefix="allcells",dims=12,regressCov=TRUE,k_pheno=50,k_umap=50,neigh=25,dist=1e-5,method="cosine",output_directory,window_name){
+celltype_umap<-function(obj=dat,prefix="allcells",dims=12,regressCov=TRUE,cluster_on_umap=TRUE,k_pheno=50,k_umap=50,neigh=25,dist=1e-5,method="cosine",output_directory,window_name){
   print("Running IRLBA reduction...")
   obj@reductions[[paste(window_name,"irlba",sep="_")]] <- runIrlba(obj, genomeMatrices = c(window_name), dims = dims, replaceNA = c(0))
 
@@ -68,20 +94,28 @@ celltype_umap<-function(obj=dat,prefix="allcells",dims=12,regressCov=TRUE,k_phen
   print(paste("Running UMAP...",as.character(neigh),as.character(dist),as.character(method)))
   obj <- amethyst::runUmap(obj, neighbors = neigh, dist = dist, method = method, reduction = paste(window_name,"irlba_regressed",sep="_")) 
 
-  print("Clustering on umap.")
-  umap_clus<-obj@metadata%>% select(c("umap_x","umap_y"))
-  umap_clus<-Rphenograph::Rphenograph(umap_clus,k=k_pheno)
-  obj@metadata$cluster_id<-paste0(prefix,"_",igraph::membership(umap_clus[[2]]))
+  if(cluster_on_umap){
+      print("Clustering on umap. Overwritting clustering on IRLBA")
+      umap_clus<-obj@metadata%>% select(c("umap_x","umap_y"))
+      umap_clus<-Rphenograph::Rphenograph(umap_clus,k=k_pheno)
+      obj@metadata$cluster_id<-paste0(prefix,"_",igraph::membership(umap_clus[[2]]))
+  } else {
+      print("Clustering on IRLBA. Overwritting current clustering on IRLBA")
+      irlba_clus<-obj@reductions[[paste(window_name,"irlba_regressed",sep="_")]][row.names(obj@metadata),]
+      irlba_clus<-Rphenograph::Rphenograph(irlba_clus,k=k_pheno)
+      obj@metadata$cluster_id<-paste0(prefix,"_",igraph::membership(irlba_clus[[2]]))
+  }
 
   outname=paste(prefix,"integrated_celltype",dims,as.character(regressCov),k_pheno,neigh,as.character(dist),method,sep="_")
   print(paste("Plotting...",outname))
 
-  p1 <- dimFeature(obj, colorBy = sample, reduction = "umap",pointSize=3) + ggtitle(paste(window_name,"Samples"))
-  p2 <- dimFeature(obj, colorBy = log10(cov), pointSize = 3) + scale_color_gradientn(colors = c("black", "turquoise", "gold", "red"),guide="colourbar") + ggtitle("Coverage distribution")
-  p3 <- dimFeature(obj, colorBy = mcg_pct, pointSize = 3) + scale_color_gradientn(colors = c("black", "turquoise", "gold", "red")) + ggtitle("Global %mCG distribution")
-  p4 <- dimFeature(obj, colorBy = cluster_id, reduction = "umap",pointSize=3) + ggtitle(paste(window_name,"Clusters"))
-  p5 <- dimFeature(obj, colorBy = Group, reduction = "umap",pointSize=3) + ggtitle(paste(window_name," Group"))
-  p6<-ggplot()
+  p1 <- dimFeature(obj, colorBy = cluster_id, reduction = "umap",pointSize=1) + ggtitle(paste(window_name,"Cluster"))
+  p2 <- dimFeature(obj, colorBy = log10(cov), pointSize = 1) + scale_color_gradientn(colors = c("black", "turquoise", "gold", "red"),guide="colourbar") + ggtitle("Coverage distribution")
+  p3 <- dimFeature(obj, colorBy = mcg_pct, pointSize = 1) + scale_color_gradientn(colors = c("black", "turquoise", "gold", "red")) + ggtitle("Global %mCG distribution")
+  p4 <- dimFeature(obj, colorBy = celltype, reduction = "umap",pointSize=1) + ggtitle(paste(window_name,"Clusters")) + scale_color_manual(values=celltype_col)
+  p5 <- dimFeature(obj, colorBy = Group, reduction = "umap",pointSize=1) + ggtitle(paste(window_name," Group"))
+  p6 <- dimFeature(obj, colorBy = Sample, reduction = "umap",pointSize=1) + ggtitle(paste(window_name," Samples"))
+
   ggsave((p1|p2)/(p3|p4)/(p5|p6),file=paste0(output_directory,"/",outname,"_umap.pdf"),width=20,height=30)  
   return(obj)
 
@@ -239,7 +273,7 @@ testDMR <- function(sumMatrix, eachVsAll = TRUE, comparisons = NULL, nminTotal =
   return(counts)
 }
 
-calculate_dmrs<-function(dat=dat,prefix=prefix,output_directory=output_directory){
+calculate_dmrs<-function(dat=dat,prefix=prefix,groupBy="fine_cluster_id",output_directory=output_directory){
   celltype500bpwindows <- calcSmoothedWindows(dat, 
                                           type = "CG", 
                                           threads = 200,
@@ -247,11 +281,11 @@ calculate_dmrs<-function(dat=dat,prefix=prefix,output_directory=output_directory
                                           smooth = 3,
                                           genome = "hg38",
                                           index = "chr_cg",
-                                          groupBy = "fine_cluster_id",
+                                          groupBy = groupBy,
                                           returnSumMatrix = TRUE, # save sum matrix for DMR analysis
                                           returnPctMatrix = TRUE)
 
-  saveRDS(celltype500bpwindows,file=paste0(output_directory,"/","06_",prefix,"_finecelltyping.500bp_windows.rds"))
+  saveRDS(celltype500bpwindows,file=paste0(output_directory,"/","06_",prefix,"_celltype.500bp_windows.rds"))
   dat@genomeMatrices[[paste0("cg_",prefix,"_cells_perc")]] <- celltype500bpwindows[["pct_matrix"]]
 
   #output tracks as bigBed
@@ -260,8 +294,8 @@ calculate_dmrs<-function(dat=dat,prefix=prefix,output_directory=output_directory
                 output_directory=output_directory,
                 prefix=prefix)
   #save subset amethyst file
-  print(paste("Saving new amethyst file:",paste("06_scaledcis.",prefix,"_finecelltyping.amethyst.rds")))
-  saveRDS(dat,file=paste0(output_directory,"/","06_scaledcis.",prefix,"_finecelltyping.amethyst.rds"))
+  print(paste("Saving new amethyst file:",paste("06_scaledcis.",prefix,"_celltype.amethyst.rds")))
+  saveRDS(dat,file=paste0(output_directory,"/","06_scaledcis.",prefix,"_celltype.amethyst.rds"))
 
   pct_mat<-celltype500bpwindows[["pct_matrix"]] 
   sum_mat<-celltype500bpwindows[["sum_matrix"]] 
@@ -270,7 +304,7 @@ calculate_dmrs<-function(dat=dat,prefix=prefix,output_directory=output_directory
           eachVsAll = TRUE, # If TRUE, each group found in the sumMatrix will be tested against all others
           nminTotal = 3, # Min number observations across all groups to include the region in calculations
           nminGroup = 3) # Min number observations across either members or nonmembers to include the region
-  saveRDS(dmrs,file=paste0(output_directory,"/","06_",prefix,"_finecelltyping",".500bp_dmrs.rds"))
+  saveRDS(dmrs,file=paste0(output_directory,"/","06_",prefix,"_celltype",".500bp_dmrs.rds"))
 
   dmrs <- filterDMR(dmrs, 
               method = "bonferroni", # c("holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "fdr")
@@ -284,11 +318,11 @@ calculate_dmrs<-function(dat=dat,prefix=prefix,output_directory=output_directory
                           minLength = 500, # Min length of collapsed DMR window to include in the output
                           reduce = T, # Reduce results to unique observations (recommended)
                           annotate = T) # Add column with overlapping gene names
-  saveRDS(collapsed_dmrs,file=paste0(output_directory,"/","06_",prefix,"_finecelltyping.500bp_dmrs.filt_collapsed.rds"))
+  saveRDS(collapsed_dmrs,file=paste0(output_directory,"/","06_",prefix,"_celltype.500bp_dmrs.filt_collapsed.rds"))
 
   rename_dmr_output<-setNames(nm=1:length(unique(collapsed_dmrs$test)),gsub(colnames(sum_mat)[grepl(colnames(sum_mat),pattern="_t$")],pattern="_t",replacement=""))
   collapsed_dmrs$type <- rename_dmr_output[collapsed_dmrs$test]
-  saveRDS(collapsed_dmrs,file=paste0(output_directory,"/","06_",prefix,"_finecelltyping.500bp_dmrs.filt_collapsed.rds"))
+  saveRDS(collapsed_dmrs,file=paste0(output_directory,"/","06_",prefix,"_celltype.500bp_dmrs.filt_collapsed.rds"))
 
   #plot dmr counts per cluster
   pal <- colorRampPalette(colors = c("#F9AB60", "#E7576E", "#630661", "#B5DCA5"))
@@ -300,7 +334,7 @@ calculate_dmrs<-function(dat=dat,prefix=prefix,output_directory=output_directory
       facet_grid(vars(direction), scales = "free_y") + 
       scale_fill_manual(values = COLS) + 
       theme_classic()
-  ggsave(plt,file=paste0(output_directory,"/","06_",prefix,"_finecelltyping.500bp_dmrs.filt_collapsed.barplot.pdf"))
+  ggsave(plt,file=paste0(output_directory,"/","06_",prefix,"_celltype.500bp_dmrs.filt_collapsed.barplot.pdf"))
   return(collapsed_dmrs)
 
 }
@@ -445,6 +479,7 @@ dmr_outdir<-"/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/DMR
 dmr_celltype_outdir=paste(sep="/",dmr_outdir,"celltype")
 system(paste("mkdir -p", dmr_celltype_outdir))
 
+
 celltype500bpwindows <- calcSmoothedWindows(obj, 
                                         type = "CG", 
                                         threads = 100,
@@ -481,25 +516,13 @@ collapsed_dmrs <- collapseDMR(obj,
                         minLength = 2000, # Min length of collapsed DMR window to include in the output
                         reduce = T, # Reduce results to unique observations (recommended)
                         annotate = T) # Add column with overlapping gene names
-saveRDS(collapsed_dmrs,file=paste0(dmr_celltype_outdir,"/","celltype_allcells",".dmr_filt_collapse.rds"))
+
+
 
 rename_dmr_output<-setNames(nm=1:length(unique(collapsed_dmrs$test)),gsub(colnames(sum_mat)[grepl(colnames(sum_mat),pattern="_t$")],pattern="_t",replacement=""))
 collapsed_dmrs$type <- rename_dmr_output[collapsed_dmrs$test]
 saveRDS(collapsed_dmrs,file=paste0(dmr_celltype_outdir,"/","celltype_allcells",".dmr_filt_collapse.rds"))
 
-collapsed_dmrs<-readRDS(file=paste0(dmr_celltype_outdir,"/","celltype_allcells",".dmr_filt_collapse.rds"))
-
-#plot dmr counts per clone
-pal <- colorRampPalette(colors = c("#F9AB60", "#E7576E", "#630661", "#B5DCA5"))
-COLS <- pal(length(unique(collapsed_dmrs$type)))
-
-plt<-ggplot(collapsed_dmrs |> dplyr::group_by(type, direction) |> dplyr::summarise(n = n()), 
-    aes(y = type, x = n, fill = type)) + 
-    geom_col() + 
-    facet_grid(vars(direction), scales = "free_y") + 
-    scale_fill_manual(values = COLS) + 
-    theme_classic()
-ggsave(plt,file=paste0(dmr_celltype_outdir,"/","celltype_allcells",".dmr_counts.pdf"))
 
 #clear that plasma and epithelial is too few cell count
 # rename them when happy with umap projections
@@ -516,14 +539,13 @@ dmrs <- collapsed_dmrs %>%
   as.data.frame() %>%
   GenomicRanges::makeGRangesFromDataFrame() %>%   GenomicRanges::reduce()
 
-
 summary(width(dmrs))
 length(dmrs)
 dmr_bed<-data.frame(chr=seqnames(dmrs),start=start(dmrs),end=end(dmrs))
 
 
 #create new matrix from DMR sites for refined clustering
-window_name="integrated_celltype_dmr_sites"
+window_name="celltype_dmr_sites"
 
 
 obj@genomeMatrices[[window_name]] <- makeWindows(obj, 
@@ -538,111 +560,153 @@ obj@genomeMatrices[[window_name]] <- obj@genomeMatrices[[window_name]][rowSums(!
 est_dim<-dimEstimate(obj, genomeMatrices = c(window_name), dims = c(20), threshold = 0.95)
 print(est_dim)
 
-saveRDS(obj,file="08_scaledcis.final_celltyping.amethyst.rds")
+saveRDS(obj,file="06_scaledcis.celltype.amethyst.rds")
+
+#plotting all cells together, also overclustering a bit just to clean up cell types potentially
+#if a cluster is >90% one celltype others are assigned the same
+
+obj<-celltype_umap(obj=obj,
+              prefix="06_scaledcis.celltype",
+              dims=13, #13 for b cell separation
+              regressCov=FALSE,
+              k_pheno=10, #100 (for reassignment of celltype per cluster)
+              k_umap=20, #20
+              cluster_on_umap=FALSE, #on irlba looks better and tracks with cell types better
+              neigh=15, #50
+              dist=0.01,
+              method="cosine",
+              output_directory=wd,
+              window_name)
+
+saveRDS(obj,file="06_scaledcis.celltype.amethyst.rds")
 
 
+celltype_per_cluster<-table(obj@metadata$celltype,obj@metadata$cluster_id)
+celltype_per_cluster<-t(t(celltype_per_cluster)/colSums(celltype_per_cluster))
+col_fun = colorRamp2(c(0, 2), c("white", "red"))
+plt<-Heatmap(celltype_per_cluster,col=col_fun)
+pdf(paste0("06_scaledcis.celltype",".cluster.heatmap.pdf"))
+plt
+dev.off()
 
-celltype_umap<-function(obj=obj,prefix="allcells",dims=12,regressCov=TRUE,k_pheno=50,neigh=25,dist=1e-5,method="cosine"){
+celltype_per_cluster<-table(obj@metadata$celltype,obj@metadata$Group)
+celltype_per_cluster<-t(t(celltype_per_cluster)/colSums(celltype_per_cluster))
+col_fun = colorRamp2(c(0, 2), c("white", "red"))
+plt<-Heatmap(celltype_per_cluster,col=col_fun)
+pdf(paste0("06_scaledcis.celltype",".group.heatmap.pdf"))
+plt
+dev.off()
 
-  print("Running IRLBA reduction...")
-  obj@reductions[[paste(window_name,"irlba",sep="_")]] <- runIrlba(obj, genomeMatrices = c(window_name), dims = dims, replaceNA = c(0))
+#correct cluster assignment and run on celltype again?
+#the proportion of cells in other clusters is low, or it makes sense, so i'm trusting the fine celltyping output.
+collapsed_dmrs<-calculate_dmrs(dat=obj,groupBy="celltype",prefix="06_scaledcis.celltype",output_directory=wd)
 
+#a little bonus object cleanup
+#clean up unneeded tracks (they are in previous amethyst objects)
+obj@genomeMatrices[["cg_100k_score"]]<-NULL
+obj@genomeMatrices[["initial_cluster_5kb_win"]]<-NULL
+obj@genomeMatrices[["cg_5kbp_initial_clusters_tracks"]]<-NULL
+obj@genomeMatrices[["5kbp_initial_clusters_dmr_sites"]]<-NULL
+obj@genomeMatrices[["window_name"]]<-NULL
+saveRDS(obj,file="06_scaledcis.celltype.amethyst.rds")
 
-  if(regressCov){
-    print("Running regression...")
-  obj@reductions[[paste(window_name,"irlba_regressed",sep="_")]] <- regressCovBias(obj, reduction = paste(window_name,"irlba",sep="_")) 
-  } else {
-      print("Skipping regression...")
-  obj@reductions[[paste(window_name,"irlba_regressed",sep="_")]] <- obj@reductions[[paste(window_name,"irlba",sep="_")]]
-  }
+```
 
-  obj <- amethyst::runCluster(obj, k_phenograph = k_pheno, reduction = paste(window_name,"irlba_regressed",sep="_")) 
+Output bedgraph tracks with colors to match cell type marker plots. 
+Save as IGV session for sharing.
 
-  print(paste("Running UMAP...",as.character(neigh),as.character(dist),as.character(method)))
-  obj <- amethyst::runUmap(obj, neighbors = neigh, dist = dist, method = method, reduction = paste(window_name,"irlba_regressed",sep="_")) 
+```R
 
-  outname=paste(prefix,"integrated_celltype",dims,as.character(regressCov),k_pheno,neigh,as.character(dist),method,sep="_")
-  print(paste("Plotting...",outname))
+#output DMRs as bed file as well
+obj@genomeMatrices$cg_celltype_tracks
 
-  p1 <- dimFeature(obj, colorBy = integrated_celltype, reduction = "umap") + ggtitle(paste(window_name,"Cell Types"))
-  p2 <- dimFeature(obj, colorBy = sample, reduction = "umap") + ggtitle(paste(window_name,"Samples"))
-  p3 <- dimFeature(obj, colorBy = log10(cov), pointSize = 1) + scale_color_gradientn(colors = c("black", "turquoise", "gold", "red"),guide="colourbar") + ggtitle("Coverage distribution")
-  p4 <- dimFeature(obj, colorBy = mcg_pct, pointSize = 1) + scale_color_gradientn(colors = c("black", "turquoise", "gold", "red")) + ggtitle("Global %mCG distribution")
-  p5 <- dimFeature(obj, colorBy = cluster_id, reduction = "umap") + ggtitle(paste(window_name,"Clusters"))
-  p6 <- dimFeature(obj, colorBy = fine_celltype, reduction = "umap") + ggtitle(paste(window_name,"Old Cell Types"))
-  p7 <- dimFeature(obj, colorBy = Group, reduction = "umap") + ggtitle(paste(window_name," Group"))
-  p8<-ggplot()
-  ggsave((p1|p2)/(p3|p4)/(p5|p6)/(p7|p8),file=paste0(prefix,"_",outname,"_umap.pdf"),width=20,height=40)  
-  
-  #plot barplot of clusterid to integrated_celltype and to fine_celltype
-  plt_dat<-obj@metadata %>% select(cluster_id,fine_celltype,integrated_celltype,Group) 
-
-  plt1<-ggplot(plt_dat, aes(fill=fine_celltype, x=cluster_id)) + 
-      geom_bar(position="stack", stat="count")
-  plt2<-ggplot(plt_dat, aes(fill=integrated_celltype, x=cluster_id)) + 
-      geom_bar(position="stack", stat="count")
-  plt3<-ggplot(plt_dat, aes(fill=Group, x=cluster_id)) + 
-      geom_bar(position="stack", stat="count")
-
-  ggsave(plt1/plt2,file=paste0(prefix,"_cluster_celltype.pdf"),width=20,height=10) 
-  return(obj)
-  }
+#output as bed with RGB and value, convert bed to bigbed?
+#bigwig output of 500bp resolution tracks along the genome per celltype
 
 
+#split bw into 4 files per cell type by methylation/average methylation
+for(i in colnames(obj@genomeMatrices$cg_celltype_tracks)[4:ncol(obj@genomeMatrices$cg_celltype_tracks)]){
+    out_dat<-obj@genomeMatrices$cg_celltype_tracks %>% select(chr,start,end,i) 
+
+    hg38_seq_info<-Seqinfo(genome="hg38")
+    out_dat<-GRanges(out_dat[complete.cases(out_dat),]) #filter NA
+    out_dat<-out_dat[out_dat@seqnames %in% hg38_seq_info@seqnames,] #filter chr
+    out_dat<-resize(out_dat,width=500)
+    names(out_dat@elementMetadata)<-"score"
+    mean_score<-mean(mcols(out_dat)$score)
+
+    #bin to 100-mean, mean-50, 50-20, 20-0  
+    #color black, grey, lightgrey, celltypecol
+    #333333, #444444, #bcbcbc, celltypecol
+    #subtract score-meanscorevalue
+
+    out_dat_hypermet <- out_dat %>% 
+                        as.data.frame() %>% 
+                        filter(mcols(out_dat)$score > mean_score) %>% 
+                        mutate(score=score-mean_score) %>% 
+                        GRanges()
+    names(out_dat_hypermet@elementMetadata)<-"score"
+    genome(out_dat_hypermet)<-"hg38"
+    seqlengths(out_dat_hypermet)<-as.data.frame(hg38_seq_info)[hg38_seq_info@seqnames %in% out_dat_hypermet@seqnames,]$seqlengths #filter by seqlengths
+
+    out_dat_met_mid <- out_dat %>% 
+                      as.data.frame() %>% 
+                      filter(mcols(out_dat)$score <= mean_score & mcols(out_dat)$score > 50) %>% 
+                      mutate(score=score-mean_score) %>% 
+                      GRanges()
+    names(out_dat_met_mid@elementMetadata)<-"score"
+    genome(out_dat_met_mid)<-"hg38"
+    seqlengths(out_dat_met_mid)<-as.data.frame(hg38_seq_info)[hg38_seq_info@seqnames %in% out_dat_met_mid@seqnames,]$seqlengths #filter by seqlengths
+
+    out_dat_met_low <- out_dat %>% 
+                        as.data.frame() %>% 
+                        filter(mcols(out_dat)$score <= 50 & mcols(out_dat)$score > 20) %>% 
+                        mutate(score=score-mean_score) %>% 
+                        GRanges()
+    names(out_dat_met_low@elementMetadata)<-"score"
+    genome(out_dat_met_low)<-"hg38"
+    seqlengths(out_dat_met_low)<-as.data.frame(hg38_seq_info)[hg38_seq_info@seqnames %in% out_dat_met_low@seqnames,]$seqlengths #filter by seqlengths
+
+    out_dat_met_hypomet <- out_dat %>% 
+                            as.data.frame() %>% filter(mcols(out_dat)$score <= 20) %>%
+                            mutate(score=score-mean_score) %>% 
+                            GRanges()
+    names(out_dat_met_hypomet@elementMetadata)<-"score"
+    genome(out_dat_met_hypomet)<-"hg38"
+    seqlengths(out_dat_met_hypomet)<-as.data.frame(hg38_seq_info)[hg38_seq_info@seqnames %in% out_dat_met_hypomet@seqnames,]$seqlengths #filter by seqlengths
+
+    print(paste("Saving bedgraphs for...",i))
+    rtracklayer::export(out_dat_hypermet,con=paste(i,"hypermet","bw",sep="."))
+    rtracklayer::export(out_dat_met_mid,con=paste(i,"midmet","bw",sep="."))
+    rtracklayer::export(out_dat_met_low,con=paste(i,"lowmet","bw",sep="."))
+    rtracklayer::export(out_dat_met_hypomet,con=paste(i,"hypomet","bw",sep="."))
+    print(paste(i,celltype_col[i]))
+    }
+```
 
 
-#run on all cells
-obj_allcells<-obj
-#obj<-obj_allcells
-obj<-celltype_umap(dims=13,regressCov=FALSE,k_pheno=15,neigh=8,dist=0.001,method="cosine") #13 dims, no regress cov, k pheno to overcluster, modify neighbors to clean?
-#neigh 5 looks good
-#14 dims starts splitting out cancer clones
-
-celltype_dat<-obj@metadata %>% select(cluster_id,fine_celltype,integrated_celltype,Group) 
-celltype_dat<-table(celltype_dat$cluster_id,celltype_dat$integrated_celltype)
-celltype_dat<-round(celltype_dat/rowSums(celltype_dat),2)
-
-Group_dat<-obj@metadata %>% select(cluster_id,fine_celltype,integrated_celltype,Group) 
-Group_dat<-table(Group_dat$cluster_id,Group_dat$Group)
-Group_dat<-round(Group_dat/rowSums(Group_dat),2)
-
-fine_celltype_dat<-obj@metadata %>% select(cluster_id,fine_celltype,integrated_celltype,Group) 
-fine_celltype_dat<-table(fine_celltype_dat$cluster_id,fine_celltype_dat$fine_celltype)
-fine_celltype_dat<-round(fine_celltype_dat/rowSums(fine_celltype_dat),2)
-
-sample_dat<-obj@metadata %>% select(cluster_id,Sample) 
-sample_dat<-table(sample_dat$cluster_id,sample_dat$Sample)
-sample_dat<-round(sample_dat/rowSums(sample_dat),2)
-
-plt_dat<-cbind(celltype_dat,Group_dat,fine_celltype_dat,sample_dat)
-write.table(plt_dat,file=paste0(prefix,"_cluster_celltype.csv"),row.names=T,col.names=T,sep=",")
-
-#based on these data, we can define epithelial cells well:
-#going to subcluster nonepithelial cells for final celltypes
-obj@metadata$epithelial<-"nonepithelial"
-obj@metadata[obj@metadata$cluster_id %in% c("12","13"),]$epithelial<-"basal"
-obj@metadata[obj@metadata$cluster_id %in% c("15","18","16"),]$epithelial<-"lumsec"
-obj@metadata[obj@metadata$cluster_id %in% c("2"),]$epithelial<-"lumhr"
-obj@metadata[obj@metadata$cluster_id %in% c("10","7","21","8","6","9","22","23","24"),]$epithelial<-"cancer"
-
-#anything with label "cancer" is from cnv calling, so labelling that as well
-obj@metadata[obj@metadata$cnv_ploidy_500kb=="aneuploid",]$epithelial<-"cancer"
-
-#from this plot it is clear that epithelial markers are dominating signal
-#splitting to cancer and non cancer (or better yet, epithelial and non epithelial)
-
-#non epithelial cells, filter DMRS to non-epithelial cells
-obj_nonepi<-subsetObject(obj,cells=row.names(obj@metadata[obj@metadata$epithelial=="nonepithelial",]))
-est_dim<-dimEstimate(obj_nonepi, genomeMatrices = c(window_name), dims = c(20), threshold = 0.95)
-est_dim
-obj_nonepi<-celltype_umap(obj=obj_nonepi,prefix="nonepi",dims=13,regressCov=FALSE,k_pheno=15,neigh=8,dist=1E-5,method="cosine") 
+```R
+obj<-readRDS(file="06_scaledcis.celltype.amethyst.rds")
+#run 3d plotting just for fun
+dim3d<-uwot::umap(
+  X=obj@reductions[["celltype_dmr_sites_irlba_regressed"]],
+  n_neighbors = 15,
+  n_components = 3,
+  metric = "cosine",
+  seed = 123,
+  n_threads=50,
+)
 
 
-# epithelial cells
-obj_epi<-subsetObject(obj,cells=row.names(obj@metadata[obj@metadata$epithelial!="nonepithelial",]))
-est_dim<-dimEstimate(obj_epi, genomeMatrices = c(window_name), dims = c(20), threshold = 0.95)
-est_dim
-obj_epi<-celltype_umap(obj=obj_epi,prefix="epi",dims=10,regressCov=FALSE,k_pheno=15,neigh=8,dist=1E-5,method="cosine") 
+dim3d<-as.data.frame(dim3d)
+colnames(dim3d)<-c("X","Y","Z")
+dim3d$cellname<-row.names(dim3d)
+dim3d$celltype<-as.data.frame(obj@metadata[row.names(dim3d),])$celltype
+dim3d$hex_color<-paste0(celltype_col[dim3d$celltype]
+dim3d$r_col<-unlist(col2rgb(dim3d$hex_color)["red",])
+dim3d$g_col<-unlist(col2rgb(dim3d$hex_color)["green",])
+dim3d$b_col<-unlist(col2rgb(dim3d$hex_color)["blue",])
 
-#summarize in final object and plot markers
+write.table(dim3d,col.names=T,file="06_scaledcis.celltype.3dumap.csv",sep=",",row.names=F)
 
+```

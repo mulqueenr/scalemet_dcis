@@ -15,7 +15,7 @@ project_data_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_miles
 merged_dat_folder="merged_data"
 wd=paste(sep="/",project_data_directory,merged_dat_folder)
 setwd(wd)
-obj<-readRDS(file="06_scaledcis.celltype.amethyst.rds")
+obj<-readRDS(file="07_scaledcis.cnv_clones.amethyst.rds")
 
 
 #make output directory
@@ -33,7 +33,6 @@ methyltree_output<-function(obj=obj,
         system(paste0("mkdir -p ",output_directory))
 
         obj_met<-subsetObject(obj, cells = row.names(obj@metadata[obj@metadata$Sample %in% sample_name,]))
-        #obj_met<-subsetObject(obj_met, cells = row.names(obj@metadata[obj@metadata$fine_celltype %in% c("cancer","lumhr","basal","lumsec"),]))
 
         obj_met@metadata$methyltree_group<-"all"
         obj_met@metadata$pass<-"TRUE"
@@ -124,15 +123,13 @@ methyltree_output(obj=obj,sample_name=c('BCMDCIS124T'),threads=1)
 methyltree_output(obj=obj,sample_name=c('BCMDCIS22T'),threads=1)
 methyltree_output(obj=obj,sample_name=c('BCMDCIS28T'),threads=1)
 methyltree_output(obj=obj,sample_name=c('BCMDCIS32T'),threads=1)
-methyltree_output(obj=obj,sample_name=c('BCMDCIS35T'),threads=1)
 methyltree_output(obj=obj,sample_name=c('BCMDCIS41T'),threads=1)
 methyltree_output(obj=obj,sample_name=c('BCMDCIS49T'),threads=1)
 methyltree_output(obj=obj,sample_name=c('BCMDCIS52T'),threads=1)
 methyltree_output(obj=obj,sample_name=c('BCMDCIS65T'),threads=1)
-methyltree_output(obj=obj,sample_name=c('BCMDCIS66T'),threads=1)
 methyltree_output(obj=obj,sample_name=c('BCMDCIS70T'),threads=1)
 methyltree_output(obj=obj,sample_name=c('BCMDCIS74T'),threads=1)
-methyltree_output(obj=obj,sample_name=c('BCMDCIS79T_24hTis_DCIS'),threads=1)
+methyltree_output(obj=obj,sample_name=c('BCMDCIS79T_24hTis_DCIS','BCMDCIS79T_24hTis_IDC'),threads=1) 
 methyltree_output(obj=obj,sample_name=c('BCMDCIS80T_24hTis'),threads=1)
 methyltree_output(obj=obj,sample_name=c('BCMDCIS82T_24hTis'),threads=1)
 methyltree_output(obj=obj,sample_name=c('BCMDCIS92T_24hTis'),threads=1)
@@ -146,11 +143,18 @@ methyltree_output(obj=obj,sample_name=c('BCMHBCA12R-3h'),threads=1)
 methyltree_output(obj=obj,sample_name=c('BCMHBCA16R-3h'),threads=1)
 methyltree_output(obj=obj,sample_name=c('BCMHBCA17R-3h'),threads=1)
 methyltree_output(obj=obj,sample_name=c('BCMHBCA19R-4h'),threads=1)
-methyltree_output(obj=obj,sample_name=c('BCMHBCA22R-4h'),threads=1)
-methyltree_output(obj=obj,sample_name=c('BCMHBCA26L-24hTis-4h'),threads=1)
+methyltree_output(obj=obj,sample_name=c('BCMHBCA22R-4h'),threads=1)#done
+
+
+methyltree_output(obj=obj,sample_name=c('BCMDCIS35T'),threads=1)  #to rerun (crashed on it)
+methyltree_output(obj=obj,sample_name=c('BCMDCIS66T'),threads=1) #to rerun
+methyltree_output(obj=obj,sample_name=c('BCMHBCA26L-24hTis-4h'),threads=1) #to rerun
+
+
+#todo
 methyltree_output(obj=obj,sample_name=c('BCMHBCA29L-2h'),threads=1)
 methyltree_output(obj=obj,sample_name=c('BCMHBCA38L-3h'),threads=1)
-methyltree_output(obj=obj,sample_name=c('BCMHBCA83L-3h'),threads=1) #rerun
+methyltree_output(obj=obj,sample_name=c('BCMHBCA83L-3h'),threads=1) 
 methyltree_output(obj=obj,sample_name=c('BCMHBCA85L-3h'),threads=1)
 methyltree_output(obj=obj,sample_name=c('ECIS25T'),threads=1)
 methyltree_output(obj=obj,sample_name=c('ECIS26T'),threads=1)

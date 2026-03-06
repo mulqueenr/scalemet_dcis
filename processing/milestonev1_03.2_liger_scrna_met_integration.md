@@ -54,36 +54,97 @@ setwd(wd)
 obj<-readRDS(file="06_scaledcis.celltype.amethyst.rds")
 
 
-#summarize windows over promoters (+2kb)
+#summarize windows over promoters (+2kb) (including alternative promoters per gene)
 #filter to exclude CG Island overlap
+#filter by variance
+#summarize over gene (mean) if multiple promoters pass variance filter
 #filter to RNA markers as well
 #run liger
 
 # Create from raw score matrices RNA (counts)
 rna<-readRDS("/data/rmulqueen/projects/scalebio_dcis/rna/tenx_dcis.pf.rds")
 Idents(rna)<-rna$fine_celltype
-rna_dat<-JoinLayers(rna[["RNA"]])
-rna_dat <- NormalizeData(rna_dat, normalization.method = "LogNormalize", scale.factor = 10000)
-rna_dat <- ScaleData(rna_dat, features = row.names(met_dat))
+rna_dat<-JoinLayers(rna)
 rna_markers<-FindAllMarkers(rna_dat,assay="RNA",only.pos=TRUE)
+saveRDS(rna_markers,file=paste0(project_data_directory,"/integration/","rna_markers.rds"))
+rna_markers<-readRDS(file=paste0(project_data_directory,"/integration/","rna_markers.rds"))
+
+#filter to overexpressed markers
 rna_markers_filt<-rna_markers %>% group_by(cluster) %>% filter(avg_log2FC > 3) %>% filter(p_val_adj <0.01) %>% as.data.frame()
 rna_markers_filt<-rna_markers_filt[!duplicated(rna_markers_filt$gene),]
-saveRDS(rna_dat,file=paste0(project_data_directory,"/integration/","rna_markers_filt.rds"))
+saveRDS(rna_markers,file=paste0(project_data_directory,"/integration/","rna_markers.filt.rds"))
 
-#filter met_dat to only genes in rna markers
-met_dat<-met_dat[row.names(met_dat) %in% unique(rna_markers_filt$gene),]
+rna_markers_filt<-readRDS(file=paste0(project_data_directory,"/integration/","rna_markers.filt.rds"))
+rna_markers_filt<-rna_markers_filt[!duplicated(rna_markers_filt$gene),]
+
+
+#reset ref on obj to transcription start sites as gene_id, this is to use the makewindows promoter option without so much fuss
+#so filter by gene names, transfer gene names to new metadata column, set transcript (gene or full length) as genes
+#remove duplicate transcripts
+#makewindows around promoters, and then summarize windows
+
+obj@ref<-obj@ref[obj@ref$gene_name %in% c(rna_markers_filt$gene),] #filter by gene names
+obj@ref<-obj@ref[obj@ref$transcript_type %in% c("protein_coding","transcript","lncRNA"),] #filter by transcript type
+obj@ref<-obj@ref[!duplicated(paste(obj@ref$chr,obj@ref$start)),]
+obj@ref<-obj@ref[!duplicated(obj@ref$transcript_id),]
+
+obj@ref$gene_name_original<-obj@ref$gene_name
+obj@ref$gene_name<-obj@ref$transcript_id
+obj@ref$type<-"gene"
+obj@ref$gene<-obj@ref$gene_name
+
+#READ IN CALCSMOOTHWINDOW OF CLUSTER ID
+#INTEGRATE WITH RNA FOR LABEL TRANSFER SAKE
+
+
+
+
+
+window_name="TSS_RNA"
+obj@genomeMatrices[[window_name]] <- makeWindows(obj, 
+                                                     genes = obj@ref$gene_name,
+                                                     promoter=TRUE,
+                                                     type = "CG", 
+                                                     metric = "percent", 
+                                                     threads = 50, 
+                                                     index = "chr_cg", 
+                                                     nmin = 2) 
+
+saveRDS(obj@genomeMatrices[[window_name]],file=paste0(project_data_directory,"/integration/","met_markers.TSS.rds"))
+#modify make windwos to exclude the "type == "gene" filter
+
+#ADD CGI FILTER?
+#filter regions that overlap with CGI (univerally hypomethylated)
+#cgi<-read.table("/data/rmulqueen/projects/scalebio_dcis/ref/cpgIslandExt.bed")
+#cgi<-GRanges(cgi)
+#gtf<-subsetByOverlap(gtf,cgi,invert=TRUE)
+
+
+met_win<-data.table(obj@genomeMatrices[[window_name]])
+met_win$gene<-obj@ref[obj@ref$gene %in% row.names(obj@genomeMatrices[[window_name]]),]$gene_name_original
+
+met_win<-met_win %>% 
+  group_by(gene) %>% 
+  summarize(across(everything(), \(x) mean(x, na.rm = TRUE))) %>% 
+  as.data.frame()
+
+row.names(met_win)<-met_win$gene
+met_win<-met_win[,2:ncol(met_win)]
+saveRDS(met_win,file=paste0(project_data_directory,"/integration/","met_markers.TSS_to_gene.rds"))
+
+length(which(rowSums(is.na(met_win))>(0.01*ncol(met_win))))
+#filter by coverage #impute missing values
 
 #get raw RNA values on filtered methylation genes
-rna_dat<-LayerData(rna_dat,features=row.names(met_dat),assay="RNA",layer="counts")
+rna_dat<-LayerData(rna_dat,features=row.names(met_win),assay="RNA",layer="counts")
 saveRDS(rna_dat,file=paste0(project_data_directory,"/integration/","scaledcis.gene_rna.mat.rds"))
 
 rna$broad_celltype<-rna$fine_celltype
 rna$coarse_cluster_id <- "NA"
 rna$mcg_pct <- "NA"
 
-
 #create shared metadata, add coarse_cluster_id to meta
-meta<-rbind(obj@metadata[c("sample","broad_celltype","coarse_cluster_id","mcg_pct")],rna@meta.data[c("sample","broad_celltype","coarse_cluster_id","mcg_pct")])
+meta<-rbind(obj@metadata[c("sample","celltype","coarse_cluster_id","mcg_pct")],rna@meta.data[c("sample","broad_celltype","coarse_cluster_id","mcg_pct")])
 
 #make liger object
 met.liger <- createLiger(rawData=list(met=met_dat,rna=rna_dat), 
@@ -93,7 +154,7 @@ met.liger <- createLiger(rawData=list(met=met_dat,rna=rna_dat),
 #now follow liger for integration
 rna.met <- met.liger %>% 
             rliger::normalize() %>%
-            rliger::selectGenes(useDatasets = "met") %>%
+            rliger::selectGenes(useDatasets = "rna") %>%
             rliger::scaleNotCenter()
 
 rna.met <- rliger::runIntegration(rna.met, k = 20)

@@ -1,0 +1,14 @@
+PGR lumhr
+AR  lumhr
+SMAD3 lumhr_upreg
+SBDS    lumhr_upreg
+DICER1  lumhr_upreg
+CHD2    lumhr_upreg
+KLF6    lumhr_upreg
+CDH1    lumhr_upreg
+ERBB2   synch_upreg
+LASP1   synch_upreg
+GATA3   idc_upreg
+CD74    idc_upreg
+KLF4    idc_upreg
+ESR1    idc_upreg

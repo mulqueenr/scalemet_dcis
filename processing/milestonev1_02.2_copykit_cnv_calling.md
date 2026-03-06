@@ -771,7 +771,8 @@ obj@metadata[row.names(cnv_meta_500kb),]$cnv_clones_split_500kb<-cnv_meta_500kb$
 #final cnv clones based on 500kb calling
 obj@metadata$cnv_clonename<-obj@metadata$cnv_clonename_500kb
 obj@metadata[which(obj@metadata$cnv_ploidy_500kb=="aneuploid"),]$broad_celltype<-"cancer"
-saveRDS(obj,file="06_scaledcis.celltype.amethyst.rds")
+saveRDS(obj,file="07_scaledcis.cnv_clones.amethyst.rds")
+
 
 ```
 
@@ -785,6 +786,12 @@ library(circlize)
 library(RColorBrewer)
 library(dplyr)
 library(amethyst)
+library(GenomicRanges)
+library(amethyst)
+library(rtracklayer)
+library(data.table)
+library(parallel)
+
 #set environment and read in data
 set.seed(111)
 options(future.globals.maxSize= 80000*1024^2) #80gb limit for parallelizing
@@ -794,7 +801,7 @@ project_data_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_miles
 merged_dat_folder="merged_data"
 wd=paste(sep="/",project_data_directory,merged_dat_folder)
 setwd(wd)
-obj<-readRDS(file="06_scaledcis.celltype.amethyst.rds")
+obj<-readRDS(file="07_scaledcis.cnv_clones.amethyst.rds")
 
 output_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/copykit/"
 
@@ -938,6 +945,122 @@ cluster_all_samples_cnv(obj=obj,resolution="500kb",ploidy_filt=c("aneuploid","di
 #500kb aneuploid cells
 cluster_all_samples_cnv(obj=obj,resolution="500kb",ploidy_filt=c("aneuploid"),prefix="all_samples_aneuploid")
 
+
+
+#And output bedgraph per clone with CNV calling
+resolution="500kb"
+copykit_output<-list.files(path=paste0(project_data_directory,"/copykit"),recursive=TRUE,full.names=TRUE,pattern=paste0("*",resolution,".rds"))
+copykit_output<-copykit_output[!grepl(copykit_output,pattern="diploid")]
+
+bigwig_out<-paste0(project_data_directory,"/copykit/bigwig")
+system(paste0("mkdir -p ",bigwig_out))
+cna_obj<-readRDS(copykit_output[1]) #just to grab row ranges
+
+cnv_logr<-do.call("cbind",lapply(copykit_output,read_logr_copykit))
+saveRDS(cnv_logr,file=paste0(output_directory,"/","07_scaledcis.cnv_windows_logr.matrix.rds"))
+
+cnv_meta<-do.call("rbind",lapply(copykit_output,read_meta_copykit))
+#group by clones
+
+cnv_logr<-as.data.frame(t(cnv_logr))
+cnv_logr$clonename<-cnv_meta$clonename
+clone_cnv_logr <- as.data.frame(cnv_logr %>% group_by(clonename) %>% summarise(across(where(is.numeric), \(x) mean(x,na.rm = TRUE))))
+
+clone_cnv_logr<-as.data.frame(t(clone_cnv_logr))
+colnames(clone_cnv_logr)<-clone_cnv_logr[1,]
+clone_cnv_logr<-clone_cnv_logr[2:nrow(clone_cnv_logr),]
+clone_cnv_logr$chr<-as.character(seqnames(cna_obj@rowRanges))
+clone_cnv_logr$start<-start(cna_obj@rowRanges)
+clone_cnv_logr$end<-end(cna_obj@rowRanges)
+clone_cnv_logr<-GRanges(clone_cnv_logr)
+output_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/copykit/"
+saveRDS(clone_cnv_logr,file=paste0(output_directory,"/","07_scaledcis.cnv_windows_logr_clone.matrix.rds"))
+saveRDS(cnv_meta,file=paste0(output_directory,"/","07_scaledcis.cnv_windows_meta.matrix.rds"))
+
+#summarize methylation over the same ranges per clone
+
+#make windows over copykit ranges
+#get 500kb windows ranges
+copykit_output<-list.files(path=paste0(project_data_directory,"/copykit"),recursive=TRUE,full.names=TRUE,pattern="*.500kb.rds")
+copykit<-readRDS(copykit_output[1])
+windows<-copykit@rowRanges
+
+clone500bpwindows <- readRDS(file=paste0(project_data_directory,"/DMR_analysis/","cnv_clones_alllumhr/","dmr_analysis.cnv_clones_alllumhr.500bp_windows.rds"))
+cnv_met <- GRanges(clone500bpwindows[["pct_matrix"]])
+
+overlaps<-findOverlaps(cnv_met,windows)
+cnv_met<-cnv_met[overlaps@from,]
+
+met_sum<-mclapply(1:ncol(mcols(cnv_met)),function(x){
+    out <- data.frame(met=mcols(cnv_met)[,x],win=overlaps@to) %>% 
+    data.table() %>% 
+    group_by(win) %>% 
+    summarize(across(everything(), \(x) mean(x, na.rm = TRUE))) %>%
+    select(met) %>% as.data.frame()
+    colnames(out) <- colnames(mcols(cnv_met))[x]
+    return(out)
+},mc.cores=50)
+
+met_cnv<-do.call("cbind",met_sum)
+
+output_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/copykit/"
+saveRDS(met_cnv,file=paste0(output_directory,"/","07_scaledcis.cnv_windows_methylation.matrix.rds"))
+
+cnv_logr<-readRDS(file=paste0(output_directory,"/","07_scaledcis.cnv_windows_logr.matrix.rds")) %>% as.data.frame()
+dim(cnv_logr)
+
+met_cnv<-readRDS(file=paste0(output_directory,"/","07_scaledcis.cnv_windows_methylation.matrix.rds"))
+dim(met_cnv)
+
+#merge cnv and met into long format
+met_cnv<-lapply(colnames(met_cnv),function(x){
+    if(x %in% colnames(cnv_logr)){
+    out<-data.frame(chr=cnv_logr$seqnames,start=cnv_logr$start,end=cnv_logr$end,
+                met=met_cnv[x],cnv=cnv_logr[x],
+                clone=rep(x,nrow(met_cnv)),
+                window=1:nrow(cnv_logr))
+    colnames(out)<-c("chr","start","end","met","cnv","clone","window")
+    return(out)}
+})
+met_cnv<-do.call("rbind",met_cnv)
+met_cnv<-met_cnv[complete.cases(met_cnv),]
+met_cnv$cnv<-as.numeric(met_cnv$cnv)
+met_cnv$met<-as.numeric(met_cnv$met)
+saveRDS(met_cnv,file=paste0(output_directory,"/","07_scaledcis.cnv_windows_methylation.correlation.rds"))
+
+#preview plot with diploid clones.
+#processing further with PCA 
+
+#remove diploid clones
+met_cnv<-met_cnv[!endsWith(met_cnv$clone,suffix="_diploid"),]
+library(ggplot2)
+
+window_cor<-met_cnv %>% group_by(chr,start,end) %>% summarize(corr=cor(met,cnv))
+window_cor$order<-factor(1:nrow(window_cor))
+plt<-ggplot(window_cor,aes(x=order,y=corr))+geom_point()+theme_minimal()+facet_wrap(~chr,scales = "free_x",nrow=1)
+ggsave(plt,file=paste0(output_directory,"/","cnv_methylation.correlation.pdf"))
+
+
+####set up methylation per clone as well
+
+#plot clones as bigwig (one color)
+for(i in colnames(clone_cnv_logr)[!(colnames(clone_cnv_logr) %in% c("chr","start","end"))]){
+    hg38_seq_info<-Seqinfo(genome="hg38")
+
+    out_dat<-clone_cnv_logr %>% select(chr,start,end,i) 
+    out_dat<-GRanges(out_dat[complete.cases(out_dat),]) #filter NA
+    out_dat<-out_dat[out_dat@seqnames %in% hg38_seq_info@seqnames,] #filter chr
+    end(out_dat)<-end(out_dat)-1
+    names(out_dat@elementMetadata)<-"score"
+    out_dat$score<-as.numeric(out_dat$score)
+    genome(out_dat)<-"hg38"
+    seqlengths(out_dat)<-as.data.frame(hg38_seq_info)[hg38_seq_info@seqnames %in% out_dat@seqnames,]$seqlengths #add seqlengths
+
+    print(paste("Saving bw for...",i))
+    rtracklayer::export(out_dat,con=paste0(bigwig_out,"/",paste(i,"cnv","bw",sep=".")))
+    }
+
+
 ```
 
 Plot an alluvial plot of clones per sample at two resolutions (220kb and 500kb)
@@ -947,7 +1070,7 @@ library(amethyst)
 library(ggalluvial)
 library(ggplot2)
 
-obj<-readRDS(file="06_scaledcis.cnv_clones.amethyst.rds")
+obj<-readRDS(file="07_scaledcis.cnv_clones.amethyst.rds")
 meta<-obj@metadata
 
 
@@ -973,4 +1096,103 @@ clone_res_alluvial<-function(metadata=meta,sample_name="BCMDCIS66T"){
 lapply(unique(meta$Sample),function(x) clone_res_alluvial(sample_name=x))
 clone_res_alluvial(sample_name=c("BCMDCIS79T_24hTis_DCIS","BCMDCIS79T_24hTis_IDC"))
 
+```
+
+
+
+# Segment data
+
+```R
+library(Rsamtools)
+library(GenomicRanges)
+library(copykit)
+library(circlize)
+library(dendextend)
+library(RColorBrewer)
+library(ComplexHeatmap)
+library(parallel)
+library(BiocParallel)
+library(amethyst)
+set.seed(111)
+
+
+#set environment and read in data
+options(future.globals.maxSize= 80000*1024^2) #80gb limit for parallelizing
+task_cpus=100
+register(MulticoreParam(progressbar = T, workers = 100), default = T)
+project_data_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1"
+merged_dat_folder="merged_data"
+wd=paste(sep="/",project_data_directory,merged_dat_folder)
+setwd(wd)
+obj<-readRDS(file="07_scaledcis.cnv_clones.amethyst.rds")
+
+
+
+#using my own granges list with the coverage and cyto information added
+#setting it and updating it here because both bin counting and running segmentation use it 
+hg38_grangeslist[["hg38_200kb"]]<-readRDS(file=paste0("/data/rmulqueen/projects/scalebio_dcis/ref/copykit.met_windows.220kb.diploidcorrected.ref.rds")) #11268
+hg38_grangeslist[["hg38_250kb"]]<-readRDS(file=paste0("/data/rmulqueen/projects/scalebio_dcis/ref/copykit.met_windows.280kb.diploidcorrected.ref.rds")) #8747
+hg38_grangeslist[["hg38_500kb"]]<-readRDS(file=paste0("/data/rmulqueen/projects/scalebio_dcis/ref/copykit.met_windows.500kb.diploidcorrected.ref.rds")) #4107
+
+#filtering genomic bins by coverage, takes about 10% of bins
+hg38_grangeslist[["hg38_200kb"]]<-hg38_grangeslist[["hg38_200kb"]][
+    which(
+        hg38_grangeslist[["hg38_200kb"]]$diploid_cov < mean(hg38_grangeslist[["hg38_200kb"]]$diploid_cov)+(1.5*sd(hg38_grangeslist[["hg38_200kb"]]$diploid_cov)) &
+        hg38_grangeslist[["hg38_200kb"]]$diploid_cov > mean(hg38_grangeslist[["hg38_200kb"]]$diploid_cov)-(1.5*sd(hg38_grangeslist[["hg38_200kb"]]$diploid_cov))),]
+#9691
+
+hg38_grangeslist[["hg38_250kb"]]<-hg38_grangeslist[["hg38_250kb"]][
+    which(
+        hg38_grangeslist[["hg38_250kb"]]$diploid_cov < mean(hg38_grangeslist[["hg38_250kb"]]$diploid_cov)+(1.5*sd(hg38_grangeslist[["hg38_250kb"]]$diploid_cov)) &
+        hg38_grangeslist[["hg38_250kb"]]$diploid_cov > mean(hg38_grangeslist[["hg38_250kb"]]$diploid_cov)-(1.5*sd(hg38_grangeslist[["hg38_250kb"]]$diploid_cov))),]
+#7548
+
+hg38_grangeslist[["hg38_500kb"]]<-hg38_grangeslist[["hg38_500kb"]][
+    which(
+        hg38_grangeslist[["hg38_500kb"]]$diploid_cov < mean(hg38_grangeslist[["hg38_500kb"]]$diploid_cov)+(1.5*sd(hg38_grangeslist[["hg38_500kb"]]$diploid_cov)) &
+        hg38_grangeslist[["hg38_500kb"]]$diploid_cov > mean(hg38_grangeslist[["hg38_500kb"]]$diploid_cov)-(1.5*sd(hg38_grangeslist[["hg38_500kb"]]$diploid_cov))),]
+#3559
+
+copykit_output_500kb<-list.files(path=paste0(project_data_directory,"/copykit/"),recursive=TRUE,full.names=TRUE,pattern=".500kb.rds")
+
+#remove diploid cell call rds used for bin correction
+copykit_output_500kb<-copykit_output_500kb[!grepl(copykit_output_500kb,pattern="diploid")]
+
+x<-copykit_output_500kb[9]
+x<-readRDS(x)
+x<-runSegmentation(x,
+                    method = "multipcf",
+                    seed = 17,
+                    alpha = 0.001,
+                    merge_levels_alpha = 0.01,
+                    gamma = 40,
+                    undo.splits = "prune",
+                    name = "segment_ratios")
+
+x<- calcInteger(x, method = 'fixed', assay = 'segment_ratios',ploidy=2.3)
+
+pdf("test.integer.pdf")
+plotHeatmap(x, 
+            assay = 'smoothed_bincounts',
+            order_cells = "hclust",
+            row_split='clonename',
+            n_threads = 50)
+plotHeatmap(x, 
+            assay = 'segment_ratios',
+            order_cells = "hclust",
+            row_split='clonename',
+            n_threads = 50)
+plotHeatmap(x, 
+            assay = 'integer',
+            order_cells = "hclust",
+            row_split='clonename',
+            n_threads = 50)
+plotHeatmap(x, 
+            assay = 'integer',
+            order_cells = "hclust",
+            row_split='clonename',
+            rounding_error=TRUE,
+            n_threads = 50)
+dev.off()
+#try multipcf and cbs
 ```

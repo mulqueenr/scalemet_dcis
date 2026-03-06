@@ -6,15 +6,16 @@ Not quite sure what to do here. Running PCA on CNV events to group common events
 # Generate CopyKit for each sample
 
 ```R
-source("/data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/amethyst_custom_functions.R") #to load in
 library(Rsamtools)
 library(copykit)
 library(circlize)
-detach("package:GeneNMF",unload=TRUE)
 library(dendextend)
 library(RColorBrewer)
 library(ComplexHeatmap)
-
+library(ggplot2)
+library(seriation)
+library(dplyr)
+library(umap)
 
 #set environment and read in data
 set.seed(111)
@@ -24,7 +25,7 @@ project_data_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_miles
 merged_dat_folder="merged_data"
 wd=paste(sep="/",project_data_directory,merged_dat_folder)
 setwd(wd)
-obj<-readRDS(file="06_scaledcis.cnv_clones.amethyst.rds")
+obj<-readRDS(file="07_scaledcis.cnv_clones.amethyst.rds")
 
 #read in cyto info
 cyto=read.table(file="/data/rmulqueen/projects/scalebio_dcis/ref/cytoBand.txt",sep="\t")
@@ -34,27 +35,19 @@ cyto<-cyto[!is.na(cyto$band),]
 cyto<-cyto[cyto$chr %in% c(paste0("chr",1:22),"chrX"),]
 table(cyto$stain) #set colors for these
 
-copykit_output<-list.files(path=paste0(project_data_directory,"/copykit"),recursive=TRUE,full.names=TRUE,pattern="*rds")
+copykit_output<-list.files(path=paste0(project_data_directory,"/copykit"),recursive=TRUE,full.names=TRUE,pattern="*.500kb.rds")
 copykit_output<-copykit_output[!grepl(copykit_output,pattern="diploid")]
 cna_obj<-readRDS(copykit_output[1]) #just to grab row ranges
 output_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/copykit/"
-#read in all meta data from copykit
-read_meta_copykit<-function(x){
-    tmp<-readRDS(x)
-    meta<-as.data.frame(tmp@colData[c("sample_name","reads_assigned_bins","plate_info","subclones","fine_celltype","clonename","ploidy")])
-    return(meta)
-}
-cnv_meta<-do.call("rbind",lapply(copykit_output,read_meta_copykit))
 
-#read in all logr from copykit
-read_logr_copykit<-function(x){
-    tmp<-readRDS(x)
-    logr<-tmp@assays@data$logr
-    return(logr)
-}
-cnv_logr<-do.call("cbind",lapply(copykit_output,read_logr_copykit))
+#read in methylation per logr data set
+met_cnv<-readRDS(file=paste0(output_directory,"/","07_scaledcis.cnv_windows_methylation.correlation.rds"))
+met_cnv<-met_cnv %>% group_by(window) %>% summarize(cor(met,cnv)) %>% as.data.frame()
+colnames(met_cnv)<-c("window","cor")
 
-#get 220kb windows ranges
+cnv_meta<-readRDS(file=paste0(output_directory,"/","07_scaledcis.cnv_windows_meta.matrix.rds"))
+
+#get 500kb windows ranges
 copykit<-readRDS(copykit_output[1])
 windows<-copykit@rowRanges
 
@@ -67,7 +60,7 @@ cnv_genes_class<-c('amp','amp','amp', 'amp', 'amp', 'amp', 'amp', 'amp', 'amp', 
 cnv_genes<-setNames(cnv_genes_class,nm=cnv_genes)
 
 #use gtf file to get gene locations
-gtf_file="/container_ref/gencode.v43.annotation.gtf.gz"
+gtf_file="/data/rmulqueen/projects/scalebio_dcis/ref/gencode.v43.annotation.gtf.gz"
 
 gtf <- rtracklayer::readGFF(gtf_file)
 gtf<- gtf %>% 
@@ -95,13 +88,44 @@ cyto_overlap<-GenomicRanges::findOverlaps(cna_obj@rowRanges,
                                             select="first")
 cna_obj@rowRanges$stain <- cyto[cyto_overlap,]$stain
 
+#pHaplo and pTriplo
+gene_dosage<-read.table("/data/rmulqueen/projects/scalebio_dcis/ref/Collins_rCNV_2022.dosage_sensitivity_scores.tsv.gz")
+colnames(gene_dosage)<-c("gene","pHaplo","pTriplo")
+#assign window scores by gene overlap
+gene_dosage<-rtracklayer::readGFF(gtf_file) %>% 
+    filter(type=="gene" & gene_type %in% c("protein_coding")) %>% 
+    mutate(gene=gene_name) %>%
+    filter(gene %in% gene_dosage$gene) %>%
+    inner_join(gene_dosage,by="gene")
+wind_dosage<-GenomicRanges::findOverlaps(windows,GRanges(gene_dosage)) #do overlap to get window indexes
+wind_dosage<-as.data.frame(wind_dosage)
+wind_dosage<-wind_dosage[!duplicated(wind_dosage$subjectHits),] #take first subject hit
+gene_dosage$window<-NA
+gene_dosage[wind_dosage$subjectHits,]$window<-wind_dosage$queryHits
+gene_dosage<-gene_dosage[!is.na(gene_dosage$window),]
+gene_dosage<-gene_dosage %>% group_by(window) %>% summarize(pHaplo=mean(pHaplo,na.rm=T),pTriplo=mean(pTriplo,na.rm=T))
+
+cna_obj@rowRanges$pHaplo<-NA
+cna_obj@rowRanges[gene_dosage$window,]$pHaplo<-gene_dosage$pHaplo
+
+cna_obj@rowRanges$pTriplo<-NA
+cna_obj@rowRanges[gene_dosage$window,]$pTriplo<-gene_dosage$pTriplo
+
 arm_col=c("p"="grey","q"="darkgrey")
 band_col=c("acen"="#99746F","gneg"="white","gpos100"="black","gpos25"="lightgrey","gpos50"="grey","gpos75"="darkgrey","gvar"="#446879")
+
+cor_col=colorRamp2(c(-0.5,0,0.5),c("darkblue","white","darkred"))
+
+pHaplo_col=colorRamp2(c(0,0.5,0.8,1),c("white","white","blue","darkblue"))
+pTriplo_col=colorRamp2(c(0,0.5,0.8,1),c("white","white","red","darkred"))
 
 column_ha = HeatmapAnnotation(
                             arm = cna_obj@rowRanges$arm,
                             band = cna_obj@rowRanges$stain,
-                            col=list(arm=arm_col,band=band_col))
+                            pHaplo=cna_obj@rowRanges$pHaplo,
+                            pTriplo=cna_obj@rowRanges$pTriplo,
+                            cnv_met_cor=met_cnv$cor,
+                            col=list(arm=arm_col,band=band_col,pHaplo=pHaplo_col,pTriplo=pTriplo_col,cnv_met_cor=cor_col))
 
 hc = columnAnnotation(common_cnv = anno_mark(at = annot$window_loc, 
                         labels = annot$gene,
@@ -109,38 +133,80 @@ hc = columnAnnotation(common_cnv = anno_mark(at = annot$window_loc,
                         labels_gp=gpar(col=annot$col)))
 
 #run PCA on cnv_logr
-library(umap)
+cna_obj@rowRanges
+cnv_logr<-readRDS(file=paste0(output_directory,"/","07_scaledcis.cnv_windows_logr.matrix.rds"))
+row.names(cnv_logr)<-paste(seqnames(cna_obj@rowRanges),start(cna_obj@rowRanges),end(cna_obj@rowRanges),sep="_")
+cnv_logr<-cnv_logr[colnames(cnv_logr) %in% row.names(obj@metadata[!endsWith(obj@metadata$cnv_clonename,suffix="diploid") & (obj@metadata$cnv_clonename!="NA"),])]
 
-dat<-as.data.frame(t(cnv_logr))
-row.names(dat)<-1:nrow(dat)
-
-#select top 10% of genomic windows by variance
-dat<-dat[apply(dat, 2, var)>quantile(apply(dat, 2, var),0.90),]
+dat<-t(cnv_logr)
+dat <- dat %>% mutate_if(is.character, as.numeric)
 
 #PCA on windows to determine correlations and shared events
-pca_result <- prcomp(dat, center = FALSE, scale = FALSE)
+pca_result <- irlba::prcomp_irlba(as.matrix(dat),n=50)
 
 #define PC cutoff by elbow
-plt<-ggplot()+geom_line(aes(y=pca_result$sdev[1:100],x=1:100))+theme_minimal()
+plt<-ggplot()+geom_line(aes(y=pca_result$sdev[1:50],x=1:50))+geom_vline(xintercept=10,color="red")+theme_minimal()
 ggsave(paste0(output_directory,"/","cnv_loadings.elbowplot.pdf"))
-#i'm going to say 1:25
 
 #define colors based on data
-col=colorRamp2(log(c(0,0.02,0.04)),c("white","red","darkred"))
+col=colorRamp2(c(-2,0,2),c("blue","white","red"))
+mat<-scale(t(pca_result$rotation[,1:10]))
+#o1 = seriate(dist(mat), method = "TSP")
 
-pdf(paste0(output_directory,"/","cnv_loadings.heatmap.pdf"),height=20,width=40)
-Heatmap(scale(t(pca_result$rotation[,1:25])),
+
+loading_col2=colorRamp2(breaks=seq(from = -3, to = 3, length.out = 11),colors=rev(c("#67001FFF", "#B2182BFF", "#D6604DFF", "#F4A582FF", "#FDDBC7FF", "#F7F7F7FF", "#D1E5F0FF", "#92C5DEFF", "#4393C3FF", "#2166ACFF", "#053061FF")))
+
+plt1<-Heatmap(mat[c("PC1","PC2"),],
   cluster_columns=FALSE,
-  cluster_rows=TRUE,
+  col=loading_col2,
+  clustering_distance_rows = "maximum",
   show_row_names = TRUE, row_title_rot = 0,
   show_column_names = FALSE,
-  cluster_row_slices = TRUE,
   bottom_annotation=hc,
   top_annotation=column_ha,
   column_split=seqnames(windows),
-  border = TRUE)
-dev.off()
-print(paste0(output_directory,"/","cnv_loadings.heatmap.pdf"))
-
+  border = TRUE,
+  width = 10)
+  
 
 #add CNV_PC loadings as metadata to amethyst object
+met<-obj@metadata
+pca_res<-as.data.frame(pca_result$x[,1:10])
+row.names(pca_res)<-row.names(dat)
+met<-cbind(met[row.names(pca_res),],pca_res)
+
+met<-met %>% group_by(cnv_clonename)
+
+clone_pc<-as.data.frame(met %>% select(starts_with("PC")) %>% summarize_all(mean, na.rm = TRUE))
+row.names(clone_pc)<-clone_pc[,1]
+clone_pc<-clone_pc[,2:ncol(clone_pc)]
+loading_col=colorRamp2(c(-5,0,5),c("blue","white","red"))
+
+
+#https://emilhvitfeldt.github.io/r-color-palettes/discrete/NatParksPalettes/Acadia/
+loading_col=colorRamp2(breaks=seq(from = -10, to = 10, length.out = 11),colors=rev(c("#7F3B08FF", "#B35806FF", "#E08214FF", "#FDB863FF", "#FEE0B6FF", "#F7F7F7FF", "#D8DAEBFF", "#B2ABD2FF", "#8073ACFF", "#542788FF", "#2D004BFF")))
+
+plt2<-Heatmap(t(clone_pc),
+  cluster_columns=TRUE,
+  col=loading_col,
+  cluster_rows=FALSE,
+  show_row_names = TRUE, row_title_rot = 0,
+  show_column_names = TRUE,
+  clustering_distance_columns = "maximum",
+  border = TRUE, column_names_gp = gpar(fontsize = 5),
+  width=5)
+
+pdf(paste0(output_directory,"/","clone_cnv_loadings.heatmap.pdf"),height=10,width=20)
+plt2
+plt1
+dev.off()
+print(paste0(output_directory,"/","clone_cnv_loadings.heatmap.pdf"))
+
+umap<-umap(clone_pc)
+umap<-as.data.frame(umap$layout)
+umap$label<-row.names(umap)
+plt<-ggplot(umap,aes(x=V1,y=V2,label=row.names(umap)))+geom_text()+theme_void()
+
+ggsave(plt,file=paste0(output_directory,"/","cnv_loadings.umap.pdf"))
+
+#to be added to cell level metadata to associate with other factors

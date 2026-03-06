@@ -29,18 +29,18 @@ library(msigdbr)
 library(fgsea)
 library(ggplot2)
 library(data.table)
-
+library(GenomicRanges)
+library(LOLA)
 options(future.globals.maxSize= 80000*1024^2) #80gb limit for parallelizing
 task_cpus=300
 project_data_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1"
 merged_dat_folder="merged_data"
 wd=paste(sep="/",project_data_directory,merged_dat_folder)
 setwd(wd)
-obj<-readRDS(file="06_scaledcis.cnv_clones.amethyst.rds")
+obj<-readRDS(file="07_scaledcis.cnv_clones.amethyst.rds")
 
 
 ```
-
 
 Running through all the 500bp window generation split by:
 - Celltype (fine_celltype)
@@ -145,196 +145,6 @@ testDMR <- function(sumMatrix, eachVsAll = TRUE, comparisons = NULL, nminTotal =
   return(counts)
 }
 
-dmr_celltype_by_all<-function(obj){
-    #read 500bp windows
-    celltype500bpwindows<-readRDS(paste0(dmr_celltype_outdir,"/","dmr_analysis.celltype.500bp_windows.rds"))
-    
-    pct_mat<-celltype500bpwindows[["pct_matrix"]] 
-    sum_mat<-celltype500bpwindows[["sum_matrix"]] 
-
-    #save clone object for future genome track plotting
-    obj@genomeMatrices[["cg_celltype_tracks"]] <- pct_mat #load it into amethyst object for plotting
-
-    dmrs <- testDMR(sum_mat, # Sum of c and t observations in each genomic window per group
-            eachVsAll = TRUE, # If TRUE, each group found in the sumMatrix will be tested against all others
-            nminTotal = 3, # Min number observations across all groups to include the region in calculations
-            nminGroup = 3) # Min number observations across either members or nonmembers to include the region
-    saveRDS(dmrs,file=paste0(dmr_celltype_outdir,"/","celltype_allcells",".dmr.rds"))
-   
-    dmrs <- filterDMR(dmrs, 
-                method = "bonferroni", # c("holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "fdr")
-                filter = FALSE, # If TRUE, removes insignificant results
-                pThreshold = 0.05, # Maxmimum adjusted p value to allow if filter = TRUE
-                logThreshold = 1.5) # Minimum absolute value of the log2FC to allow if filter = TRUE
-    collapsed_dmrs <- collapseDMR(obj, 
-                            dmrs, 
-                            maxDist = 2000, # Max allowable overlap between DMRs to be considered adjacent
-                            minLength = 2000, # Min length of collapsed DMR window to include in the output
-                            reduce = T, # Reduce results to unique observations (recommended)
-                            annotate = T) # Add column with overlapping gene names
-    saveRDS(collapsed_dmrs,file=paste0(dmr_celltype_outdir,"/","celltype_allcells",".dmr_filt_collapse.rds"))
-
-    rename_dmr_output<-setNames(nm=1:length(unique(collapsed_dmrs$test)),gsub(colnames(sum_mat)[grepl(colnames(sum_mat),pattern="_t$")],pattern="_t",replacement=""))
-    collapsed_dmrs$type <- rename_dmr_output[collapsed_dmrs$test]
-    saveRDS(collapsed_dmrs,file=paste0(dmr_celltype_outdir,"/","celltype_allcells",".dmr_filt_collapse.rds"))
-    
-    #plot dmr counts per clone
-    pal <- colorRampPalette(colors = c("#F9AB60", "#E7576E", "#630661", "#B5DCA5"))
-    COLS <- pal(length(unique(collapsed_dmrs$type)))
-
-    plt<-ggplot(collapsed_dmrs |> dplyr::group_by(type, direction) |> dplyr::summarise(n = n()), 
-        aes(y = type, x = n, fill = type)) + 
-        geom_col() + 
-        facet_grid(vars(direction), scales = "free_y") + 
-        scale_fill_manual(values = COLS) + 
-        theme_classic()
-    ggsave(plt,file=paste0(dmr_celltype_outdir,"/","celltype_allcellsm",".dmr_counts.pdf"))
-}
-
-dmr_clone_by_clone<-function(obj,sample_name){
-    #set dir
-    clone_outdir=paste0(dmr_clones_outdir,"/",sample_name)
-    system(paste("mkdir -p",clone_outdir))
-    
-    print(paste("Subset object for sample:",sample_name))
-    
-    #subset object (sample name match AND fine cell type is lumhr or cancer (by original 500bp summaries above))
-    cells_in=row.names(obj@metadata)[(obj@metadata$Sample %in% c(sample_name))]
-    obj_sample<-subsetObject(obj,cells=cells_in)
-    #subset cell types to just epithelial/cancer
-
-    #read 500bp windows
-    clone500bpwindows<-readRDS(paste0(dmr_clones_outdir,"/","dmr_analysis.cnv_clones.500bp_windows.rds"))
-    
-    #subset to just sample clones
-    print(paste("Subset 500bp windows for sample:",sample_name))
-
-    pct_columns_to_keep=c(1,2,3,which(grepl(pattern=sample_name,unlist(lapply(strsplit(colnames(clone500bpwindows[["pct_matrix"]]),"_"),"[",1)))))
-    sum_columns_to_keep=c(1,2,3,which(grepl(pattern=sample_name,unlist(lapply(strsplit(colnames(clone500bpwindows[["sum_matrix"]]),"_"),"[",1)))))
-    
-    pct_mat<-clone500bpwindows[["pct_matrix"]] %>% select(all_of(pct_columns_to_keep))
-    sum_mat<-clone500bpwindows[["sum_matrix"]] %>% select(all_of(sum_columns_to_keep))
-
-    print(paste("Saving amethyst object for clones:",sample_name))
-    #save clone object for future genome track plotting
-    obj_sample@genomeMatrices[["cg_clone_tracks"]] <- pct_mat #load it into amethyst object for plotting
-    saveRDS(obj_sample,file=paste0(clone_outdir,"/",sample_name,".clones_amethyst.rds"))
-
-    print(paste("Running DMRs across clones for:",sample_name))
-    dmrs <- testDMR(sum_mat, # Sum of c and t observations in each genomic window per group
-            eachVsAll = TRUE, # If TRUE, each group found in the sumMatrix will be tested against all others
-            nminTotal = 3, # Min number observations across all groups to include the region in calculations
-            nminGroup = 3) # Min number observations across either members or nonmembers to include the region
-    saveRDS(dmrs,file=paste0(clone_outdir,"/",sample_name,".clones_dmr.rds"))
-   
-    print(paste("Filtering DMRs across clones for:",sample_name))
-    dmrs <- filterDMR(dmrs, 
-                method = "bonferroni", # c("holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "fdr")
-                filter = FALSE, # If TRUE, removes insignificant results
-                pThreshold = 0.05, # Maxmimum adjusted p value to allow if filter = TRUE
-                logThreshold = 1.5) # Minimum absolute value of the log2FC to allow if filter = TRUE
-    collapsed_dmrs <- collapseDMR(obj_sample, 
-                            dmrs, 
-                            maxDist = 2000, # Max allowable overlap between DMRs to be considered adjacent
-                            minLength = 2000, # Min length of collapsed DMR window to include in the output
-                            reduce = T, # Reduce results to unique observations (recommended)
-                            annotate = T) # Add column with overlapping gene names
-    saveRDS(collapsed_dmrs,file=paste0(clone_outdir,"/",sample_name,".clones_dmr_filt_collapse.rds"))
-
-    rename_dmr_output<-setNames(nm=1:length(unique(collapsed_dmrs$test)),gsub(colnames(sum_mat)[grepl(colnames(sum_mat),pattern="_t$")],pattern="_t",replacement=""))
-    collapsed_dmrs$type <- rename_dmr_output[collapsed_dmrs$test]
-    saveRDS(collapsed_dmrs,file=paste0(clone_outdir,"/",sample_name,".clones_dmr_filt_collapse.rds"))
-    
-    #plot dmr counts per clone
-    pal <- colorRampPalette(colors = c("#F9AB60", "#E7576E", "#630661", "#B5DCA5"))
-    COLS <- pal(length(unique(collapsed_dmrs$type)))
-
-    plt<-ggplot(collapsed_dmrs |> dplyr::group_by(type, direction) |> dplyr::summarise(n = n()), 
-        aes(y = type, x = n, fill = type)) + 
-        geom_col() + 
-        facet_grid(vars(direction), scales = "free_y") + 
-        scale_fill_manual(values = COLS) + 
-        theme_classic()
-    ggsave(plt,file=paste0(clone_outdir,"/",sample_name,".clones_dmr_counts.pdf"))
-}
-
-dmr_clone_by_lumhr<-function(obj,sample_name){
-    #set dir
-    clone_outdir=paste0(dmr_clones_outdir,"/",sample_name)
-    system(paste("mkdir -p",clone_outdir))
-    
-    print(paste("Subset object for sample:",sample_name))
-    
-    #subset object to all lumhr OR sample specific clones
-    cells=row.names(obj@metadata)[obj@metadata$Sample %in% c(sample_name) & obj@metadata$cnv_clonename != "NA"]
-    lumhr=row.names(obj@metadata)[obj@metadata$fine_celltype %in% c("lumhr")]
-    cells<-unique(c(cells,lumhr))
-    obj_sample<-subsetObject(obj,cells=cells)
-
-    #read 500bp windows
-    clone500bpwindows<-readRDS(paste0(dmr_clones_outdir,"/","dmr_analysis.cnv_clones_alllumhr.500bp_windows.rds"))
-    
-    #subset to just sample clones
-    print(paste("Subset 500bp windows for sample:",sample_name))
-    pct_columns_to_keep=c(1,2,3,which(grepl(pattern=sample_name,unlist(lapply(strsplit(colnames(clone500bpwindows[["pct_matrix"]]),"_"),"[",1)))))
-    sum_columns_to_keep=c(1,2,3,4,5,which(grepl(pattern=sample_name,unlist(lapply(strsplit(colnames(clone500bpwindows[["sum_matrix"]]),"_"),"[",1)))))
-    
-    pct_mat<-clone500bpwindows[["pct_matrix"]] %>% select(all_of(pct_columns_to_keep))
-    sum_mat<-clone500bpwindows[["sum_matrix"]] %>% select(all_of(sum_columns_to_keep))
-
-    print(paste("Saving amethyst object for clones:",sample_name))
-    #save clone object for future genome track plotting
-    obj_sample@genomeMatrices[["cg_clone_tracks"]] <- pct_mat #load it into amethyst object for plotting
-    saveRDS(obj_sample,file=paste0(clone_outdir,"/",sample_name,".clones_lumhrall_amethyst.rds"))
-
-    #run tests of clones against lumhr, and all clones v lumhr
-    comparisons=colnames(pct_mat)[5:ncol(pct_mat)]
-    comparisons<-comparisons[!grepl(comparisons,pattern="_diploid")]
-    comparisons<-comparisons[!is.na(comparisons)]
-
-    compare_tests=data.frame(
-      name=c(paste0(comparisons,"_lumhr"),paste0(sample_name,"_allclones_lumhr")),
-      A=c(comparisons,paste(comparisons,collapse=",")),
-      B=rep("lumhr",length(comparisons)+1))
-
-    print(paste("Running DMRs across clones for:",sample_name))
-    dmrs <- testDMR(sum_mat, # Sum of c and t observations in each genomic window per group
-            comparisons=compare_tests,
-            nminTotal = 3, # Min number observations across all groups to include the region in calculations
-            nminGroup = 3) # Min number observations across either members or nonmembers to include the region
-    saveRDS(dmrs,file=paste0(clone_outdir,"/",sample_name,".clones_lumhrall_dmr.rds"))
-   
-    print(paste("Filtering DMRs across clones for:",sample_name))
-    dmrs <- filterDMR(dmrs, 
-                method = "bonferroni", # c("holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "fdr")
-                filter = FALSE, # If TRUE, removes insignificant results
-                pThreshold = 0.05, # Maxmimum adjusted p value to allow if filter = TRUE
-                logThreshold = 1.5) # Minimum absolute value of the log2FC to allow if filter = TRUE
-    collapsed_dmrs <- collapseDMR(obj_sample, 
-                            dmrs, 
-                            maxDist = 2000, # Max allowable overlap between DMRs to be considered adjacent
-                            minLength = 2000, # Min length of collapsed DMR window to include in the output
-                            reduce = T, # Reduce results to unique observations (recommended)
-                            annotate = T) # Add column with overlapping gene names
-    saveRDS(collapsed_dmrs,file=paste0(clone_outdir,"/",sample_name,".clones_lumhrall_dmr_filt_collapse.rds"))
-
-    rename_dmr_output<-setNames(nm=1:length(unique(collapsed_dmrs$test)),compare_tests$name)
-    collapsed_dmrs$type <- rename_dmr_output[collapsed_dmrs$test]
-    saveRDS(collapsed_dmrs,file=paste0(clone_outdir,"/",sample_name,".clones_lumhrall_dmr_filt_collapse.rds"))
-    
-    #plot dmr counts per clone
-    pal <- colorRampPalette(colors = c("#F9AB60", "#E7576E", "#630661", "#B5DCA5"))
-    COLS <- pal(length(unique(collapsed_dmrs$type)))
-
-    plt<-ggplot(collapsed_dmrs |> dplyr::group_by(type, direction) |> dplyr::summarise(n = n()), 
-        aes(y = type, x = n, fill = type)) + 
-        geom_col() + 
-        facet_grid(vars(direction), scales = "free_y") + 
-        scale_fill_manual(values = COLS) + 
-        theme_classic()
-    ggsave(plt,file=paste0(clone_outdir,"/",sample_name,".clones_lumhrall_dmr_counts.pdf"))
-}
-
 ```
 
 ```R
@@ -347,7 +157,7 @@ system(paste("mkdir -p", dmr_outdir))
 #clones (limited to lumhr and cancer)
 dmr_clones_outdir=paste(sep="/",dmr_outdir,"cnv_clones")
 system(paste("mkdir -p", dmr_clones_outdir))
-obj_lumhr<-subsetObject(obj,cells=row.names(obj@metadata)[(obj@metadata$fine_celltype %in% c("lumhr","cancer"))])
+obj_lumhr<-subsetObject(obj,cells=row.names(obj@metadata)[(obj@metadata$celltype %in% c("lumhr","cancer"))])
 
 clone500bpwindows <- amethyst::calcSmoothedWindows(obj_lumhr, 
                                         type = "CG", 
@@ -359,14 +169,15 @@ clone500bpwindows <- amethyst::calcSmoothedWindows(obj_lumhr,
                                         groupBy = "cnv_clonename",
                                         returnSumMatrix = TRUE, # save sum matrix for DMR analysis
                                         returnPctMatrix = TRUE)
+
 saveRDS(clone500bpwindows,file=paste0(dmr_clones_outdir,"/","dmr_analysis.cnv_clones.500bp_windows.rds"))
 
 #clones (all lumhr treated as same group)
 dmr_clones_outdir=paste(sep="/",dmr_outdir,"cnv_clones_alllumhr")
 system(paste("mkdir -p", dmr_clones_outdir))
-obj_lumhr_all<-subsetObject(obj,cells=row.names(obj@metadata)[(obj@metadata$fine_celltype %in% c("lumhr","cancer"))])
+obj_lumhr_all<-subsetObject(obj,cells=row.names(obj@metadata)[(obj@metadata$celltype %in% c("lumhr","cancer"))])
 obj_lumhr_all@metadata$cnv_clonename_alllumhr<-obj_lumhr_all@metadata$cnv_clonename
-obj_lumhr_all@metadata[obj_lumhr_all@metadata$fine_celltype=="lumhr",]$cnv_clonename_alllumhr<-"lumhr"
+obj_lumhr_all@metadata[obj_lumhr_all@metadata$celltype=="lumhr",]$cnv_clonename_alllumhr<-"lumhr"
 clone500bpwindows <- amethyst::calcSmoothedWindows(obj_lumhr_all, 
                                         type = "CG", 
                                         threads = 20,
@@ -379,28 +190,10 @@ clone500bpwindows <- amethyst::calcSmoothedWindows(obj_lumhr_all,
                                         returnPctMatrix = TRUE)
 saveRDS(clone500bpwindows,file=paste0(dmr_clones_outdir,"/","dmr_analysis.cnv_clones_alllumhr.500bp_windows.rds"))
 
-#celltype
-dmr_celltype_outdir=paste(sep="/",dmr_outdir,"celltype")
-system(paste("mkdir -p", dmr_celltype_outdir))
-
-celltype500bpwindows <- calcSmoothedWindows(obj, 
-                                        type = "CG", 
-                                        threads = 1,
-                                        step = 500, # change to 500 for real data unless you have really low coverage
-                                        smooth = 3,
-                                        genome = "hg38",
-                                        index = "chr_cg",
-                                        groupBy = "fine_celltype",
-                                        returnSumMatrix = TRUE, # save sum matrix for DMR analysis
-                                        returnPctMatrix = TRUE)
-saveRDS(celltype500bpwindows,file=paste0(dmr_celltype_outdir,"/","dmr_analysis.celltype.500bp_windows.rds"))
-
-
-
 #celltype by diagnosis
 dmr_celltype_by_diag_outdir=paste(sep="/",dmr_outdir,"celltype_by_diagnosis")
 system(paste("mkdir -p", dmr_celltype_by_diag_outdir))
-obj@metadata$celltype_diag<-paste(sep="_",obj@metadata$Group,obj@metadata$fine_celltype)
+obj@metadata$celltype_diag<-paste(sep="_",obj@metadata$Group,obj@metadata$celltype)
 celltypediag500bpwindows <- calcSmoothedWindows(obj, 
                                         type = "CG", 
                                         threads = 1,
@@ -408,58 +201,31 @@ celltypediag500bpwindows <- calcSmoothedWindows(obj,
                                         smooth = 3,
                                         genome = "hg38",
                                         index = "chr_cg",
-                                        groupBy = "fine_celltype",
+                                        groupBy = "celltype_diag",
                                         returnSumMatrix = TRUE, # save sum matrix for DMR analysis
                                         returnPctMatrix = TRUE)
 saveRDS(celltypediag500bpwindows,file=paste0(dmr_celltype_by_diag_outdir,"/","dmr_analysis.celltype_by_diag.500bp_windows.rds"))
 
 ```
 
-
-```R
-#############################################
-###### DMR Per CNV Clone Per Sample    ######
-#############################################
-
-#add plotting functions for DMR 
-#https://htmlpreview.github.io/?https://github.com/lrylaarsdam/amethyst/blob/main/vignettes/pbmc_vignette/pbmc_vignette.html
-#add dmr locations per clone over heatmap cnv plot
-
-#output to DMR analysis folder
-dmr_outdir=paste(sep="/",project_data_directory,"DMR_analysis")
-
-#run 500bp smoothed windows by clone split once, save and subset
-
-#samples with >= 2 clones and >=5% coverage per clone
-#use dmr_analysis.cnv_clones.500bp_windows.rds matrix
-clone_v_clone_analysis<-c('BCMDCIS05T',
-'BCMDCIS124T',
-'BCMDCIS28T',
-'BCMDCIS35T',
-'BCMDCIS41T',
-'BCMDCIS52T',
-'BCMDCIS66T',
-'BCMDCIS74T',
-'BCMDCIS79T',
-'BCMDCIS82T',
-'BCMDCIS97T',
-'ECIS25T',
-'ECIS26T',
-'ECIS36T',
-'ECIS48T')
-
-
-
-lapply(clone_v_clone_analysis,function(x) dmr_clone_by_clone(obj,sample_name=x))
-```
+Calculating clones compared to lumhr
 
 ```R
 #add plotting functions for DMR 
 #https://htmlpreview.github.io/?https://github.com/lrylaarsdam/amethyst/blob/main/vignettes/pbmc_vignette/pbmc_vignette.html
 #add dmr locations per clone over heatmap cnv plot
 
+obj<-readRDS(file="07_scaledcis.cnv_clones.amethyst.rds")
+
 #output to DMR analysis folder
-dmr_outdir=paste(sep="/",project_data_directory,"DMR_analysis")
+#clones (all lumhr treated as same group)
+dmr_clones_outdir=paste(sep="/",dmr_outdir,"cnv_clones_alllumhr")
+system(paste("mkdir -p", dmr_clones_outdir))
+
+obj_lumhr_all<-subsetObject(obj,cells=row.names(obj@metadata)[(obj@metadata$celltype %in% c("lumhr","cancer"))])
+obj_lumhr_all@metadata$cnv_clonename_alllumhr<-obj_lumhr_all@metadata$cnv_clonename
+obj_lumhr_all@metadata[obj_lumhr_all@metadata$celltype=="lumhr",]$cnv_clonename_alllumhr<-"lumhr"
+clone500bpwindows<-readRDS(file=paste0(dmr_clones_outdir,"/","dmr_analysis.cnv_clones_alllumhr.500bp_windows.rds"))
 
 #run dmr analysis clone with all lumhr
 #use dmr_analysis.cnv_clones_alllumhr.500bp_windows.rds matrix
@@ -493,17 +259,220 @@ clone_v_lumhr_analysis<-c(
 'BCMDCIS35T'
 )
 
-
-lapply(clone_v_lumhr_analysis,function(x) dmr_clone_by_lumhr(obj,sample_name=x))
+lapply(clone_v_lumhr_analysis,function(x) dmr_clone_by_lumhr(obj,sample_name=x,dmr_clones_outdir,clone500bpwindows))
 
 
 ```
 
-Run DMR results through gene ontology for interpretation (to be coded)
-
+# DMR Per CNV Clone Per Sample    
 
 ```R
+#output to DMR analysis folder
+dmr_outdir=paste(sep="/",project_data_directory,"DMR_analysis")
+dmr_clones_outdir=paste(sep="/",dmr_outdir,"cnv_clones")
 
+#run 500bp smoothed windows by clone split once, save and subset
+#run above, note that amethyst also allows for group by group specified comparisons now too
+clone500bpwindows<-readRDS(file=paste0(dmr_clones_outdir,"/","dmr_analysis.cnv_clones.500bp_windows.rds"))
+
+#samples with >= 2 clones and >=5% coverage per clone
+#use dmr_analysis.cnv_clones.500bp_windows.rds matrix
+clone_v_clone_analysis<-c('BCMDCIS05T',
+'BCMDCIS124T',
+'BCMDCIS28T',
+'BCMDCIS35T',
+'BCMDCIS41T',
+'BCMDCIS52T',
+'BCMDCIS66T',
+'BCMDCIS74T',
+'BCMDCIS79T',
+'BCMDCIS82T',
+'BCMDCIS97T',
+'ECIS25T',
+'ECIS26T',
+'ECIS36T',
+'ECIS48T')
+
+lapply(clone_v_clone_analysis,function(x) dmr_clone_by_clone(obj,sample_name=x,dmr_clones_outdir,clone500bpwindows))
+
+#add bedfile of dmrs, bigWig of CNVs per clone, stacked bigwig of methylation per clone
+#split bw into 4 files per cell type by methylation/average methylation
+for(i in colnames(clone500bpwindows[["pct_matrix"]])[4:ncol(clone500bpwindows[["pct_matrix"]])]){
+    sample<-strsplit(i,"_")[[1]]
+    sample<-paste(sample[1:length(sample)-1],collapse="_")
+    sample_dir=paste0(dmr_clones_outdir,"/",sample,"/bigwig")
+    system(paste("mkdir -p",sample_dir))
+
+    out_dat<-clone500bpwindows[["pct_matrix"]] %>% select(chr,start,end,i) 
+
+    hg38_seq_info<-Seqinfo(genome="hg38")
+    out_dat<-GRanges(out_dat[complete.cases(out_dat),]) #filter NA
+    out_dat<-out_dat[out_dat@seqnames %in% hg38_seq_info@seqnames,] #filter chr
+    out_dat<-out_dat[out_dat@seqnames %in% paste0("chr",c(1:22,"X")),] #filter chr
+    seqlevels(out_dat)<-paste0("chr",c(1:22,"X"))
+
+    out_dat<-resize(out_dat,width=500)
+    names(out_dat@elementMetadata)<-"score"
+    mean_score<-mean(mcols(out_dat)$score)
+
+    #bin to 100-mean, mean-50, 50-20, 20-0  
+    #color black, grey, lightgrey, celltypecol
+    #333333, #444444, #bcbcbc, celltypecol
+    #subtract score-meanscorevalue
+
+    out_dat_hypermet <- out_dat %>% 
+                        as.data.frame() %>% 
+                        filter(mcols(out_dat)$score > mean_score) %>% 
+                        mutate(score=score-mean_score) %>% 
+                        GRanges()
+    names(out_dat_hypermet@elementMetadata)<-"score"
+    genome(out_dat_hypermet)<-"hg38"
+    seqlengths(out_dat_hypermet)<-seqlengths(hg38_seq_info)[seqlevels(out_dat_hypermet)] #filter by seqlengths
+
+    out_dat_met_mid <- out_dat %>% 
+                      as.data.frame() %>% 
+                      filter(mcols(out_dat)$score <= mean_score & mcols(out_dat)$score > 50) %>% 
+                      mutate(score=score-mean_score) %>% 
+                      GRanges()
+    names(out_dat_met_mid@elementMetadata)<-"score"
+    genome(out_dat_met_mid)<-"hg38"
+    seqlengths(out_dat_met_mid)<-seqlengths(hg38_seq_info)[seqlevels(out_dat_met_mid)] #filter by seqlengths
+
+    out_dat_met_low <- out_dat %>% 
+                        as.data.frame() %>% 
+                        filter(mcols(out_dat)$score <= 50 & mcols(out_dat)$score > 20) %>% 
+                        mutate(score=score-mean_score) %>% 
+                        GRanges()
+    names(out_dat_met_low@elementMetadata)<-"score"
+    genome(out_dat_met_low)<-"hg38"
+    seqlengths(out_dat_met_low)<-seqlengths(hg38_seq_info)[seqlevels(out_dat_met_low)] #filter by seqlengths
+
+    out_dat_met_hypomet <- out_dat %>% 
+                            as.data.frame() %>% filter(mcols(out_dat)$score <= 20) %>%
+                            mutate(score=score-mean_score) %>% 
+                            GRanges()
+    names(out_dat_met_hypomet@elementMetadata)<-"score"
+    genome(out_dat_met_hypomet)<-"hg38"
+    seqlengths(out_dat_met_hypomet)<-seqlengths(hg38_seq_info)[seqlevels(out_dat_met_hypomet)] #filter by seqlengths
+
+    print(paste("Saving bedgraphs for...",i))
+    rtracklayer::export(out_dat_hypermet,con=paste0(sample_dir,"/",paste(i,"hypermet","bw",sep=".")))
+    rtracklayer::export(out_dat_met_mid,con=paste0(sample_dir,"/",paste(i,"midmet","bw",sep=".")))
+    rtracklayer::export(out_dat_met_low,con=paste0(sample_dir,"/",paste(i,"lowmet","bw",sep=".")))
+    rtracklayer::export(out_dat_met_hypomet,con=paste0(sample_dir,"/",paste(i,"hypomet","bw",sep=".")))
+    print(paste("Completed ",i, " for sample ",sample))
+    print(paste("Saved in ",sample_dir))
+    }
+
+#move some files around to make igv tracks per sample (including the bigwig from the cnv bedgraph)
+```
+
+
+
+Run DMR results through gene ontology for interpretation 
+
+- For 500bp windows, look for TF binding site enrichment
+- For collapsed DMRS, look for ontology and positional enrichments
+
+```R
+project_data_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1"
+dmr_outdir=paste(sep="/",project_data_directory,"DMR_analysis")
+dmr_clones_outdir=paste(sep="/",dmr_outdir,"cnv_clones_alllumhr")
+
+dmr_list <- list.files(path=dmr_outdir,full.names=TRUE,recursive=TRUE,pattern=".clones_lumhrall_dmr.rds")
+
+#USING JASPAR AND LOLA PACKAGE FOR ENRICHMENT
+
+
+#gsea of top DMR genes
+gsea_enrichment_againstlumhr<-function(dmr_indx,species="human",
+                          category="C3",
+                          subcategory="TFT:GTRD",
+                          out_setname="TFT",sample_name=sample_name,
+                          outdir=outdir,
+                          obj=obj){
+
+  dmr<-readRDS(dmr_list[dmr_indx]) #read in 500bp dmr
+  #run collapse, but without join 
+  #split by hypo and hyper and which is significant
+  #run LOLA with the universe as all 500bp sets on JASPAR
+
+  dmrfilt <- filterDMR(dmr, 
+              method = "bonferroni", # c("holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "fdr")
+              filter = FALSE) # Minimum absolute value of the log2FC to allow if filter = TRUE
+  dmr$cluster<-
+  dmr<-dmr %>% split(direction,test)select(chr,start,end,ends_with("_pval"))  %>% filter(if_any(where(is.numeric), ~ .x < 0.05)) #filter to pval column and only those significant
+     
+  collapsed_dmrs <- collapseDMR(obj, 
+                          dmr, 
+                          maxDist = 0, # Max allowable overlap between DMRs to be considered adjacent
+                          minLength = 1, # Min length of collapsed DMR window to include in the output
+                          reduce = F, # Reduce results to unique observations (recommended)
+                          annotate = T) # Add column with overlapping gene names
+
+  pathwaysDF <- msigdbr(species=species, 
+                        collection=category, 
+                        subcollection = subcategory)
+
+  #limit pathways to genes in our data
+  pathwaysDF<-pathwaysDF[pathwaysDF$ensembl_gene %in% unlist(lapply(strsplit(unique(obj@ref$gene_id),"[.]"),"[",1)),]
+  
+  pathways <- split(pathwaysDF$gene_symbol, pathwaysDF$gs_name)
+
+  #run plotting per group and per hyper and hypo? i think just using logFC is sufficient
+
+  plt_list<-lapply(unique(dmrs$type),function(group1){
+  #treat multiple gene overlaps as same logFC
+  #set -Inf to -3 and Inf to 3
+  group_features<-dmrs %>%
+    dplyr::filter(type == group1) %>%
+    dplyr::filter(dmr_padj<0.05) %>% 
+    dplyr::filter(gene_names!="NA") %>% 
+    dplyr::arrange(dmr_logFC) %>%
+    dplyr::select(gene_names, dmr_logFC) %>%
+    tidyr::separate_rows(gene_names) %>%
+    dplyr::mutate(across(where(is.numeric), ~ replace(., .==-Inf, -3))) %>%
+    dplyr::mutate(across(where(is.numeric), ~ replace(., .==Inf, 3)))
+
+  ranks<-setNames(nm=group_features$gene_names,group_features$dmr_logFC)
+  fgseaRes <- fgsea(pathways = pathways, 
+                    stats    = ranks,
+                    minSize  = 5,
+                    nproc = 1)
+
+  topPathwaysUp <- fgseaRes %>% filter(ES > 0) %>% slice_max(NES,n=10) %>% dplyr::select(pathway)
+  topPathwaysDown <- fgseaRes %>% filter(ES < 0) %>% slice_max(abs(NES),n=10) %>% dplyr::select(pathway)
+  topPathways <- unlist(c(topPathwaysUp, rev(topPathwaysDown)))
+  saveRDS(fgseaRes,file=paste0(outdir,sample_name,".",out_setname,".GSEA_enrichment.clone_lumhrall.rds"))
+
+  #not returned
+  plt1<-plotGseaTable(pathways[topPathways], ranks, fgseaRes, gseaParam=0.5)+
+        theme(axis.text.y = element_text( size = rel(0.2)),
+        axis.text.x = element_text( size = rel(0.2)))
+
+  # only plot the top 20 pathways NES scores
+  nes_plt_dat<-rbind(
+    fgseaRes  %>% slice_max(NES,n= 10),
+    fgseaRes  %>% slice_min(NES,n= 10))
+
+  plt2<-ggplot(nes_plt_dat, aes(reorder(pathway, NES), NES)) +
+    geom_point(aes(color= padj,size=size)) + scale_color_gradient2(low="darkred",high="grey",mid="red",midpoint=0.05)+
+    coord_flip() +
+    labs(x="Pathway", y="Normalized Enrichment Score \n Compared to normal LumHR \n (Hyper<->Hypo)",
+        title="Hallmark pathways NES from GSEA") + 
+    theme_minimal()+scale_fill_identity()+ggtitle(paste(group1,out_setname))+ylim(c(5,-5))
+  return(plt2)
+  })
+  patchwork::wrap_plots(plt_list,ncol=1)
+
+}
+
+```R
+project_data_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1"
+dmr_outdir=paste(sep="/",project_data_directory,"DMR_analysis")
+dmr_clones_outdir=paste(sep="/",dmr_outdir,"cnv_clones_alllumhr")
+
+collapsed_dmr_list <- list.files(path=dmr_outdir,full.names=TRUE,recursive=TRUE,pattern=".clones_lumhrall_dmr_filt_collapse.rds")
 
 
 #gsea of top DMR genes
@@ -625,4 +594,5 @@ lapply(clone_v_lumhr_analysis, function(sample_name){
 ```
 
 #coregulation by gsea https://bioconductor.org/packages/release/bioc/vignettes/fgsea/inst/doc/geseca-tutorial.html
+
 
