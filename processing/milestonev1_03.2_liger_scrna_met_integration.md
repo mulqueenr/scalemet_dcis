@@ -43,6 +43,7 @@ library(parallel)
 library(patchwork)
 library(ComplexHeatmap)
 library(circlize)
+library(data.table)
 set.seed(111)
 options(future.globals.maxSize= 200000*1024^2) #80gb limit for parallelizing
 task_cpus=300
@@ -51,7 +52,7 @@ merged_dat_folder="merged_data"
 wd=paste(sep="/",project_data_directory,merged_dat_folder)
 setwd(wd)
 
-obj<-readRDS(file="06_scaledcis.celltype.amethyst.rds")
+obj<-readRDS(file="07_scaledcis.cnv_clones.amethyst.rds")
 
 
 #summarize windows over promoters (+2kb) (including alternative promoters per gene)
@@ -70,13 +71,11 @@ saveRDS(rna_markers,file=paste0(project_data_directory,"/integration/","rna_mark
 rna_markers<-readRDS(file=paste0(project_data_directory,"/integration/","rna_markers.rds"))
 
 #filter to overexpressed markers
-rna_markers_filt<-rna_markers %>% group_by(cluster) %>% filter(avg_log2FC > 3) %>% filter(p_val_adj <0.01) %>% as.data.frame()
+rna_markers_filt<-rna_markers %>% group_by(cluster) %>% filter(avg_log2FC > 1) %>% filter(p_val_adj <0.01) %>% as.data.frame()
 rna_markers_filt<-rna_markers_filt[!duplicated(rna_markers_filt$gene),]
 saveRDS(rna_markers,file=paste0(project_data_directory,"/integration/","rna_markers.filt.rds"))
 
 rna_markers_filt<-readRDS(file=paste0(project_data_directory,"/integration/","rna_markers.filt.rds"))
-rna_markers_filt<-rna_markers_filt[!duplicated(rna_markers_filt$gene),]
-
 
 #reset ref on obj to transcription start sites as gene_id, this is to use the makewindows promoter option without so much fuss
 #so filter by gene names, transfer gene names to new metadata column, set transcript (gene or full length) as genes
@@ -88,30 +87,24 @@ obj@ref<-obj@ref[obj@ref$transcript_type %in% c("protein_coding","transcript","l
 obj@ref<-obj@ref[!duplicated(paste(obj@ref$chr,obj@ref$start)),]
 obj@ref<-obj@ref[!duplicated(obj@ref$transcript_id),]
 
+#mean of 4.3 TSS per gene
+
 obj@ref$gene_name_original<-obj@ref$gene_name
 obj@ref$gene_name<-obj@ref$transcript_id
 obj@ref$type<-"gene"
 obj@ref$gene<-obj@ref$gene_name
-
-#READ IN CALCSMOOTHWINDOW OF CLUSTER ID
-#INTEGRATE WITH RNA FOR LABEL TRANSFER SAKE
-
-
-
-
 
 window_name="TSS_RNA"
 obj@genomeMatrices[[window_name]] <- makeWindows(obj, 
                                                      genes = obj@ref$gene_name,
                                                      promoter=TRUE,
                                                      type = "CG", 
-                                                     metric = "percent", 
-                                                     threads = 50, 
+                                                     metric = "score", 
+                                                     threads = 100, 
                                                      index = "chr_cg", 
-                                                     nmin = 2) 
+                                                     nmin = 1) 
 
 saveRDS(obj@genomeMatrices[[window_name]],file=paste0(project_data_directory,"/integration/","met_markers.TSS.rds"))
-#modify make windwos to exclude the "type == "gene" filter
 
 #ADD CGI FILTER?
 #filter regions that overlap with CGI (univerally hypomethylated)
@@ -123,14 +116,27 @@ saveRDS(obj@genomeMatrices[[window_name]],file=paste0(project_data_directory,"/i
 met_win<-data.table(obj@genomeMatrices[[window_name]])
 met_win$gene<-obj@ref[obj@ref$gene %in% row.names(obj@genomeMatrices[[window_name]]),]$gene_name_original
 
-met_win<-met_win %>% 
-  group_by(gene) %>% 
-  summarize(across(everything(), \(x) mean(x, na.rm = TRUE))) %>% 
-  as.data.frame()
 
-row.names(met_win)<-met_win$gene
-met_win<-met_win[,2:ncol(met_win)]
-saveRDS(met_win,file=paste0(project_data_directory,"/integration/","met_markers.TSS_to_gene.rds"))
+#calculate variance per row (transcript)
+met_win_var<-met_win %>%
+  mutate(row = row_number()) %>%
+  select(-gene) %>% 
+  tidyr::pivot_longer(-row) %>%
+  group_by(row) %>%
+  summarize(var = var(value,na.rm=T)) %>%
+  bind_cols(met_win, .) 
+  
+#select top variance per gene, allowing for ties and making the mean value per cell for ties
+met_win_var <- met_win_var %>% 
+              filter(rowSums(!is.na(.))>as.integer(ncol(.)/100)) %>% 
+              group_by(gene) %>% 
+              dplyr::slice_max(order_by=var,n=1,na_rm=TRUE,with_ties=TRUE) %>% 
+              select(-var) %>% select(-row) %>% summarise(across(where(is.numeric), mean, na.rm = TRUE)) %>%
+              ungroup() %>% as.data.frame()
+
+row.names(met_win_var)<-met_win_var$gene
+met_win_var <- met_win_var %>% select(-gene)
+saveRDS(met_win_var,file=paste0(project_data_directory,"/integration/","met_markers.TSS_to_gene.rds"))
 
 length(which(rowSums(is.na(met_win))>(0.01*ncol(met_win))))
 #filter by coverage #impute missing values

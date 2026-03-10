@@ -97,7 +97,7 @@ Wrapping each step into a function, so I can run it on stromal cell types as wel
 
 ```R
 
-celltype_umap<-function(obj=dat,prefix="allcells",dims=12,regressCov=TRUE,k_pheno=50,k_umap=50,neigh=25,dist=1e-5,method="cosine",output_directory,window_name){
+celltype_umap<-function(obj=dat,prefix="allcells",dims=12,regressCov=TRUE,regressCG=FALSE,k_pheno=50,k_umap=50,neigh=25,dist=1e-5,method="cosine",output_directory,window_name){
   print("Running IRLBA reduction...")
   obj@reductions[[paste(window_name,"irlba",sep="_")]] <- runIrlba(obj, genomeMatrices = c(window_name), dims = dims, replaceNA = c(0))
 
@@ -106,6 +106,21 @@ celltype_umap<-function(obj=dat,prefix="allcells",dims=12,regressCov=TRUE,k_phen
   obj@reductions[[paste(window_name,"irlba_regressed",sep="_")]] <- regressCovBias(obj, reduction = paste(window_name,"irlba",sep="_")) 
   } else {
       print("Skipping regression...")
+  obj@reductions[[paste(window_name,"irlba_regressed",sep="_")]] <- obj@reductions[[paste(window_name,"irlba",sep="_")]]
+  }
+
+  if(regressCov & regressCG){
+      print("Running regression on CG percent met...")
+      obj@metadata$cov<-obj@metadata$mcg_pct  #add cg percent to meta for regression, then revert back
+      obj@reductions[[paste(window_name,"irlba_regressed",sep="_")]] <- regressCovBias(obj, reduction = paste(window_name,"irlba_regressed",sep="_"),method="glm") 
+      obj@metadata <- meta
+  } else if(regressCG){
+      print("Running regression on CG percent met...")
+      obj@metadata$cov<-obj@metadata$mcg_pct  #add cg percent to meta for regression, then revert back
+      obj@reductions[[paste(window_name,"irlba_regressed",sep="_")]] <- regressCovBias(obj, reduction = paste(window_name,"irlba",sep="_"),method="glm") 
+      obj@metadata <- meta
+  } else {
+      print("Skipping regression on CG...")
   obj@reductions[[paste(window_name,"irlba_regressed",sep="_")]] <- obj@reductions[[paste(window_name,"irlba",sep="_")]]
   }
 
@@ -142,6 +157,7 @@ cluster_subset<-function(
   prefix="immune",
   dims=12,
   regressCov=TRUE,
+  regressCG=FALSE,
   k_pheno=50,
   k_umap=50,
   neigh=25,
@@ -642,18 +658,21 @@ collapsed_dmrs %>%
 
 ```R
 #Set up variables for output.
-prefix="stromal"
+prefix="endothelial"
 output_directory=paste0(project_data_directory,"/fine_celltyping/",prefix)
 dat<-readRDS(file="05_scaledcis.coarse_clusters.amethyst.rds")
 
+dat_sub<-subsetObject(dat,cells=row.names(dat@metadata)[dat@metadata$mcg_pct>65])
+
 #define subclusters
 dat_sub<-cluster_subset(
-  dat=dat,
-  broad_celltype=c("endothelial","fibroblast"), #note this is a list
+  dat=dat_sub,
+  broad_celltype=c("endothelial"), #note this is a list
   window_name="coarse_cluster_dmr_sites",
   prefix=prefix,
-  dims=14,
-  regressCov=FALSE,
+  dims=18,
+  regressCov=TRUE,
+  regressCG=TRUE,
   k_pheno=75,
   k_umap=8,
   neigh=10,
@@ -662,9 +681,11 @@ dat_sub<-cluster_subset(
   method="cosine",
   output_directory=output_directory)
 
+
 saveRDS(dat_sub,file=paste0(output_directory,"/","06_scaledcis.",prefix,"_finecelltyping.amethyst.rds"))
 
 dat_sub<-readRDS(file=paste0(output_directory,"/","06_scaledcis.",prefix,"_finecelltyping.amethyst.rds"))
+
 #calculate dmrs per fine celltype grouping
 collapsed_dmrs<-calculate_dmrs(dat=dat_sub,
                 prefix=prefix,
@@ -691,10 +712,10 @@ dat_sub@genomeMatrices[[window_name]] <- makeWindows(dat_sub,
 #define subclusters
 dat_sub2<-cluster_subset(
         dat=dat_sub,
-        broad_celltype=c("endothelial","fibroblast"), #note this is a list and can include multiple cell types
+        broad_celltype=c("endothelial"), #note this is a list and can include multiple cell types
         window_name=window_name,
         prefix=paste0(prefix,".dmr"),
-        dims=13,
+        dims=18,
         regressCov=FALSE,
         k_pheno=120,
         k_umap=20,

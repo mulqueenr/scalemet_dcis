@@ -1158,41 +1158,76 @@ copykit_output_500kb<-list.files(path=paste0(project_data_directory,"/copykit/")
 #remove diploid cell call rds used for bin correction
 copykit_output_500kb<-copykit_output_500kb[!grepl(copykit_output_500kb,pattern="diploid")]
 
-x<-copykit_output_500kb[9]
-x<-readRDS(x)
-x<-runSegmentation(x,
-                    method = "multipcf",
-                    seed = 17,
-                    alpha = 0.001,
-                    merge_levels_alpha = 0.01,
-                    gamma = 40,
-                    undo.splits = "prune",
-                    name = "segment_ratios")
+#multipcf looks cleaner
 
-x<- calcInteger(x, method = 'fixed', assay = 'segment_ratios',ploidy=2.3)
 
-pdf("test.integer.pdf")
-plotHeatmap(x, 
-            assay = 'smoothed_bincounts',
-            order_cells = "hclust",
-            row_split='clonename',
-            n_threads = 50)
-plotHeatmap(x, 
-            assay = 'segment_ratios',
-            order_cells = "hclust",
-            row_split='clonename',
-            n_threads = 50)
-plotHeatmap(x, 
-            assay = 'integer',
-            order_cells = "hclust",
-            row_split='clonename',
-            n_threads = 50)
-plotHeatmap(x, 
-            assay = 'integer',
-            order_cells = "hclust",
-            row_split='clonename',
-            rounding_error=TRUE,
-            n_threads = 50)
-dev.off()
-#try multipcf and cbs
+
+segment_data<-function(x){
+    file_in<-x
+    out_directory<-dirname(x)
+
+    x<-readRDS(file_in)
+    x<-runSegmentation(x,
+                        method = "multipcf",
+                        seed = 17,
+                        alpha = 1e-05,
+                        merge_levels_alpha = 1e-05,
+                        gamma = 100,
+                        undo.splits = "prune",
+                        name = "segment_ratios")
+
+    x<- calcInteger(x, method = 'fixed', assay = 'segment_ratios',ploidy=2)
+    plt1<-plotHeatmap(x, 
+                assay = 'segment_ratios',
+                order_cells = "hclust",
+                row_split='clonename',
+                n_threads = 50)
+    plt2<-plotHeatmap(x, 
+                assay = 'integer',
+                order_cells = "hclust",
+                row_split='clonename',
+                n_threads = 50)
+    plt3<-plotHeatmap(x, 
+                assay = 'integer',
+                order_cells = "hclust",
+                row_split='clonename',
+                rounding_error=TRUE,
+                n_threads = 50)
+    # plt4<-plotHeatmap(x, 
+    #             assay = 'consensus_integer',
+    #             order_cells = "hclust",
+    #             row_split='clonename',
+    #             rounding_error=FALSE,
+    #             n_threads = 50)
+
+    x <- calcConsensus(x,consensus_by="clonename",assay='integer',fun="median")
+
+    x@colData$clonename
+
+    clone_assignment<-setNames(nm=colnames(x@assays@data$integer),unlist(x@colData$clonename))
+
+    x@assays@data$consensus_integer<-do.call("cbind",
+        lapply(colnames(x@assays@data$integer),function(i){
+            x@consensus[clone_assignment[i]]
+        }))
+    colnames(x@assays@data$consensus_integer)<-colnames(x@assays@data$integer)
+
+    pdf(gsub(file_in,pattern=".rds",replace=".integer.heatmap.pdf"))
+    print(plt1)
+    print(plt2)
+    print(plt3)
+    dev.off()
+
+    saveRDS(x,file=file_in)
+
+
+}
+
+segment_data(copykit_output_500kb[9])
+
+lapply(copykit_output_500kb,segment_data)
+
+#replot all cells together with integer correction per clone
+
+
 ```
