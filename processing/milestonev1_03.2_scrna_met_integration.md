@@ -1,6 +1,13 @@
 Integration of seurat object with methylation object.
 
 Could also potentially run DMRs on broad_celltypes assigned. But I'm going to start at the cluster level.
+Note that this is not working, either the old method or the new method.
+
+New method:
+1. Summarize methylation (score) over 50kb regions, similar to met clustering
+2. Count all RNA reads in those regions
+3. Use LIGER for integration
+
 
 1. Using coarse cluster level DMRs (from scalemet_dcis/processing/milestonev1_01_amethyst_coarse_celltyping.md)
 2. assign DMRs to genes by overlap 
@@ -24,6 +31,12 @@ Add filter from RNA to limit genes that just overlap piggybacking?
 #install.packages('leidenAlg')
 #install.packages('rliger')
 ```
+
+
+#methylation use 50kb windows
+#rna summarize expressino over 50kb windows (colSums on genes in each window)
+#cluster rna just to ensure cell types are maintained
+#integrate with liger
 
 
 ```R
@@ -54,57 +67,140 @@ setwd(wd)
 
 obj<-readRDS(file="07_scaledcis.cnv_clones.amethyst.rds")
 
-
-#summarize windows over promoters (+2kb) (including alternative promoters per gene)
-#filter to exclude CG Island overlap
-#filter by variance
-#summarize over gene (mean) if multiple promoters pass variance filter
-#filter to RNA markers as well
-#run liger
-
 # Create from raw score matrices RNA (counts)
 rna<-readRDS("/data/rmulqueen/projects/scalebio_dcis/rna/tenx_dcis.pf.rds")
 Idents(rna)<-rna$fine_celltype
 rna_dat<-JoinLayers(rna)
-rna_markers<-FindAllMarkers(rna_dat,assay="RNA",only.pos=TRUE)
-saveRDS(rna_markers,file=paste0(project_data_directory,"/integration/","rna_markers.rds"))
-rna_markers<-readRDS(file=paste0(project_data_directory,"/integration/","rna_markers.rds"))
+rna_dat<-LayerData(rna_dat,assay="RNA",layer="counts")
 
-#filter to overexpressed markers
-rna_markers_filt<-rna_markers %>% group_by(cluster) %>% filter(avg_log2FC > 1) %>% filter(p_val_adj <0.01) %>% as.data.frame()
-rna_markers_filt<-rna_markers_filt[!duplicated(rna_markers_filt$gene),]
-saveRDS(rna_markers,file=paste0(project_data_directory,"/integration/","rna_markers.filt.rds"))
+windows<-GRanges(
+  data.frame(chr=unlist(lapply(strsplit(row.names(obj@genomeMatrices$cg_win_score),"_"),"[[",1)),
+  start=unlist(lapply(strsplit(row.names(obj@genomeMatrices$cg_win_score),"_"),"[[",2)),
+  end=unlist(lapply(strsplit(row.names(obj@genomeMatrices$cg_win_score),"_"),"[[",3)),
+  strand="*"))
 
-rna_markers_filt<-readRDS(file=paste0(project_data_directory,"/integration/","rna_markers.filt.rds"))
+#get list of genes per window
+ref<- obj@ref %>% 
+  filter(type=="gene") %>% 
+  filter(gene_type=="protein_coding") %>% 
+  filter(gene_name %in% row.names(rna_dat)) %>% 
+  GRanges()
+
+gene_overlaps<-findOverlaps(windows,ref,select="all")
+ref<-ref[gene_overlaps@to,]
+ref$window<-gene_overlaps@from
+ref <- split(ref, ~ window)
+
+rna_dat_win<-do.call("rbind", mclapply(1:length(ref), function(x) {
+  if(sum(row.names(rna_dat) %in% ref[[x]]$gene_name)>1){
+    colSums(rna_dat[row.names(rna_dat) %in% ref[[x]]$gene_name,], na.rm=T)
+  } else {
+    rna_dat[row.names(rna_dat) %in% ref[[x]]$gene_name,]
+  }},mc.cores=200))
+
+rna_dat_win<-as.data.frame(rna_dat_win)
+row.names(rna_dat_win)<-row.names(obj@genomeMatrices$cg_win_score)[as.numeric(names(ref))]
+saveRDS(rna_dat_win,file=paste0(project_data_directory,"/integration/","scaledcis.gene_rna.mat.rds"))
+
+rna_dat_win<-readRDS(file=paste0(project_data_directory,"/integration/","scaledcis.gene_rna.mat.rds"))
+
+rna$celltype<-rna$fine_celltype
+rna$coarse_cluster_id <- "NA"
+rna$mcg_pct <- "NA"
+
+#use the same variable features from the methylation dims
+rna[["win_features"]]<-CreateAssayObject(counts = rna_dat_win)
+DefaultAssay(rna)<-"win_features"
+rna <- NormalizeData(rna, normalization.method = "LogNormalize", scale.factor = 10000)
+rna <- FindVariableFeatures(rna, selection.method = "vst", nfeatures = 10000)
+rna <- ScaleData(rna)
+na <- RunPCA(rna, features = VariableFeatures(object = rna))
+rna <- RunUMAP(rna, dims = 1:12)
+plt1<-DimPlot(rna, reduction = "umap",group.by="celltype")
+ggsave(plt1,file=paste0(project_data_directory,"/integration/","rna_only_winfeatures_umap.pdf"))
+#PCA to umap on MET, matching scalemet_dcis/processing/milestonev1_01.2_amethyst_fine_celltyping.md of all cells
+
+#PCA to umap on RNA
+#CCA on PCA?
+
+
+#create shared metadata, add coarse_cluster_id to meta
+meta<-rbind(obj@metadata[c("sample","celltype","coarse_cluster_id","mcg_pct")],rna@meta.data[c("sample","celltype","coarse_cluster_id","mcg_pct")])
+
+#make liger object
+met_dat <- Matrix(as.matrix(obj@genomeMatrices$cg_win_score))
+met_dat[which(is.na(met_dat),arr.ind=T)]<-0
+rna_dat_win <- Matrix(as.matrix(rna_dat_win))
+
+met.liger <- createLiger(rawData=list(met=met_dat,rna=rna_dat_win), 
+                        modal=c("meth","rna"),cellMeta=meta,
+                        removeMissing=FALSE)
+
+#now follow liger for integration
+rna.met <- met.liger %>% 
+            rliger::normalize() %>%
+            rliger::selectGenes(useDatasets = "rna") %>%
+            rliger::scaleNotCenter()
+
+rna.met <- rliger::runIntegration(rna.met, k = 20)
+rna.met <- rliger::quantileNorm(rna.met)
+rna.met <- runCluster(rna.met)
+rna.met <- runUMAP(rna.met)
+
+plt1<-plotDatasetDimRed(rna.met,splitBy="dataset")
+ggsave(wrap_plots(plt1),file=paste0(project_data_directory,"/integration/","scaledcis.met_rna.","dataset",".integrated.umap.pdf"),width=20,height=10)
+
+plt2<-plotClusterDimRed(rna.met,splitBy="dataset","celltype")
+ggsave(wrap_plots(plt2),file=paste0(project_data_directory,"/integration/","scaledcis.met_rna.","celltype",".integrated.umap.pdf"),width=20,height=10)
+
+plt3<-plotClusterDimRed(rna.met,splitBy="dataset","sample")
+ggsave(wrap_plots(plt3),file=paste0(project_data_directory,"/integration/","scaledcis.met_rna.","sample",".integrated.umap.pdf"),width=20,height=10)
+
+plt4<-plotClusterDimRed(rna.met,splitBy="dataset","coarse_cluster_id")
+ggsave(wrap_plots(plt4),file=paste0(project_data_directory,"R/integration/","scaledcis.met_rna.","coarse_cluster_id",".integrated.umap.pdf"),width=20,height=10)
+
+plt5<-plotClusterDimRed(rna.met,slot="cellMeta","mcg_pct")
+ggsave(wrap_plots(plt5),file=paste0(project_data_directory,"/integration/","scaledcis.met_rna.","mcg",".integrated.umap.pdf"),width=20,height=10)
+saveRDS(rna.met,file=paste0(project_data_directory,"/integration/","scaledcis.met_rna.integrated.liger.rds"))
+
+rna.met<-readRDS(file=paste0(project_data_directory,"/integration/","scaledcis.met_rna.integrated.liger.rds"))
+
+
+# rna_markers<-FindAllMarkers(rna_dat,assay="RNA",only.pos=TRUE)
+# saveRDS(rna_markers,file=paste0(project_data_directory,"/integration/","rna_markers.rds"))
+# rna_markers<-readRDS(file=paste0(project_data_directory,"/integration/","rna_markers.rds"))
+
+# #filter to overexpressed markers
+# rna_markers_filt<-rna_markers %>% group_by(cluster) %>% filter(avg_log2FC > 1) %>% filter(p_val_adj <0.01) %>% as.data.frame()
+# rna_markers_filt<-rna_markers_filt[!duplicated(rna_markers_filt$gene),]
+# saveRDS(rna_markers,file=paste0(project_data_directory,"/integration/","rna_markers.filt.rds"))
+
+# rna_markers_filt<-readRDS(file=paste0(project_data_directory,"/integration/","rna_markers.filt.rds"))
 
 #reset ref on obj to transcription start sites as gene_id, this is to use the makewindows promoter option without so much fuss
 #so filter by gene names, transfer gene names to new metadata column, set transcript (gene or full length) as genes
 #remove duplicate transcripts
 #makewindows around promoters, and then summarize windows
-
-obj@ref<-obj@ref[obj@ref$gene_name %in% c(rna_markers_filt$gene),] #filter by gene names
-obj@ref<-obj@ref[obj@ref$transcript_type %in% c("protein_coding","transcript","lncRNA"),] #filter by transcript type
-obj@ref<-obj@ref[!duplicated(paste(obj@ref$chr,obj@ref$start)),]
-obj@ref<-obj@ref[!duplicated(obj@ref$transcript_id),]
-
+#obj@ref<-obj@ref[obj@ref$gene_name %in% c(rna_markers_filt$gene),] #filter by gene names
+#obj@ref<-obj@ref[obj@ref$transcript_type %in% c("protein_coding","transcript","lncRNA"),] #filter by transcript type
+#obj@ref<-obj@ref[!duplicated(paste(obj@ref$chr,obj@ref$start)),]
+#obj@ref<-obj@ref[!duplicated(obj@ref$transcript_id),]
 #mean of 4.3 TSS per gene
+#obj@ref$gene_name_original<-obj@ref$gene_name
+#obj@ref$gene_name<-obj@ref$transcript_id
+#obj@ref$type<-"gene"
+#obj@ref$gene<-obj@ref$gene_name
 
-obj@ref$gene_name_original<-obj@ref$gene_name
-obj@ref$gene_name<-obj@ref$transcript_id
-obj@ref$type<-"gene"
-obj@ref$gene<-obj@ref$gene_name
-
-window_name="TSS_RNA"
-obj@genomeMatrices[[window_name]] <- makeWindows(obj, 
-                                                     genes = obj@ref$gene_name,
-                                                     promoter=TRUE,
-                                                     type = "CG", 
-                                                     metric = "score", 
-                                                     threads = 100, 
-                                                     index = "chr_cg", 
-                                                     nmin = 1) 
-
-saveRDS(obj@genomeMatrices[[window_name]],file=paste0(project_data_directory,"/integration/","met_markers.TSS.rds"))
+#window_name="TSS_RNA"
+#obj@genomeMatrices[[window_name]] <- makeWindows(obj, 
+#                                                     genes = obj@ref$gene_name,
+#                                                     promoter=TRUE,
+#                                                     type = "CG", 
+#                                                     metric = "percent", #it doesnt report score for promoters for some reason?
+#                                                     threads = 100, 
+#                                                     index = "chr_cg", 
+#                                                     nmin = 1) 
+#saveRDS(obj@genomeMatrices[[window_name]],file=paste0(project_data_directory,"/integration/","met_markers.TSS.rds"))
 
 #ADD CGI FILTER?
 #filter regions that overlap with CGI (univerally hypomethylated)
@@ -112,45 +208,45 @@ saveRDS(obj@genomeMatrices[[window_name]],file=paste0(project_data_directory,"/i
 #cgi<-GRanges(cgi)
 #gtf<-subsetByOverlap(gtf,cgi,invert=TRUE)
 
+# met_win<-data.table(obj@genomeMatrices[[window_name]])
+# met_win$gene<-obj@ref[obj@ref$gene %in% row.names(obj@genomeMatrices[[window_name]]),]$gene_name_original
 
-met_win<-data.table(obj@genomeMatrices[[window_name]])
-met_win$gene<-obj@ref[obj@ref$gene %in% row.names(obj@genomeMatrices[[window_name]]),]$gene_name_original
-
-
-#calculate variance per row (transcript)
-met_win_var<-met_win %>%
-  mutate(row = row_number()) %>%
-  select(-gene) %>% 
-  tidyr::pivot_longer(-row) %>%
-  group_by(row) %>%
-  summarize(var = var(value,na.rm=T)) %>%
-  bind_cols(met_win, .) 
+# #calculate variance per row (transcript)
+# met_win_var<-met_win %>%
+#   mutate(row = row_number()) %>%
+#   select(-gene) %>% 
+#   tidyr::pivot_longer(-row) %>%
+#   group_by(row) %>%
+#   summarize(var = var(value,na.rm=T)) %>%
+#   bind_cols(met_win, .) 
   
-#select top variance per gene, allowing for ties and making the mean value per cell for ties
-met_win_var <- met_win_var %>% 
-              filter(rowSums(!is.na(.))>as.integer(ncol(.)/100)) %>% 
-              group_by(gene) %>% 
-              dplyr::slice_max(order_by=var,n=1,na_rm=TRUE,with_ties=TRUE) %>% 
-              select(-var) %>% select(-row) %>% summarise(across(where(is.numeric), mean, na.rm = TRUE)) %>%
-              ungroup() %>% as.data.frame()
+# #select top variance per gene, allowing for ties and making the mean value per cell for ties
+# met_win_var <- met_win_var %>% 
+#               filter(rowSums(!is.na(.))>as.integer(ncol(.)/100)) %>% 
+#               group_by(gene) %>% 
+#               dplyr::slice_max(order_by=var,n=1,na_rm=TRUE,with_ties=TRUE) %>% 
+#               select(-var) %>% select(-row) %>% summarise(across(where(is.numeric), mean, na.rm = TRUE)) %>%
+#               ungroup() %>% as.data.frame()
 
-row.names(met_win_var)<-met_win_var$gene
-met_win_var <- met_win_var %>% select(-gene)
-saveRDS(met_win_var,file=paste0(project_data_directory,"/integration/","met_markers.TSS_to_gene.rds"))
+# row.names(met_win_var)<-met_win_var$gene
+# met_win_var <- met_win_var %>% select(-gene)
+# saveRDS(met_win_var,file=paste0(project_data_directory,"/integration/","met_markers.TSS_to_gene.rds"))
 
-length(which(rowSums(is.na(met_win))>(0.01*ncol(met_win))))
-#filter by coverage #impute missing values
+# #impute missing values (using mean value ) (i can also do this row-wise too, which might help)
+# impute_val<-mean(unlist(met_win_var),na.rm=T)
+# met_win_var[which(is.na(met_win_var),arr.ind=TRUE)]<-impute_val
+# met_dat<-Matrix(as.matrix(met_win_var))
 
 #get raw RNA values on filtered methylation genes
-rna_dat<-LayerData(rna_dat,features=row.names(met_win),assay="RNA",layer="counts")
+rna_dat<-LayerData(rna_dat,features=row.names(met_win_var),assay="RNA",layer="counts")
 saveRDS(rna_dat,file=paste0(project_data_directory,"/integration/","scaledcis.gene_rna.mat.rds"))
 
-rna$broad_celltype<-rna$fine_celltype
+rna$celltype<-rna$fine_celltype
 rna$coarse_cluster_id <- "NA"
 rna$mcg_pct <- "NA"
 
 #create shared metadata, add coarse_cluster_id to meta
-meta<-rbind(obj@metadata[c("sample","celltype","coarse_cluster_id","mcg_pct")],rna@meta.data[c("sample","broad_celltype","coarse_cluster_id","mcg_pct")])
+meta<-rbind(obj@metadata[c("sample","celltype","coarse_cluster_id","mcg_pct")],rna@meta.data[c("sample","celltype","coarse_cluster_id","mcg_pct")])
 
 #make liger object
 met.liger <- createLiger(rawData=list(met=met_dat,rna=rna_dat), 
@@ -171,7 +267,7 @@ rna.met <- runUMAP(rna.met)
 plt1<-plotDatasetDimRed(rna.met,splitBy="dataset")
 ggsave(wrap_plots(plt1),file=paste0(project_data_directory,"/integration/","scaledcis.met_rna.","dataset",".integrated.umap.pdf"),width=20,height=10)
 
-plt2<-plotClusterDimRed(rna.met,splitBy="dataset","broad_celltype")
+plt2<-plotClusterDimRed(rna.met,splitBy="dataset","celltype")
 ggsave(wrap_plots(plt2),file=paste0(project_data_directory,"/integration/","scaledcis.met_rna.","celltype",".integrated.umap.pdf"),width=20,height=10)
 
 plt3<-plotClusterDimRed(rna.met,splitBy="dataset","sample")
