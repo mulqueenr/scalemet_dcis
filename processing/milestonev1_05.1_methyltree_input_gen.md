@@ -148,20 +148,22 @@ methyltree_output(obj=obj,sample_name=c('ECIS25T'),threads=1)
 methyltree_output(obj=obj,sample_name=c('ECIS36T'),threads=1)
 methyltree_output(obj=obj,sample_name=c('BCMHBCA85L-3h'),threads=1)
 methyltree_output(obj=obj,sample_name=c('BCMHBCA38L-3h'),threads=1)
-
+methyltree_output(obj=obj,sample_name=c('BCMHBCA29L-2h'),threads=1)
+methyltree_output(obj=obj,sample_name=c('BCMHBCA83L-3h'),threads=1) 
+methyltree_output(obj=obj,sample_name=c('ECIS26T'),threads=1)
 #done
 
 
+#running
+
+methyltree_output(obj=obj,sample_name=c('ECIS57T'),threads=1)
+
+#todo
+methyltree_output(obj=obj,sample_name=c('ECIS48T'),threads=1) #crashed
 methyltree_output(obj=obj,sample_name=c('BCMDCIS35T'),threads=1)  #to rerun (crashed on it)
 methyltree_output(obj=obj,sample_name=c('BCMDCIS66T'),threads=1) #to rerun
 methyltree_output(obj=obj,sample_name=c('BCMHBCA26L-24hTis-4h'),threads=1) #to rerun
 
 
-#todo
-methyltree_output(obj=obj,sample_name=c('BCMHBCA29L-2h'),threads=1)
-methyltree_output(obj=obj,sample_name=c('BCMHBCA83L-3h'),threads=1) 
-methyltree_output(obj=obj,sample_name=c('ECIS26T'),threads=1)
-methyltree_output(obj=obj,sample_name=c('ECIS48T'),threads=1)
-methyltree_output(obj=obj,sample_name=c('ECIS57T'),threads=1)
 ```
 

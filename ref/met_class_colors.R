@@ -1,6 +1,7 @@
+"hypermet"="#333333",
+"midmet"="#666666",
+"lowmet"="#CCCCCC",
 
-#set colors
-celltype_col=c(
 "perivascular"="#FF9900",
 "fibroblast"="#FF0000",
 "endothelial"="#FFFF66",
@@ -16,4 +17,5 @@ celltype_col=c(
 "basal"="#990099",
 "lumsec"="#CC0066",
 "lumhr"="#FF00CC",
-"cancer"="#00FF99")
+"cancer"="#00FF99"
+

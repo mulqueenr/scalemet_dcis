@@ -1,25 +1,23 @@
-#```bash
-#singularity shell --bind /data/rmulqueen/projects/scalebio_dcis ~/singularity/amethyst.sif
-#source activate
-#update data.table
-#```
+Running differential methylation across cell types (one v all strategy)
 
-# To Do: Also try applying Bartlett's test for differential variability instead of just diff mean
-see DNA methylation outliers in normal breast tissue  identify field defects that are enriched in cancer 2015
+Running DMR comparisons across different sets.
 
-# Applying bartlett.test()
-result = bartlett.test(len ~ interaction(supp, dose)
-, 
-                                  data = ToothGrowth)
+Celltype comparisons
+1. Cell type vs rest (all cells)
+2. Cell type vs rest (HBCA only)
+
+Clonal comparisons
+4. Clone vs lumhr (per clone, for clones > 30 cells)
+5. Cancer vs lumhr (per sample, sum of clones > 30 cells)
+
+Group comparisons
+6. Endothelial (HBCA) vs TEC (dcis, synch, idc)
+7. Fibroblast (HBCA) vs CAF (dcis, synch, idc)
+8. Macrophage (HBCA) vs TAM (dcis, synch, idc)
+
+
 
 ```R
-#install.packages("data.table")
-#ensure 0.9 version of amethyst
-#system('wget https://github.com/lrylaarsdam/amethyst/releases/download/v0.0.0.9000/amethyst_0.0.0.9000.tar.gz')
-#system('tar -xf amethyst_0.0.0.9000.tar.gz')
-#devtools::install("./amethyst")
-#source("/data/rmulqueen/projects/scalebio_dcis/tools/scalemet_dcis/src/amethyst_custom_functions.R") #to load in
-#running locally
 
 set.seed(111)
 library(amethyst)
@@ -39,25 +37,27 @@ project_data_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_miles
 merged_dat_folder="merged_data"
 wd=paste(sep="/",project_data_directory,merged_dat_folder)
 setwd(wd)
-obj<-readRDS(file="07_scaledcis.cnv_clones.amethyst.rds")
-```
+system(paste0("mkdir -p ",project_data_directory,"/DMR_analysis"))
 
-Running through all the 500bp window generation split by:
-- Celltype (fine_celltype)
-- CNV based clones (cnv_clonenames)
-- CNV based clones against all lumhr (cnv_clonename_alllumhr)
-- Celltype + Diagnosis (Group + fine_celltype)
+#set colors
+celltype_col=c(
+"perivascular"="#FF9900",
+"fibroblast"="#FF0000",
+"endothelial"="#FFFF66",
+"unknown"="#FF6699",
 
-Saving to folders for further processing.
-For CNV based clones:
-1. loop through cnv based clones samples to do DMR per sample per clone.
-2. group together clones that have shared features (e.g. 1q amp) and compare to others
-3. Plot DMR regions across genome per clone (see if clustered around major CNV changes or in trans)
+"monocyte"="#99FFFF",
+"macrophage"="#0066FF",
+"macro"="#0066FF",
+"bcell"="#0099CC",
+"tcell_treg"="#006666",
+"tcell_cd4"="#009966",
+"tcell_cd8"="#66FF00",
 
-For celltype by diagnosis
-1. DMRs for TME cells per diagnosis (especially SYNCH vs non-SYNCH DCIS, and normal vs DCIS)
-
-```R
+"basal"="#990099",
+"lumsec"="#CC0066",
+"lumhr"="#FF00CC",
+"cancer"="#00FF99")
 
 ##################FUNCTIONS##################
 
@@ -147,14 +147,52 @@ testDMR <- function(sumMatrix, eachVsAll = TRUE, comparisons = NULL, nminTotal =
   return(counts)
 }
 
-#gsea of top DMR genes
-gsea_enrichment_againstlumhr<-function(dmrs,species="human",
+find_cluster_markers<-function(dat,celltype500bp_windows,comp,prefix){
+  #comparisons: If eachVsAll is not desired, provide a data frame
+   #       describing which tests to run. The data.frame should have
+   #       three columns with rows describing conditions of each test.
+   #       "name" determines the name of the test in the output; "A"
+   #       lists group members, and "B" lists group nonmembers.
+
+  pct_mat<-celltype500bpwindows[["pct_matrix"]] 
+  sum_mat<-celltype500bpwindows[["sum_matrix"]] 
+
+  #i dont like how it doesnt keep name in tact, running per row
+  dmrs<-testDMR(sum_mat, # Sum of c and t observations in each genomic window per group
+                        comparisons = comp, # If TRUE, each group found in the sumMatrix will be tested against all others
+                        nminTotal = 3, # Min number observations across all groups to include the region in calculations
+                        nminGroup = 3) # Min number observations across either members or nonmembers to include the region
+  saveRDS(dmrs,file=paste0(prefix,".unfiltered.500bp.dmrs.rds"))
+
+  dmrs <- filterDMR(dmrs, 
+              method = "bonferroni", # c("holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "fdr")
+              filter = FALSE, # If TRUE, removes insignificant results
+              pThreshold = 0.05, # Maxmimum adjusted p value to allow if filter = TRUE
+              logThreshold = 1) # Minimum absolute value of the log2FC to allow if filter = TRUE
+  test_name<-setNames(nm=row.names(comp),1:nrow(comp))
+  dmrs$test<-names(test_name[dmrs$test])
+  saveRDS(dmrs,file=paste0(prefix,".filtered.500bp.dmrs.rds"))
+
+  collapsed_dmrs <- collapseDMR(dat, 
+                        dmrs, 
+                          maxDist = 1000, # Max allowable overlap between DMRs to be considered adjacent
+                          minLength = 500, # Min length of collapsed DMR window to include in the output
+                          reduce = T, # Reduce results to unique observations (recommended)
+                          annotate = T) # Add column with overlapping gene names
+  saveRDS(collapsed_dmrs,file=paste0(prefix,".collapsed.dmrs.rds"))
+  return(collapsed_dmrs)
+}
+
+#gsea of top DMR genes (hypomet)
+gsea_enrichment<-function(dmrs,species="human",
                           category="C3",
                           subcategory="TFT:GTRD",
-                          out_setname="TFT",sample_name=sample_name,
-                          outdir=outdir,
-                          obj=obj){
+                          out_setname="TFT",
+                          prefix=prefix,
+                          obj=obj,
+                          sample_name=sample_name){
 
+  print(paste("Calculating DMR overlap with:",out_setname))
   pathwaysDF <- msigdbr(species=species, 
                         collection=category, 
                         subcollection = subcategory)
@@ -166,25 +204,141 @@ gsea_enrichment_againstlumhr<-function(dmrs,species="human",
 
   #run plotting per group order by logFC (higher logFC is hyper, lower logFC is hypo)
 
-  plt_list<-lapply(unique(dmrs$type),function(group1){
+  fgsea_list<-lapply(unique(dmrs$test),function(group1){
+    print(paste("Running:",group1,"..."))
     #treat multiple gene overlaps as same logFC
     #set -Inf to -3 and Inf to 3
     group_features<-dmrs %>%
-      dplyr::filter(type == group1) %>%
+      dplyr::filter(test == group1) %>%
       dplyr::filter(dmr_padj<0.05) %>% 
       dplyr::filter(gene_names!="NA") %>% 
       dplyr::arrange(dmr_logFC) %>%
       dplyr::select(gene_names, dmr_logFC) %>%
       tidyr::separate_rows(gene_names) %>%
       dplyr::mutate(across(where(is.numeric), ~ replace(., .==-Inf, -3))) %>%
-      dplyr::mutate(across(where(is.numeric), ~ replace(., .==Inf, 3)))
+      dplyr::mutate(across(where(is.numeric), ~ replace(., .==Inf, 3))) %>% 
+      group_by(gene_names) %>%
+      slice_min(order_by=dmr_logFC,n = 1) %>%
+      ungroup()
 
   ranks<-setNames(nm=group_features$gene_names,group_features$dmr_logFC)
   fgseaRes <- fgsea(pathways = pathways, 
                     stats    = ranks,
                     minSize  = 5,
                     nproc = 1)
-  saveRDS(fgseaRes,file=paste0(outdir,"/",paste0(sample_name,".",out_setname,".GSEA_enrichment.clone_lumhrall.rds")))
+
+  fgseaRes$test <- group1
+  return(fgseaRes)
+
+  })
+  fgseaRes<-do.call("rbind",fgsea_list)
+  fgseaRes$set_name <- out_setname
+  saveRDS(fgseaRes,file=paste0(prefix,".GSEA_enrichment.",sample_name,".",out_setname,".rds"))
+}
+
+gsea_across_sets<-function(obj, 
+                    collapsed_dmrs,
+                    sample_name, 
+                    prefix){
+  print(paste("Loading DMRS for sample:",sample_name))
+
+  #run gsea enrichment on different sets
+  print(paste("Calculating TF Binding Enrichment"))
+  tft_gsea<-gsea_enrichment(species="human",
+                          category="C3",
+                          subcategory="TFT:GTRD",
+                          out_setname="TFT",
+                          prefix=prefix,
+                          sample_name=sample_name,
+                          dmrs=collapsed_dmrs,obj=obj)
+
+
+  print(paste("Calculating Position Enrichment"))
+  position_gsea<-gsea_enrichment(species="human",
+              category="C1",
+              subcategory=NULL,
+              out_setname="position",
+              prefix=prefix,
+              sample_name=sample_name,
+              dmrs=collapsed_dmrs,obj=obj)
+
+  print(paste("Calculating Hallmark Enrichment"))
+  hallmark_gsea<-gsea_enrichment(species="human",
+              category="H",
+              subcategory=NULL,
+              out_setname="hallmark",              
+              prefix=prefix,
+              sample_name=sample_name,
+              dmrs=collapsed_dmrs,obj=obj)
+
+  print(paste("Calculating Cancer Cell Atlas Enrichment"))
+  cancercellatlas_gsea<-gsea_enrichment(species="human",
+              category="C4",
+              subcategory="3CA",
+              out_setname="3CA",
+              prefix=prefix,
+              sample_name=sample_name,
+              dmrs=collapsed_dmrs,obj=obj)
+
+  print(paste("Finished sample:",sample_name))
+
+}
+
+
+```
+
+
+1. DMR characterization per cell type for all cells
+
+```R
+project_data_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1"
+dmr_output_dir<-paste0(project_data_directory,"/DMR_analysis/","/DMR_celltype")
+system(paste0("mkdir -p ",dmr_output_dir))
+
+prefix=paste0(dmr_output_dir,"/","08_scaledcis.final_celltype.onevrest.celltype")
+
+dat<-readRDS(file="08_scaledcis.final_celltype.amethyst.rds") #just saving because of the macrophage name correction
+celltype500bpwindows<-readRDS(file="08_scaledcis.final_celltype.500bp_windows.rds") #pre-generated during fine cell typing
+
+comparisons_set=colnames(celltype500bpwindows[["pct_matrix"]])[4:ncol(celltype500bpwindows[["pct_matrix"]])]
+
+#compare each celltype to all other cell types
+comp<-lapply(comparisons_set,function(i){
+  comparison_A=i
+  comparison_B=comparisons_set[!(comparisons_set==i)]
+  comparison_name=paste0(i)
+  comp<-cbind("name"=comparison_name,
+            "A"=i,
+            "B"=paste(comparison_B,collapse=","))
+  return(comp)}
+)
+comp<-as.data.frame(do.call("rbind",comp))
+row.names(comp)<-comp$name
+
+# Fine DMRs across comparisons
+find_cluster_markers(dat=dat,
+                  prefix=prefix,
+                  celltype500bp_windows=celltype500bp_windows,
+                  comp=comp)
+
+#Analyze DMRs
+collapsed_dmrs <- readRDS(file=paste0(prefix,".collapsed.dmrs.rds"))
+
+#plot dmr counts per test
+plt<-ggplot(collapsed_dmrs |> dplyr::group_by(test, direction) |> dplyr::summarise(n = n()), 
+    aes(y = test, x = n, fill = test)) + 
+    geom_col() + 
+    facet_grid(vars(direction), scales = "free_y") + 
+    scale_fill_manual(values = celltype_col) + 
+    theme_classic() +  theme(legend.position = "none")
+ggsave(plt,file=paste0(prefix,".collapsed.barplot.pdf"))
+
+#gsea for dmr uses rank with hypomet down and hypermet up
+gsea_across_sets(obj=dat, 
+                  collapsed_dmrs=collapsed_dmrs,
+                  sample_name="allcells", 
+                  prefix=prefix)
+
 
   topPathwaysUp <- fgseaRes %>% filter(ES > 0) %>% slice_max(NES,n=10) %>% dplyr::select(pathway)
   topPathwaysDown <- fgseaRes %>% filter(ES < 0) %>% slice_max(abs(NES),n=10) %>% dplyr::select(pathway)
@@ -205,175 +359,308 @@ gsea_enrichment_againstlumhr<-function(dmrs,species="human",
     labs(x="Pathway", y="Normalized Enrichment Score \n Compared to normal LumHR \n (Hyper<->Hypo)",
         title="Hallmark pathways NES from GSEA") + 
     theme_minimal()+scale_fill_identity()+ggtitle(paste(group1,out_setname))+ylim(c(5,-5))
-  return(plt2)
-  })
 
-  patchwork::wrap_plots(plt_list,ncol=1)
+ plt<-patchwork::wrap_plots(tft_plt,ncol=4,axes="collect")
 
-}
+  ggsave(tft_plt,
+          file=paste0(prefix,".","GSEA_enrichment",sample_name,".dotplot.pdf"),
+          width=40,height=length(unique(collapsed_dmrs$type))*5,limitsize = FALSE)
 
-plot_gsea<-function(obj, collapsed_dmrs,
-                    sample_name,
-                    outdir){
-  print(paste("Loading DMRS for sample:",sample_name))
-
-  #run gsea enrichment on different sets
-  print(paste("Calculating TF Binding Enrichment Compared to LumHR"))
-  tft_plt<-gsea_enrichment_againstlumhr(species="human",
-              category="C3",
-              subcategory="TFT:GTRD",
-              out_setname="TFT",sample_name=sample_name,
-              dmrs=collapsed_dmrs,obj=obj,outdir=outdir)
-
-  print(paste("Calculating Position Enrichment Compared to LumHR"))
-  position_plt<-gsea_enrichment_againstlumhr(species="human",
-              category="C1",
-              subcategory=NULL,
-              out_setname="position",sample_name=sample_name,
-              dmrs=collapsed_dmrs,obj=obj,outdir=outdir)
-
-  print(paste("Calculating Hallmark Enrichment Compared to LumHR"))
-  hallmark_plt<-gsea_enrichment_againstlumhr(species="human",
-              category="H",
-              subcategory=NULL,
-              out_setname="hallmark",sample_name=sample_name,
-              dmrs=collapsed_dmrs,obj=obj,outdir=outdir)
-
-  print(paste("Calculating Cancer Cell Atlas Enrichment Compared to LumHR"))
-  cancercellatlas_plt<-gsea_enrichment_againstlumhr(species="human",
-              category="C4",
-              subcategory="3CA",
-              out_setname="3CA",sample_name=sample_name,
-              dmrs=collapsed_dmrs,obj=obj,outdir=outdir)
   plt<-patchwork::wrap_plots(list((tft_plt),(position_plt),(hallmark_plt),(cancercellatlas_plt)),ncol=4,axes="collect")
 
   ggsave(plt,
-          file=paste0(sample_name,".clones_lumhrall.GSEA_enrichment.pdf"),
-          path=outdir,
+          file=paste0(prefix,".","GSEA_enrichment",sample_name,".dotplot.pdf"),
           width=40,height=length(unique(collapsed_dmrs$type))*5,limitsize = FALSE)
-  print(paste("Finished sample:",sample_name))
-}
 
-dmr_celltype_by_all<-function(obj){
-    #read 500bp windows
-    celltype500bpwindows<-readRDS(paste0(dmr_celltype_outdir,"/","dmr_analysis.celltype.500bp_windows.rds"))
-    
-    pct_mat<-celltype500bpwindows[["pct_matrix"]] 
-    sum_mat<-celltype500bpwindows[["sum_matrix"]] 
-
-    #save clone object for future genome track plotting
-    obj@genomeMatrices[["cg_celltype_tracks"]] <- pct_mat #load it into amethyst object for plotting
-
-    dmrs <- testDMR(sum_mat, # Sum of c and t observations in each genomic window per group
-            eachVsAll = TRUE, # If TRUE, each group found in the sumMatrix will be tested against all others
-            nminTotal = 3, # Min number observations across all groups to include the region in calculations
-            nminGroup = 3) # Min number observations across either members or nonmembers to include the region
-    saveRDS(dmrs,file=paste0(dmr_celltype_outdir,"/","celltype_allcells",".dmr.rds"))
-   
-    dmrs <- filterDMR(dmrs, 
-                method = "bonferroni", # c("holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "fdr")
-                filter = FALSE, # If TRUE, removes insignificant results
-                pThreshold = 0.05, # Maxmimum adjusted p value to allow if filter = TRUE
-                logThreshold = 1.5) # Minimum absolute value of the log2FC to allow if filter = TRUE
-    collapsed_dmrs <- collapseDMR(obj, 
-                            dmrs, 
-                            maxDist = 2000, # Max allowable overlap between DMRs to be considered adjacent
-                            minLength = 2000, # Min length of collapsed DMR window to include in the output
-                            reduce = T, # Reduce results to unique observations (recommended)
-                            annotate = T) # Add column with overlapping gene names
-    saveRDS(collapsed_dmrs,file=paste0(dmr_celltype_outdir,"/","celltype_allcells",".dmr_filt_collapse.rds"))
-
-    rename_dmr_output<-setNames(nm=1:length(unique(collapsed_dmrs$test)),gsub(colnames(sum_mat)[grepl(colnames(sum_mat),pattern="_t$")],pattern="_t",replacement=""))
-    collapsed_dmrs$type <- rename_dmr_output[collapsed_dmrs$test]
-    saveRDS(collapsed_dmrs,file=paste0(dmr_celltype_outdir,"/","celltype_allcells",".dmr_filt_collapse.rds"))
-    
-    #plot dmr counts per clone
-    pal <- colorRampPalette(colors = c("#F9AB60", "#E7576E", "#630661", "#B5DCA5"))
-    COLS <- pal(length(unique(collapsed_dmrs$type)))
-
-    plt<-ggplot(collapsed_dmrs |> dplyr::group_by(type, direction) |> dplyr::summarise(n = n()), 
-        aes(y = type, x = n, fill = type)) + 
-        geom_col() + 
-        facet_grid(vars(direction), scales = "free_y") + 
-        scale_fill_manual(values = COLS) + 
-        theme_classic()
-    ggsave(plt,file=paste0(dmr_celltype_outdir,"/","celltype_allcellsm",".dmr_counts.pdf"))
-}
+chromvar_on_dmr_sites<-function()
 
 ```
 
-Calculate met per 500bp window for celltype by diagnosis (can add back together if needed for DMR)
+2. HBCA only cells (to find cell type differences without confounding cancer signatures)
 
 ```R
-#############################################
-#Make 500bp windows once and slice for comparisons
-#############################################
-dmr_outdir=paste(sep="/",project_data_directory,"DMR_analysis")
-system(paste("mkdir -p", dmr_outdir))
+#set up directories
+project_data_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1"
+dmr_output_dir<-paste0(project_data_directory,"/DMR_analysis/","/DMR_celltype_HBCAonly")
+system(paste0("mkdir -p ",dmr_output_dir))
+prefix=paste0(dmr_output_dir,"/","08_scaledcis.final_celltype.onevrest.HBCAonly_celltype")
 
-#celltype by diagnosis
-dmr_celltype_by_diag_outdir=paste(sep="/",dmr_outdir,"celltype_by_diagnosis")
-system(paste("mkdir -p", dmr_celltype_by_diag_outdir))
-obj@metadata$celltype_diag<-paste(sep="_",obj@metadata$Group,obj@metadata$celltype)
-celltypediag500bpwindows <- calcSmoothedWindows(obj, 
+#read in files
+dat<-readRDS(file="08_scaledcis.final_celltype.amethyst.rds") #just saving because of the macrophage name correction
+celltype500bpwindows<-readRDS(file=paste0(project_data_directory,"/merged_data/","08_scaledcis.final_celltype_by_group.500bp_windows.rds")) #pre-generated during fine cell typing
+
+comparisons_set=colnames(celltype500bpwindows[["pct_matrix"]])[4:ncol(celltype500bpwindows[["pct_matrix"]])]
+comparisons_set<-comparisons_set[endsWith(comparisons_set,suffix=".HBCA")]
+comparisons_set<-comparisons_set[!(comparisons_set=="cancer.HBCA")]
+
+#compare each celltype to all other cell types
+comp<-lapply(comparisons_set,function(i){
+  comparison_A=i
+  comparison_B=comparisons_set[!(comparisons_set==i)]
+  comparison_name=paste0(i)
+  comp<-cbind("name"=comparison_name,
+            "A"=i,
+            "B"=paste(comparison_B,collapse=","))
+  return(comp)}
+)
+comp<-as.data.frame(do.call("rbind",comp))
+row.names(comp)<-gsub(comp$name,pattern=".HBCA",replace="") #replacing .hbca just for coloring ease
+
+collapsed_dmrs <- find_cluster_markers(dat=dat,
+                  prefix=prefix,
+                  celltype500bp_windows=celltype500bp_windows,
+                  comp=comp)
+
+#plot dmr counts per test
+plt<-ggplot(collapsed_dmrs |> dplyr::group_by(test, direction) |> dplyr::summarise(n = n()), 
+    aes(y = test, x = n, fill = test)) + 
+    geom_col() + 
+    facet_grid(vars(direction), scales = "free_y") + 
+    scale_fill_manual(values = celltype_col) + 
+    theme_classic() +  theme(legend.position = "none")
+
+ggsave(plt,file=paste0(prefix,".collapsed.barplot.pdf"))
+  
+```
+
+3. Clone vs LumHR comparisons (per clone)
+
+```R
+#set up directories
+project_data_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1"
+dmr_output_dir<-paste0(project_data_directory,"/DMR_analysis/","/DMR_clone_v_lumhr")
+system(paste0("mkdir -p ",dmr_output_dir))
+prefix=paste0(dmr_output_dir,"/","08_scaledcis.final_celltype.clone_v_lumhr")
+
+#read in files
+dat<-readRDS(file="08_scaledcis.final_celltype.amethyst.rds") #just saving because of the macrophage name correction
+
+lumhr_hbca_cells <- row.names(dat@metadata[dat@metadata$Group=="HBCA" & dat@metadata$celltype=="lumhr",])
+
+clones_passing_filter<-names(which(table(dat@metadata$cnv_clonename_500kb)>30))
+clones_passing_filter <- clones_passing_filter[!(endsWith(clones_passing_filter,suffix="_diploid"))]
+clones_passing_filter <- clones_passing_filter[clones_passing_filter!="NA"]
+
+clone_cells <- row.names(dat@metadata[dat@metadata$Group!="HBCA" & 
+                                                dat@metadata$celltype %in% c("lumhr","cancer") &
+                                                dat@metadata$cnv_clonename_500kb %in% clones_passing_filter,])
+
+dat<-subsetObject(dat,cells=c(lumhr_hbca_cells,clone_cells))
+dat@metadata[lumhr_hbca_cells,]$cnv_clonename_500kb<-"HBCA_lumhr"
+table(dat@metadata$cnv_clonename_500kb)
+
+celltype500bpwindows <- calcSmoothedWindows(dat, 
                                         type = "CG", 
-                                        threads = 100,
+                                        threads = 200,
                                         step = 500, 
                                         smooth = 3,
                                         genome = "hg38",
                                         index = "chr_cg",
-                                        groupBy = "celltype_diag",
-                                        returnSumMatrix = TRUE, 
+                                        groupBy = "cnv_clonename_500kb",
+                                        returnSumMatrix = TRUE, # save sum matrix for DMR analysis
                                         returnPctMatrix = TRUE)
-saveRDS(celltypediag500bpwindows,file=paste0(dmr_celltype_by_diag_outdir,"/","dmr_analysis.celltype_by_diag.500bp_windows.rds"))
+saveRDS(celltype500bpwindows,file=paste0(prefix,".500bp_windows.rds"))
+
+
+celltype500bpwindows<-readRDS(file=paste0(prefix,".500bp_windows.rds"))
+
+comparisons_set=colnames(celltype500bpwindows[["pct_matrix"]])[4:ncol(celltype500bpwindows[["pct_matrix"]])]
+
+#compare each celltype to HBCA_lumhr
+comp<-lapply(comparisons_set,function(i){
+  if(i!="HBCA_lumhr"){
+    comparison_A=i
+    comparison_B="HBCA_lumhr"
+    comparison_name=paste0(i)
+    comp<-cbind("name"=comparison_name,
+              "A"=i,
+              "B"=comparison_B)
+  return(comp)}}
+)
+comp<-as.data.frame(do.call("rbind",comp))
+row.names(comp)<-comp$name #replacing .hbca just for coloring ease
+
+collapsed_dmrs <- find_cluster_markers(dat=dat,
+                  prefix=prefix,
+                  celltype500bp_windows=celltype500bp_windows,
+                  comp=comp)
+                  #running
+
+
+#Analyze DMRs
+collapsed_dmrs <- readRDS(file=paste0(prefix,".collapsed.dmrs.rds"))
+
+#plot dmr counts per test
+plt<-ggplot(collapsed_dmrs |> dplyr::group_by(test, direction) |> dplyr::summarise(n = n()), 
+    aes(y = test, x = n, fill = test)) + 
+    geom_col() + 
+    facet_grid(vars(direction), scales = "free_y") + 
+    theme_classic() +  theme(legend.position = "none")
+ggsave(plt,file=paste0(prefix,".collapsed.barplot.pdf"))
+
+#gsea for dmr uses rank with hypomet down and hypermet up
+gsea_across_sets(obj=dat, 
+                  collapsed_dmrs=collapsed_dmrs,
+                  sample_name="clone_v_lumhr", 
+                  prefix=prefix)
+```
+
+
+3. Cancer vs LumHR comparisons (per sample)
+
+TO MODIFY AND RUN
+RUN BASED ON SAMPLE+PLOIDY
+
+Of 41 samples
+-13 HBCA
+-9 DCIS
+-6 SYNCH
+-12 IDC
+
+Samples with enough cells for cancer v lumhr (min 30 cancer cells by CNV)
+-5 DCIS
+-3 SYNCH
+-6 IDC
+
+```R
+#set up directories
+project_data_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1"
+dmr_output_dir<-paste0(project_data_directory,"/DMR_analysis/","/DMR_cancer_v_lumhr")
+system(paste0("mkdir -p ",dmr_output_dir))
+prefix=paste0(dmr_output_dir,"/","08_scaledcis.final_celltype.cancer_v_lumhr")
+
+#read in files
+dat<-readRDS(file="08_scaledcis.final_celltype.amethyst.rds") #just saving because of the macrophage name correction
+
+lumhr_hbca_cells <- row.names(dat@metadata[dat@metadata$Group=="HBCA" & dat@metadata$celltype=="lumhr",])
+
+dat@metadata$cnv_sampleploidy_500kb <- paste0(dat@metadata$Sample,"_",dat@metadata$ploidy)
+
+cancer_passing_filter <- names(which(table(dat@metadata$cnv_sampleploidy_500kb)>30))
+cancer_passing_filter <- cancer_passing_filter[!(endsWith(cancer_passing_filter,suffix="_diploid"))]
+cancer_passing_filter <- cancer_passing_filter[!(endsWith(cancer_passing_filter,suffix="NA"))]
+
+cancer_cells <- row.names(dat@metadata[dat@metadata$celltype %in% c("lumhr","cancer") &
+                                      dat@metadata$cnv_sampleploidy_500kb %in% cancer_passing_filter,])
+
+dat<-subsetObject(dat,cells=c(lumhr_hbca_cells,cancer_cells))
+dat@metadata[lumhr_hbca_cells,]$cnv_sampleploidy_500kb<-"HBCA_lumhr"
+
+celltype500bpwindows <- calcSmoothedWindows(dat, 
+                                        type = "CG", 
+                                        threads = 200,
+                                        step = 500, 
+                                        smooth = 3,
+                                        genome = "hg38",
+                                        index = "chr_cg",
+                                        groupBy = "cnv_sampleploidy_500kb",
+                                        returnSumMatrix = TRUE, # save sum matrix for DMR analysis
+                                        returnPctMatrix = TRUE)
+saveRDS(celltype500bpwindows,file=paste0(prefix,".500bp_windows.rds"))
+
+comparisons_set=colnames(celltype500bpwindows[["pct_matrix"]])[4:ncol(celltype500bpwindows[["pct_matrix"]])]
+
+#compare each celltype to HBCA_lumhr
+comp<-lapply(comparisons_set,function(i){
+  if(i!="HBCA_lumhr"){
+    comparison_A=i
+    comparison_B="HBCA_lumhr"
+    comparison_name=paste0(i)
+    comp<-cbind("name"=comparison_name,
+              "A"=i,
+              "B"=comparison_B)
+  return(comp)}}
+)
+comp<-as.data.frame(do.call("rbind",comp))
+row.names(comp)<-comp$name #replacing .hbca just for coloring ease
+
+collapsed_dmrs <- find_cluster_markers(dat=dat,
+                  prefix=prefix,
+                  celltype500bp_windows=celltype500bp_windows,
+                  comp=comp)
+                  #running
+
+#Analyze DMRs
+collapsed_dmrs <- readRDS(file=paste0(prefix,".collapsed.dmrs.rds"))
+
+#plot dmr counts per test
+plt<-ggplot(collapsed_dmrs |> dplyr::group_by(test, direction) |> dplyr::summarise(n = n()), 
+    aes(y = test, x = n, fill = test)) + 
+    geom_col() + 
+    facet_grid(vars(direction), scales = "free_y") + 
+    theme_classic() +  theme(legend.position = "none")
+ggsave(plt,file=paste0(prefix,".collapsed.barplot.pdf"))
+
+#gsea for dmr uses rank with hypomet down and hypermet up
+gsea_across_sets(obj=dat, 
+                  collapsed_dmrs=collapsed_dmrs,
+                  sample_name="cancer_v_lumhr", 
+                  prefix=prefix)
+
 
 ```
 
 
-# Run specific DMR comparisons
-
-"chr"                       "start"
- [3] "end"                       "HBCA_TEC"
- [5] "HBCA_basal"                "HBCA_tcell_cd8"
- [7] "DCIS_cancer"               "HBCA_lumsec"
- [9] "Synchronous_cancer"        "IDC_cancer"
-[11] "IDC_fibroblast"            "IDC_DC"
-[13] "IDC_endothelial"           "DCIS_tcell_cd8"
-[15] "HBCA_fibroblast"           "IDC_basal"
-[17] "HBCA_CAF"                  "HBCA_endothelial"
-[19] "DCIS_endothelial"          "DCIS_fibroblast"
-[21] "HBCA_pericyte_VSMC"        "IDC_tcell_cd4"
-[23] "HBCA_lumhr"                "DCIS_monocyte"
-[25] "IDC_lumhr"                 "DCIS_basal"
-[27] "Synchronous_fibroblast"    "HBCA_cancer"
-[29] "DCIS_lumsec"               "DCIS_TEC"
-[31] "Synchronous_lumhr"         "DCIS_CAF"
-[33] "IDC_CAF"                   "HBCA_nk_tnk"
-[35] "IDC_lumsec"                "DCIS_lumhr"
-[37] "DCIS_DC"                   "IDC_monocyte"
-[39] "HBCA_macrophage"           "IDC_bcell"
-[41] "IDC_tcell_cd8"             "Synchronous_lumsec"
-[43] "Synchronous_basal"         "IDC_nk_tnk"
-[45] "DCIS_tcell_cd8_2"          "IDC_TAM_2"
-[47] "DCIS_tcell_cd4"            "Synchronous_TEC"
-[49] "DCIS_bcell"                "HBCA_monocyte"
-[51] "HBCA_DC"                   "IDC_macrophage"
-[53] "DCIS_macrophage"           "Synchronous_tcell_cd8"
-[55] "HBCA_tcell_cd4"            "Synchronous_tcell_cd8_2"
-[57] "Synchronous_CAF"           "DCIS_pericyte_VSMC"
-[59] "Synchronous_TAM_2"         "DCIS_TAM"
-[61] "Synchronous_endothelial"   "Synchronous_bcell"
-[63] "IDC_TAM"                   "Synchronous_tcell_cd4"
-[65] "IDC_tcell_cd8_2"           "IDC_pericyte_VSMC"
-[67] "Synchronous_macrophage"    "HBCA_tcell_cd8_2"
-[69] "Synchronous_pericyte_VSMC" "HBCA_TAM"
-[71] "Synchronous_monocyte"      "Synchronous_TAM"
-[73] "HBCA_bcell"                "DCIS_nk_tnk"
-[75] "Synchronous_nk_tnk"        "DCIS_TAM_2"
-[77] "Synchronous_DC"            "IDC_TEC"
-[79] "HBCA_TAM_2"
 
 
+
+
+
+
+
+4-6. Group comparisons
+
+```R
+#set up directories
+project_data_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1"
+dmr_output_dir<-paste0(project_data_directory,"/DMR_analysis/","/DMR_celltype_HBCAonly")
+system(paste0("mkdir -p ",dmr_output_dir))
+prefix=paste0(dmr_output_dir,"/","08_scaledcis.final_celltype.onevrest.HBCAonly_celltype")
+
+#read in files
+dat<-readRDS(file="08_scaledcis.final_celltype.amethyst.rds") #just saving because of the macrophage name correction
+celltype500bpwindows<-readRDS(file=paste0(project_data_directory,"/merged_data/","08_scaledcis.final_celltype_by_group.500bp_windows.rds"))
+
+comparisons_set=colnames(celltype500bpwindows[["pct_matrix"]])[4:ncol(celltype500bpwindows[["pct_matrix"]])]
+comparisons_set<-comparisons_set[endsWith(comparisons_set,suffix=".HBCA")]
+comparisons_set<-comparisons_set[!(comparisons_set=="cancer.HBCA")]
+
+#compare each celltype to all other cell types
+comp<-lapply(comparisons_set,function(i){
+  comparison_A=i
+  comparison_B=comparisons_set[!(comparisons_set==i)]
+  comparison_name=paste0(i)
+  comp<-cbind("name"=comparison_name,
+            "A"=i,
+            "B"=paste(comparison_B,collapse=","))
+  return(comp)}
+)
+comp<-as.data.frame(do.call("rbind",comp))
+row.names(comp)<-gsub(comp$name,pattern=".HBCA",replace="") #replacing .hbca just for coloring ease
+
+collapsed_dmrs <- find_cluster_markers(dat=dat,
+                  prefix=prefix,
+                  celltype500bp_windows=celltype500bp_windows,
+                  comp=comp)
+
+#plot dmr counts per test
+plt<-ggplot(collapsed_dmrs |> dplyr::group_by(test, direction) |> dplyr::summarise(n = n()), 
+    aes(y = test, x = n, fill = test)) + 
+    geom_col() + 
+    facet_grid(vars(direction), scales = "free_y") + 
+    scale_fill_manual(values = celltype_col) + 
+    theme_classic() +  theme(legend.position = "none")
+ggsave(plt,file=paste0(prefix,".collapsed.barplot.pdf"))
+
+
+```
+
+
+
+
+
+
+<!--
 ```R
 
 celltypediag500bpwindows<-readRDS(file=paste0(dmr_celltype_by_diag_outdir,"/","dmr_analysis.celltype_by_diag.500bp_windows.rds"))
@@ -855,4 +1142,4 @@ lapply(clone_v_lumhr_analysis, function(sample_name){
 
 #coregulation by gsea https://bioconductor.org/packages/release/bioc/vignettes/fgsea/inst/doc/geseca-tutorial.html
 
-
+-->
