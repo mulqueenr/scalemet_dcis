@@ -607,8 +607,8 @@ assign_copykit_aneuploid_clonename(dat=dat,sample_name='BCMDCIS97T',cancer_clone
                                                                             'c4'='15',
                                                                             'c3'='9')) 
 assign_copykit_aneuploid_clonename(dat=dat,sample_name='BCMDCIS99T',cancer_clones=c('c1'='4')) 
-assign_copykit_aneuploid_clonename(dat=dat,sample_name='BCMHBCA03R',cancer_clones=c('c1'='6')) 
-assign_copykit_aneuploid_clonename(dat=dat,sample_name='BCMHBCA04R',split_on='subclones',cancer_clones=c('c1'='5','c2'='6','c2'='7')) 
+assign_copykit_aneuploid_clonename(dat=dat,sample_name='BCMHBCA03R',cancer_clones=c()) 
+assign_copykit_aneuploid_clonename(dat=dat,sample_name='BCMHBCA04R',split_on='subclones',cancer_clones=c()) 
 assign_copykit_aneuploid_clonename(dat=dat,sample_name='BCMHBCA09R-3h',cancer_clones=c()) 
 assign_copykit_aneuploid_clonename(dat=dat,sample_name='BCMHBCA12R-3h',cancer_clones=c()) 
 assign_copykit_aneuploid_clonename(dat=dat,sample_name='BCMHBCA16R-3h',cancer_clones=c()) 
@@ -679,8 +679,8 @@ assign_copykit_aneuploid_clonename(dat=dat,resolution=res,sample_name='BCMDCIS97
                                                                             'c4'='5',
                                                                             'c5'='3','c5'='13')) 
 assign_copykit_aneuploid_clonename(dat=dat,resolution=res,sample_name='BCMDCIS99T',cancer_clones=c('c1'='6')) 
-assign_copykit_aneuploid_clonename(dat=dat,resolution=res,sample_name='BCMHBCA03R',cancer_clones=c('c1'='9')) 
-assign_copykit_aneuploid_clonename(dat=dat,resolution=res,sample_name='BCMHBCA04R',cancer_clones=c('c1'='4','c2'='3')) 
+assign_copykit_aneuploid_clonename(dat=dat,resolution=res,sample_name='BCMHBCA03R',cancer_clones=c()) 
+assign_copykit_aneuploid_clonename(dat=dat,resolution=res,sample_name='BCMHBCA04R',cancer_clones=c()) 
 assign_copykit_aneuploid_clonename(dat=dat,resolution=res,sample_name='BCMHBCA09R-3h',cancer_clones=c()) 
 assign_copykit_aneuploid_clonename(dat=dat,resolution=res,sample_name='BCMHBCA12R-3h',cancer_clones=c()) 
 assign_copykit_aneuploid_clonename(dat=dat,resolution=res,sample_name='BCMHBCA16R-3h',cancer_clones=c()) 

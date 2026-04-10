@@ -169,7 +169,7 @@ find_cluster_markers<-function(dat,celltype500bp_windows,comp,prefix){
               filter = FALSE, # If TRUE, removes insignificant results
               pThreshold = 0.05, # Maxmimum adjusted p value to allow if filter = TRUE
               logThreshold = 1) # Minimum absolute value of the log2FC to allow if filter = TRUE
-  test_name<-setNames(nm=row.names(comp),1:nrow(comp))
+  test_name<-setNames(nm=as.data.frame(comp)$name,1:nrow(comp))
   dmrs$test<-names(test_name[dmrs$test])
   saveRDS(dmrs,file=paste0(prefix,".filtered.500bp.dmrs.rds"))
 
@@ -281,6 +281,79 @@ gsea_across_sets<-function(obj,
               dmrs=collapsed_dmrs,obj=obj)
 
   print(paste("Finished sample:",sample_name))
+}
+
+plot_gsea<-function(gsea=hallmark_dmr,out_setname="hallmark",prefix=prefix,dmr_hypo_count,dmr_hyper_count){
+  gsea_nes <- gsea %>% tidyr::pivot_wider(names_from=test, id_cols=pathway, values_from=NES)  %>% as.data.frame()
+  row.names(gsea_nes) <- gsea_nes$pathway
+  gsea_nes<-gsea_nes[,2:ncol(gsea_nes)]
+
+  gsea_pval <- gsea %>% tidyr::pivot_wider(names_from=test, id_cols=pathway, values_from=padj) %>% as.data.frame()
+  row.names(gsea_pval) <- gsea_pval$pathway
+  gsea_pval<-gsea_pval[,2:ncol(gsea_pval)]
+  feature_to_keep<- gsea_pval %>% filter(if_any(everything(), ~ .x < 0.05, na.rm=T)) %>% row.names() #filter hallmark to just columns with signficance
+  if(length(feature_to_keep)>1){
+
+  gsea_pval <- -log10(gsea_pval)
+  col_fun = circlize::colorRamp2(c(-5, 0, 5), c("#b84d9c","white","#2c50a3"))
+
+  gsea_pval<-gsea_pval[feature_to_keep,]
+  gsea_nes<-gsea_nes[feature_to_keep,]
+  gsea_nes[which(is.na(gsea_nes),arr.ind=T)]<-0
+
+  #cap pval size for visualization
+  max_size=quantile(unlist(gsea_pval),na.rm=T,probs=0.75)
+  gsea_pval[which(gsea_pval>max_size,arr.ind=T)]<-max_size
+
+  column_ha = HeatmapAnnotation(
+    hyper_n = anno_barplot(dmr_hyper_count[colnames(gsea_nes)],gp = gpar(fill="black",col="black")),
+    hypo_n = anno_barplot(dmr_hypo_count[colnames(gsea_nes)],gp = gpar(fill="#FF00FF",col="#FF00FF")))
+
+  if(out_setname=="position"){
+  #for plotting position in order
+  row.names(gsea_nes)<-gsub(row.names(gsea_nes),pattern="chr",replacement="")
+  row_order_chr<-unlist(lapply(strsplit(row.names(gsea_nes),split="p|q"),"[",1))
+  row_order_arm<-gsub("\\d", "", row.names(gsea_nes))
+  row_order_band<-unlist(lapply(strsplit(row.names(gsea_nes),split="p|q"),"[",2))
+  row_order<-data.frame(chr=row_order_chr,arm=row_order_arm,band=row_order_band)
+  row_order$chr<-factor(row_order$chr,c(1:22,"X"))
+  row_order$arm<-factor(row_order$arm,c("p","q","Xp","Xq"))
+  row.names(row_order)<-row.names(gsea_nes)
+  row_order<-row_order %>% arrange(chr,arm,band) 
+  gsea_nes<-gsea_nes[row.names(row_order),]
+
+  plt<-Heatmap(gsea_nes,
+      bottom_annotation=column_ha,
+      col = col_fun,rect_gp = gpar(type = "none"),
+      cell_fun = function(j, i, x, y, width, height, fill) {
+          #draw a rectangle at all sites
+          #grid.rect(x = x, y = y, width = width, height = height, gp = gpar(col = "grey", fill = NA))
+          if(!is.na(gsea_nes[i, j]) & !is.na(gsea_pval[i, j])){
+            #draw a circle sized by NES and colored by pval if significant
+            grid.circle(x = x, y = y, 
+                  r = (abs(gsea_pval[i, j])/max_size)/2 * min(unit.c(width, height)), 
+                  gp = gpar(fill = col_fun(gsea_nes[i, j]), col = NA))}},
+    row_order=1:nrow(gsea_nes),
+    cluster_rows=FALSE,cluster_columns=TRUE)
+  } else {
+  plt<-Heatmap(gsea_nes,
+      bottom_annotation=column_ha,
+      col = col_fun,rect_gp = gpar(type = "none"),
+      cell_fun = function(j, i, x, y, width, height, fill) {
+          #draw a rectangle at all sites
+          #grid.rect(x = x, y = y, width = width, height = height, gp = gpar(col = "grey", fill = NA))
+          if(!is.na(gsea_nes[i, j]) & !is.na(gsea_pval[i, j])){
+            #draw a circle sized by NES and colored by pval if significant
+            grid.circle(x = x, y = y, 
+                  r = (abs(gsea_pval[i, j])/max_size)/2 * min(unit.c(width, height)), 
+                  gp = gpar(fill = col_fun(gsea_nes[i, j]), col = NA))}},
+    cluster_rows=TRUE,cluster_columns=TRUE)
+  }
+
+  pdf(paste0(prefix,".",out_setname,".NES.heatmap.pdf"),width=10,height=10)
+  print(plt)
+  dev.off()
+    } else { print(paste("No significant findings in",out_setname))}
 
 }
 
@@ -340,39 +413,27 @@ gsea_across_sets(obj=dat,
                   prefix=prefix)
 
 
-  topPathwaysUp <- fgseaRes %>% filter(ES > 0) %>% slice_max(NES,n=10) %>% dplyr::select(pathway)
-  topPathwaysDown <- fgseaRes %>% filter(ES < 0) %>% slice_max(abs(NES),n=10) %>% dplyr::select(pathway)
-  topPathways <- unlist(c(topPathwaysUp, rev(topPathwaysDown)))
+#plot gsea
+collapsed_dmrs <- readRDS(file=paste0(prefix,".collapsed.dmrs.rds"))
+dmr_hypo_count <- collapsed_dmrs %>% dplyr::filter(dmr_padj < 0.05) %>% dplyr::filter(direction %in% c("hypo")) %>% dplyr::group_by(test, direction) %>% dplyr::summarise(n = n()) %>% as.data.frame()
+dmr_hyper_count <- collapsed_dmrs %>% dplyr::filter(dmr_padj < 0.05) %>% dplyr::filter(direction %in% c("hyper")) %>% dplyr::group_by(test, direction) %>% dplyr::summarise(n = n()) %>% as.data.frame()
+dmr_hyper_count <- setNames(nm=dmr_hyper_count$test,dmr_hyper_count$n)
+dmr_hypo_count <- setNames(nm=dmr_hypo_count$test,dmr_hypo_count$n)
 
-  plt1<-plotGseaTable(pathways[topPathways], ranks, fgseaRes, gseaParam=0.5)+
-        theme(axis.text.y = element_text( size = rel(0.2)),
-        axis.text.x = element_text( size = rel(0.2)))
 
-  # only plot the top 20 pathways NES scores
-  nes_plt_dat<-rbind(
-    fgseaRes  %>% slice_max(NES,n= 10),
-    fgseaRes  %>% slice_min(NES,n= 10))
+hallmark_dmr <- readRDS(paste0(prefix,".GSEA_enrichment.allcells.","hallmark",".rds"))
+plot_gsea(gsea=hallmark_dmr,out_setname="hallmark",prefix=prefix,dmr_hypo_count=dmr_hypo_count,dmr_hyper_count=dmr_hyper_count)
 
-  plt2<-ggplot(nes_plt_dat, aes(reorder(pathway, NES), NES)) +
-    geom_point(aes(color= padj,size=size)) + scale_color_gradient2(low="darkred",high="grey",mid="red",midpoint=0.05)+
-    coord_flip() +
-    labs(x="Pathway", y="Normalized Enrichment Score \n Compared to normal LumHR \n (Hyper<->Hypo)",
-        title="Hallmark pathways NES from GSEA") + 
-    theme_minimal()+scale_fill_identity()+ggtitle(paste(group1,out_setname))+ylim(c(5,-5))
+tft_dmr <- readRDS(paste0(prefix,".GSEA_enrichment.allcells.","TFT",".rds"))
+plot_gsea(gsea=tft_dmr,out_setname="TFT",prefix=prefix,dmr_hypo_count=dmr_hypo_count,dmr_hyper_count=dmr_hyper_count)
 
- plt<-patchwork::wrap_plots(tft_plt,ncol=4,axes="collect")
+pos_dmr <- readRDS(paste0(prefix,".GSEA_enrichment.allcells.","position",".rds"))
+plot_gsea(gsea=pos_dmr,out_setname="position",prefix=prefix,dmr_hypo_count=dmr_hypo_count,dmr_hyper_count=dmr_hyper_count)
 
-  ggsave(tft_plt,
-          file=paste0(prefix,".","GSEA_enrichment",sample_name,".dotplot.pdf"),
-          width=40,height=length(unique(collapsed_dmrs$type))*5,limitsize = FALSE)
+cancermeta_dmr <- readRDS(paste0(prefix,".GSEA_enrichment.allcells.","3CA",".rds"))
+plot_gsea(gsea=cancermeta_dmr,out_setname="3CA",prefix=prefix,dmr_hypo_count=dmr_hypo_count,dmr_hyper_count=dmr_hyper_count)
 
-  plt<-patchwork::wrap_plots(list((tft_plt),(position_plt),(hallmark_plt),(cancercellatlas_plt)),ncol=4,axes="collect")
 
-  ggsave(plt,
-          file=paste0(prefix,".","GSEA_enrichment",sample_name,".dotplot.pdf"),
-          width=40,height=length(unique(collapsed_dmrs$type))*5,limitsize = FALSE)
-
-chromvar_on_dmr_sites<-function()
 
 ```
 
@@ -421,6 +482,7 @@ plt<-ggplot(collapsed_dmrs |> dplyr::group_by(test, direction) |> dplyr::summari
 
 ggsave(plt,file=paste0(prefix,".collapsed.barplot.pdf"))
   
+
 ```
 
 3. Clone vs LumHR comparisons (per clone)
@@ -433,11 +495,11 @@ system(paste0("mkdir -p ",dmr_output_dir))
 prefix=paste0(dmr_output_dir,"/","08_scaledcis.final_celltype.clone_v_lumhr")
 
 #read in files
-dat<-readRDS(file="08_scaledcis.final_celltype.amethyst.rds") #just saving because of the macrophage name correction
+dat<-readRDS(file="09_scaledcis.final_ploidy.amethyst.rds")
 
 lumhr_hbca_cells <- row.names(dat@metadata[dat@metadata$Group=="HBCA" & dat@metadata$celltype=="lumhr",])
 
-clones_passing_filter<-names(which(table(dat@metadata$cnv_clonename_500kb)>30))
+clones_passing_filter<-names(which(table(dat@metadata$cnv_clonename_500kb)>1)) #apply clone filters after the fact
 clones_passing_filter <- clones_passing_filter[!(endsWith(clones_passing_filter,suffix="_diploid"))]
 clones_passing_filter <- clones_passing_filter[clones_passing_filter!="NA"]
 
@@ -463,7 +525,6 @@ saveRDS(celltype500bpwindows,file=paste0(prefix,".500bp_windows.rds"))
 
 
 celltype500bpwindows<-readRDS(file=paste0(prefix,".500bp_windows.rds"))
-
 comparisons_set=colnames(celltype500bpwindows[["pct_matrix"]])[4:ncol(celltype500bpwindows[["pct_matrix"]])]
 
 #compare each celltype to HBCA_lumhr
@@ -503,6 +564,216 @@ gsea_across_sets(obj=dat,
                   collapsed_dmrs=collapsed_dmrs,
                   sample_name="clone_v_lumhr", 
                   prefix=prefix)
+
+#plot gsea
+collapsed_dmrs <- readRDS(file=paste0(prefix,".collapsed.dmrs.rds"))
+dmr_hypo_count <- collapsed_dmrs %>% dplyr::filter(dmr_padj < 0.05) %>% dplyr::filter(direction %in% c("hypo")) %>% dplyr::group_by(test, direction) %>% dplyr::summarise(n = n()) %>% as.data.frame()
+dmr_hyper_count <- collapsed_dmrs %>% dplyr::filter(dmr_padj < 0.05) %>% dplyr::filter(direction %in% c("hyper")) %>% dplyr::group_by(test, direction) %>% dplyr::summarise(n = n()) %>% as.data.frame()
+dmr_hyper_count <- setNames(nm=dmr_hyper_count$test,dmr_hyper_count$n)
+dmr_hypo_count <- setNames(nm=dmr_hypo_count$test,dmr_hypo_count$n)
+
+
+hallmark_dmr <- readRDS(paste0(prefix,".GSEA_enrichment.clone_v_lumhr.","hallmark",".rds"))
+hallmark_dmr <- hallmark_dmr %>% filter(test %in% c("BCMDCIS41T_c1","BCMDCIS41T_c2","BCMDCIS41T_c3"))
+plot_gsea(gsea=hallmark_dmr,out_setname="hallmark",prefix=prefix,dmr_hypo_count=dmr_hypo_count,dmr_hyper_count=dmr_hyper_count)
+
+tft_dmr <- readRDS(paste0(prefix,".GSEA_enrichment.clone_v_lumhr.","TFT",".rds"))
+plot_gsea(gsea=tft_dmr,out_setname="TFT",prefix=prefix,dmr_hypo_count=dmr_hypo_count,dmr_hyper_count=dmr_hyper_count)
+
+pos_dmr <- readRDS(paste0(prefix,".GSEA_enrichment.clone_v_lumhr.","position",".rds"))
+pos_dmr <- pos_dmr %>% filter(test %in% c("BCMDCIS41T_c1","BCMDCIS41T_c2","BCMDCIS41T_c3"))
+plot_gsea(gsea=pos_dmr,out_setname="position",prefix=prefix,dmr_hypo_count=dmr_hypo_count,dmr_hyper_count=dmr_hyper_count)
+
+cancermeta_dmr <- readRDS(paste0(prefix,".GSEA_enrichment.clone_v_lumhr.","3CA",".rds"))
+plot_gsea(gsea=cancermeta_dmr,out_setname="3CA",prefix=prefix,dmr_hypo_count=dmr_hypo_count,dmr_hyper_count=dmr_hyper_count)
+
+```
+
+
+```R
+#set up directories
+project_data_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1"
+dmr_output_dir<-paste0(project_data_directory,"/DMR_analysis/","/DMR_BCMDCIS41T")
+system(paste0("mkdir -p ",dmr_output_dir))
+prefix=paste0(dmr_output_dir,"/","08_scaledcis.final_celltype.BCMDCIS41T")
+
+#using data split by clone
+dat<-readRDS(file="09_scaledcis.final_ploidy.amethyst.rds")
+celltype500bpwindows<-readRDS(file="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/DMR_analysis//DMR_clone_v_lumhr/08_scaledcis.final_celltype.clone_v_lumhr.500bp_windows.rds")
+
+
+comp_c1<-as.data.frame(cbind("name"="BCMDCIS41T_c1",
+          "A"="BCMDCIS41T_c1",
+          "B"=paste(c("BCMDCIS41T_c2","BCMDCIS41T_c3"),collapse=",")))
+          
+comp_c2<-as.data.frame(cbind("name"="BCMDCIS41T_c2",
+          "A"="BCMDCIS41T_c2",
+          "B"=paste(c("BCMDCIS41T_c1","BCMDCIS41T_c3"),collapse=",")))
+
+comp_c3<-as.data.frame(cbind("name"="BCMDCIS41T_c3",
+          "A"="BCMDCIS41T_c3",
+          "B"=paste(c("BCMDCIS41T_c1","BCMDCIS41T_c2"),collapse=",")))
+
+comp<-rbind(comp_c1,comp_c2,comp_c3)
+
+collapsed_dmrs <- find_cluster_markers(dat=dat,
+                  prefix=prefix,
+                  celltype500bp_windows=celltype500bpwindows,
+                  comp=comp)
+                  #running
+
+#Analyze DMRs
+collapsed_dmrs <- readRDS(file=paste0(prefix,".collapsed.dmrs.rds"))
+
+#plot dmr counts per test
+plt<-ggplot(collapsed_dmrs |> dplyr::group_by(test, direction) |> dplyr::filter(dmr_padj<0.05)|> dplyr::summarise(n = n()), 
+    aes(y = test, x = n, fill = test)) + 
+    geom_col() + 
+    facet_grid(vars(direction), scales = "free_y") + 
+    theme_classic() +  theme(legend.position = "none")
+ggsave(plt,file=paste0(prefix,".collapsed.barplot.pdf"))
+
+#gsea for dmr uses rank with hypomet down and hypermet up
+sample_name="BCMDCIS41T"
+gsea_across_sets(obj=dat, 
+                  collapsed_dmrs=collapsed_dmrs,
+                  sample_name=sample_name, 
+                  prefix=prefix)
+
+#plot gsea requires multiple comparisons
+collapsed_dmrs <- readRDS(file=paste0(prefix,".collapsed.dmrs.rds"))
+dmr_hypo_count <- collapsed_dmrs %>% dplyr::filter(dmr_padj < 0.05) %>% dplyr::filter(direction %in% c("hypo")) %>% dplyr::group_by(test, direction) %>% dplyr::summarise(n = n()) %>% as.data.frame()
+dmr_hyper_count <- collapsed_dmrs %>% dplyr::filter(dmr_padj < 0.05) %>% dplyr::filter(direction %in% c("hyper")) %>% dplyr::group_by(test, direction) %>% dplyr::summarise(n = n()) %>% as.data.frame()
+dmr_hyper_count <- setNames(nm=dmr_hyper_count$test,dmr_hyper_count$n)
+dmr_hypo_count <- setNames(nm=dmr_hypo_count$test,dmr_hypo_count$n)
+
+
+hallmark_dmr <- readRDS(paste0(prefix,".GSEA_enrichment.",sample_name,".","hallmark",".rds"))
+lot_gsea(gsea=hallmark_dmr,out_setname="hallmark",prefix=prefix,dmr_hypo_count=dmr_hypo_count,dmr_hyper_count=dmr_hyper_count)
+
+tft_dmr <- readRDS(paste0(prefix,".GSEA_enrichment.",sample_name,".","TFT",".rds"))
+plot_gsea(gsea=tft_dmr,out_setname="TFT",prefix=prefix,dmr_hypo_count=dmr_hypo_count,dmr_hyper_count=dmr_hyper_count)
+
+pos_dmr <- readRDS(paste0(prefix,".GSEA_enrichment.",sample_name,".","position",".rds"))
+plot_gsea(gsea=pos_dmr,out_setname="position",prefix=prefix,dmr_hypo_count=dmr_hypo_count,dmr_hyper_count=dmr_hyper_count)
+
+cancermeta_dmr <- readRDS(paste0(prefix,".GSEA_enrichment.",sample_name,".","3CA",".rds"))
+plot_gsea(gsea=cancermeta_dmr,out_setname="3CA",prefix=prefix,dmr_hypo_count=dmr_hypo_count,dmr_hyper_count=dmr_hyper_count)
+
+
+```
+
+Additional comparison of clones based on large scale shared events
+
+```R
+#set up directories
+project_data_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1"
+dmr_output_dir<-paste0(project_data_directory,"/DMR_analysis/","/DMR_WGDclone_v_nonWGDclone")
+system(paste0("mkdir -p ",dmr_output_dir))
+prefix=paste0(dmr_output_dir,"/","08_scaledcis.final_celltype.WGDclone_v_nonWGDclone")
+
+#using data split by clone
+dat<-readRDS(file="09_scaledcis.final_ploidy.amethyst.rds")
+celltype500bpwindows<-readRDS(file="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/DMR_analysis//DMR_clone_v_lumhr/08_scaledcis.final_celltype.clone_v_lumhr.500bp_windows.rds")
+
+lumhr_hbca_cells <- row.names(dat@metadata[dat@metadata$Group=="HBCA" & dat@metadata$celltype=="lumhr",])
+clones_passing_filter<-names(which(table(dat@metadata$cnv_clonename_500kb)>1))
+clones_passing_filter <- clones_passing_filter[!(endsWith(clones_passing_filter,suffix="_diploid"))]
+clones_passing_filter <- clones_passing_filter[clones_passing_filter!="NA"]
+clone_cells <- row.names(dat@metadata[dat@metadata$Group!="HBCA" & 
+                                                dat@metadata$celltype %in% c("lumhr","cancer") &
+                                                dat@metadata$cnv_clonename_500kb %in% clones_passing_filter,])
+dat<-subsetObject(dat,cells=c(lumhr_hbca_cells,clone_cells))
+dat@metadata[lumhr_hbca_cells,]$cnv_clonename_500kb<-"HBCA_lumhr"
+table(dat@metadata$cnv_clonename_500kb)
+
+clones_passing_filter <- colnames(celltype500bpwindows[["pct_matrix"]])[4:ncol(celltype500bpwindows[["pct_matrix"]])]
+
+
+#wgd
+wgd_clones=c("BCMDCIS124T_c1","BCMDCIS124T_c2","BCMDCIS124T_c3","BCMDCIS80T_24hTis_c1","ECIS25T_c1","ECIS25T_c2","ECIS25T_c3")
+wgd_clones <- wgd_clones[wgd_clones %in% clones_passing_filter]
+nonwgd_clones<-clones_passing_filter[which(!(clones_passing_filter %in% wgd_clones))]
+nonwgd_clones<-nonwgd_clones[nonwgd_clones %in% clones_passing_filter]
+nonwgd_clones<-nonwgd_clones[!grepl(pattern="HBCA",nonwgd_clones)]
+
+#compare each celltype to HBCA_lumhr
+comparison_A=paste(wgd_clones,collapse=",")
+comparison_B=paste(nonwgd_clones,collapse=",")
+comp_wgd<-as.data.frame(cbind("name"="WGD_v_nonWGD",
+          "A"=comparison_A,
+          "B"=comparison_B))
+
+#1q gain
+clones_1qgain<-c("BCMDCIS28T_c2", "BCMDCIS22T_c1", "BCMDCIS52T_c1", "ECIS36T_c3", "ECIS36T_c1", "ECIS36T_c2", "BCMDCIS102T_24hTis_c2", "BCMDCIS102T_24hTis_c3", "BCMDCIS74T_c3", "BCMDCIS28T_c1", "BCMDCIS70T_c1", "BCMDCIS35T_c2", "BCMDCIS35T_c1", "BCMDCIS74T_c2", "BCMDCIS94T_24hTis_c2", "BCMDCIS94T_24hTis_c1", "ECIS26T_c1", "ECIS26T_c2", "BCMDCIS102T_24hTis_c1", "BCMHBCA03R_c1", "BCMDCIS79T_24hTis_DCIS_c1", "BCMDCIS99T_c1", "BCMDCIS41T_c1", "BCMDCIS41T_c2", "BCMDCIS97T_c5", "BCMDCIS97T_c3", "BCMDCIS97T_c4", "BCMDCIS70T_c2", "BCMDCIS79T_24hTis_DCIS_c2", "BCMDCIS92T_24hTis_c1", "BCMDCIS97T_c1", "BCMDCIS97T_c2", "BCMDCIS80T_24hTis_c2")
+clones_1qgain<-clones_1qgain[which(clones_1qgain %in% clones_passing_filter)]
+
+nonclones_1qgain<-clones_passing_filter[which(!(clones_passing_filter %in% clones_1qgain))]
+#compare each celltype to HBCA_lumhr
+comparison_A=paste(clones_1qgain,collapse=",")
+comparison_B=paste(nonclones_1qgain,collapse=",")
+comp_1q<-as.data.frame(cbind("name"="1qgain_v_non1qgain",
+          "A"=comparison_A,
+          "B"=comparison_B))
+
+#16q loss
+clones_16qloss<-c("ECIS36T_c1", "ECIS36T_c2", "BCMDCIS74T_c3", "BCMDCIS28T_c1", "BCMDCIS70T_c1", "BCMDCIS35T_c2", "BCMDCIS35T_c1", "BCMDCIS74T_c2", "BCMDCIS94T_24hTis_c2", "BCMDCIS94T_24hTis_c1", "ECIS26T_c1", "ECIS26T_c2", "BCMDCIS74T_c1", "BCMDCIS41T_c3", "BCMDCIS66T_c1", "BCMDCIS41T_c1", "BCMDCIS41T_c2", "BCMDCIS97T_c5", "BCMDCIS97T_c3", "BCMDCIS97T_c4", "BCMDCIS70T_c2", "BCMDCIS79T_24hTis_DCIS_c2", "BCMDCIS92T_24hTis_c1", "BCMDCIS97T_c1")
+clones_16qloss<-clones_16qloss[which(clones_16qloss %in% clones_passing_filter)]
+
+nonclones_16qloss<-clones_passing_filter[which(!(clones_passing_filter %in% clones_16qloss))]
+comparison_A=paste(clones_16qloss,collapse=",")
+comparison_B=paste(nonclones_16qloss,collapse=",")
+comp_16q<-as.data.frame(cbind("name"="16qloss_v_non16qloss",
+          "A"=comparison_A,
+          "B"=comparison_B))
+
+comp<-as.data.frame(rbind(comp_wgd,comp_1q,comp_16q))
+
+collapsed_dmrs <- find_cluster_markers(dat=dat,
+                  prefix=prefix,
+                  celltype500bp_windows=celltype500bpwindows,
+                  comp=comp)
+                  #running
+
+#Analyze DMRs
+collapsed_dmrs <- readRDS(file=paste0(prefix,".collapsed.dmrs.rds"))
+
+#plot dmr counts per test
+plt<-ggplot(collapsed_dmrs |> dplyr::group_by(test, direction) |> dplyr::filter(dmr_padj<0.05)|> dplyr::summarise(n = n()), 
+    aes(y = test, x = n, fill = test)) + 
+    geom_col() + 
+    facet_grid(vars(direction), scales = "free_y") + 
+    theme_classic() +  theme(legend.position = "none")
+ggsave(plt,file=paste0(prefix,".collapsed.barplot.pdf"))
+
+#gsea for dmr uses rank with hypomet down and hypermet up
+sample_name="cnv_groups"
+gsea_across_sets(obj=dat, 
+                  collapsed_dmrs=collapsed_dmrs,
+                  sample_name=sample_name, 
+                  prefix=prefix)
+
+#plot gsea requires multiple comparisons
+collapsed_dmrs <- readRDS(file=paste0(prefix,".collapsed.dmrs.rds"))
+dmr_hypo_count <- collapsed_dmrs %>% dplyr::filter(dmr_padj < 0.05) %>% dplyr::filter(direction %in% c("hypo")) %>% dplyr::group_by(test, direction) %>% dplyr::summarise(n = n()) %>% as.data.frame()
+dmr_hyper_count <- collapsed_dmrs %>% dplyr::filter(dmr_padj < 0.05) %>% dplyr::filter(direction %in% c("hyper")) %>% dplyr::group_by(test, direction) %>% dplyr::summarise(n = n()) %>% as.data.frame()
+dmr_hyper_count <- setNames(nm=dmr_hyper_count$test,dmr_hyper_count$n)
+dmr_hypo_count <- setNames(nm=dmr_hypo_count$test,dmr_hypo_count$n)
+
+
+hallmark_dmr <- readRDS(paste0(prefix,".GSEA_enrichment.",sample_name,".","hallmark",".rds"))
+plot_gsea(gsea=hallmark_dmr,out_setname="hallmark",prefix=prefix,dmr_hypo_count=dmr_hypo_count,dmr_hyper_count=dmr_hyper_count)
+
+tft_dmr <- readRDS(paste0(prefix,".GSEA_enrichment.",sample_name,".","TFT",".rds"))
+plot_gsea(gsea=tft_dmr,out_setname="TFT",prefix=prefix,dmr_hypo_count=dmr_hypo_count,dmr_hyper_count=dmr_hyper_count)
+
+pos_dmr <- readRDS(paste0(prefix,".GSEA_enrichment.",sample_name,".","position",".rds"))
+plot_gsea(gsea=pos_dmr,out_setname="position",prefix=prefix,dmr_hypo_count=dmr_hypo_count,dmr_hyper_count=dmr_hyper_count)
+
+cancermeta_dmr <- readRDS(paste0(prefix,".GSEA_enrichment.",sample_name,".","3CA",".rds"))
+plot_gsea(gsea=cancermeta_dmr,out_setname="3CA",prefix=prefix,dmr_hypo_count=dmr_hypo_count,dmr_hyper_count=dmr_hyper_count)
+
+
 ```
 
 
@@ -530,7 +801,7 @@ system(paste0("mkdir -p ",dmr_output_dir))
 prefix=paste0(dmr_output_dir,"/","08_scaledcis.final_celltype.cancer_v_lumhr")
 
 #read in files
-dat<-readRDS(file="08_scaledcis.final_celltype.amethyst.rds") #just saving because of the macrophage name correction
+dat<-readRDS(file="09_scaledcis.final_ploidy.amethyst.rds")
 
 lumhr_hbca_cells <- row.names(dat@metadata[dat@metadata$Group=="HBCA" & dat@metadata$celltype=="lumhr",])
 
@@ -597,46 +868,76 @@ gsea_across_sets(obj=dat,
                   sample_name="cancer_v_lumhr", 
                   prefix=prefix)
 
+#plot gsea
+collapsed_dmrs <- readRDS(file=paste0(prefix,".collapsed.dmrs.rds"))
+dmr_hypo_count <- collapsed_dmrs %>% dplyr::filter(dmr_padj < 0.05) %>% dplyr::filter(direction %in% c("hypo")) %>% dplyr::group_by(test, direction) %>% dplyr::summarise(n = n()) %>% as.data.frame()
+dmr_hyper_count <- collapsed_dmrs %>% dplyr::filter(dmr_padj < 0.05) %>% dplyr::filter(direction %in% c("hyper")) %>% dplyr::group_by(test, direction) %>% dplyr::summarise(n = n()) %>% as.data.frame()
+dmr_hyper_count <- setNames(nm=dmr_hyper_count$test,dmr_hyper_count$n)
+dmr_hypo_count <- setNames(nm=dmr_hypo_count$test,dmr_hypo_count$n)
+
+
+hallmark_dmr <- readRDS(paste0(prefix,".GSEA_enrichment.cancer_v_lumhr.","hallmark",".rds"))
+plot_gsea(gsea=hallmark_dmr,out_setname="hallmark",prefix=prefix,dmr_hypo_count=dmr_hypo_count,dmr_hyper_count=dmr_hyper_count)
+
+tft_dmr <- readRDS(paste0(prefix,".GSEA_enrichment.cancer_v_lumhr.","TFT",".rds"))
+plot_gsea(gsea=tft_dmr,out_setname="TFT",prefix=prefix,dmr_hypo_count=dmr_hypo_count,dmr_hyper_count=dmr_hyper_count)
+
+pos_dmr <- readRDS(paste0(prefix,".GSEA_enrichment.cancer_v_lumhr.","position",".rds"))
+plot_gsea(gsea=pos_dmr,out_setname="position",prefix=prefix,dmr_hypo_count=dmr_hypo_count,dmr_hyper_count=dmr_hyper_count)
+
+cancermeta_dmr <- readRDS(paste0(prefix,".GSEA_enrichment.cancer_v_lumhr.","3CA",".rds"))
+plot_gsea(gsea=cancermeta_dmr,out_setname="3CA",prefix=prefix,dmr_hypo_count=dmr_hypo_count,dmr_hyper_count=dmr_hyper_count)
 
 ```
 
-
-
-
-
-
-
-
-
-4-6. Group comparisons
+6-8. Group comparisons
+Group comparisons
+6. Endothelial (HBCA) vs TEC (dcis, synch, idc)
+7. Fibroblast (HBCA) vs CAF (dcis, synch, idc)
+8. Macrophage (HBCA) vs TAM (dcis, synch, idc)
 
 ```R
 #set up directories
 project_data_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1"
-dmr_output_dir<-paste0(project_data_directory,"/DMR_analysis/","/DMR_celltype_HBCAonly")
+dmr_output_dir<-paste0(project_data_directory,"/DMR_analysis/","/DMR_celltype_bygroup")
 system(paste0("mkdir -p ",dmr_output_dir))
-prefix=paste0(dmr_output_dir,"/","08_scaledcis.final_celltype.onevrest.HBCAonly_celltype")
+prefix=paste0(dmr_output_dir,"/","08_scaledcis.final_celltype.onevrest.celltype_bygroup")
 
 #read in files
-dat<-readRDS(file="08_scaledcis.final_celltype.amethyst.rds") #just saving because of the macrophage name correction
+dat<-readRDS(file="09_scaledcis.final_ploidy.amethyst.rds")
 celltype500bpwindows<-readRDS(file=paste0(project_data_directory,"/merged_data/","08_scaledcis.final_celltype_by_group.500bp_windows.rds"))
 
 comparisons_set=colnames(celltype500bpwindows[["pct_matrix"]])[4:ncol(celltype500bpwindows[["pct_matrix"]])]
-comparisons_set<-comparisons_set[endsWith(comparisons_set,suffix=".HBCA")]
-comparisons_set<-comparisons_set[!(comparisons_set=="cancer.HBCA")]
 
-#compare each celltype to all other cell types
-comp<-lapply(comparisons_set,function(i){
-  comparison_A=i
-  comparison_B=comparisons_set[!(comparisons_set==i)]
-  comparison_name=paste0(i)
-  comp<-cbind("name"=comparison_name,
-            "A"=i,
-            "B"=paste(comparison_B,collapse=","))
-  return(comp)}
-)
-comp<-as.data.frame(do.call("rbind",comp))
-row.names(comp)<-gsub(comp$name,pattern=".HBCA",replace="") #replacing .hbca just for coloring ease
+endothelial_comp<-cbind("name"="endothelial_HBCA_v_cancer",
+            "A"="endothelial.HBCA",
+            "B"=paste(c("endothelial.IDC","endothelial.DCIS","endothelial.Synchronous"),collapse=","))
+fibroblast_comp<-cbind("name"="fibroblast_HBCA_v_cancer",
+            "A"="fibroblast.HBCA",
+            "B"=paste(c("fibroblast.IDC","fibroblast.DCIS","fibroblast.Synchronous"),collapse=","))
+macro_comp<-cbind("name"="macro_HBCA_v_cancer",
+            "A"="macro.HBCA",
+            "B"=paste(c("macro.IDC","macro.DCIS","macro.Synchronous"),collapse=","))
+basal_comp<-cbind("name"="basal_HBCA_v_DCIS",
+            "A"="basal.HBCA",
+            "B"="basal.DCIS")
+lumhr_to_dcis_comp<-cbind("name"="lumhr_HBCA_v_cancer_DCIS",
+            "A"="lumhr.HBCA",
+            "B"="cancer.DCIS")
+dcis_to_synch_comp<-cbind("name"="cancer_DCIS_v_cancer_SYNCH",
+            "A"="cancer.DCIS",
+            "B"="cancer.Synchronous")
+synch_to_idc_comp<-cbind("name"="cancer_SYNCH_v_cancer_IDC",
+            "A"="cancer.Synchronous",
+            "B"="cancer.IDC")
+dcis_to_idc_comp<-cbind("name"="cancer_DCIS_v_cancer_IDC",
+            "A"="cancer.DCIS",
+            "B"="cancer.IDC")
+lumhr_to_idc_comp<-cbind("name"="lumhr_HBCA_v_cancer_IDC",
+            "A"="lumhr.HBCA",
+            "B"="cancer.IDC")
+comp<-rbind(endothelial_comp,fibroblast_comp,macro_comp,basal_comp,
+lumhr_to_dcis_comp,dcis_to_synch_comp,synch_to_idc_comp,dcis_to_idc_comp,lumhr_to_idc_comp)
 
 collapsed_dmrs <- find_cluster_markers(dat=dat,
                   prefix=prefix,
@@ -644,502 +945,47 @@ collapsed_dmrs <- find_cluster_markers(dat=dat,
                   comp=comp)
 
 #plot dmr counts per test
-plt<-ggplot(collapsed_dmrs |> dplyr::group_by(test, direction) |> dplyr::summarise(n = n()), 
+collapsed_dmrs <- collapsed_dmrs %>% dplyr::filter(test %in% c("basal_HBCA_v_DCIS","endothelial_HBCA_v_cancer","fibroblast_HBCA_v_cancer","macro_HBCA_v_cancer")) 
+
+collapsed_dmrs %>% dplyr::filter(test %in% c("basal_HBCA_v_DCIS","endothelial_HBCA_v_cancer","fibroblast_HBCA_v_cancer","macro_HBCA_v_cancer")) %>% dplyr::filter(dmr_padj<0.05) %>% group_by(test,direction) %>% summarise(sum(dmr_length))
+plt<-ggplot(collapsed_dmrs |> dplyr::filter(dmr_padj<0.05) |> dplyr::group_by(test, direction) |> dplyr::summarise(n = n()), 
     aes(y = test, x = n, fill = test)) + 
     geom_col() + 
     facet_grid(vars(direction), scales = "free_y") + 
-    scale_fill_manual(values = celltype_col) + 
     theme_classic() +  theme(legend.position = "none")
 ggsave(plt,file=paste0(prefix,".collapsed.barplot.pdf"))
 
+sample_name="celltype_by_group"
+#gsea for dmr uses rank with hypomet down and hypermet up
+gsea_across_sets(obj=dat, 
+                  collapsed_dmrs=collapsed_dmrs,
+                  sample_name=sample_name, 
+                  prefix=prefix)
 
-```
-
-
-
-
-
-
-<!--
-```R
-
-celltypediag500bpwindows<-readRDS(file=paste0(dmr_celltype_by_diag_outdir,"/","dmr_analysis.celltype_by_diag.500bp_windows.rds"))
-
-sum_mat<-celltypediag500bpwindows[["sum_matrix"]]
-
-sample_name="diagnosis_celltype"
+#plot gsea
+collapsed_dmrs <- readRDS(file=paste0(prefix,".collapsed.dmrs.rds"))
+collapsed_dmrs <- collapsed_dmrs %>% dplyr::filter(test %in% c("basal_HBCA_v_DCIS","endothelial_HBCA_v_cancer","fibroblast_HBCA_v_cancer","macro_HBCA_v_cancer")) 
+dmr_hypo_count <- collapsed_dmrs %>% dplyr::filter(dmr_padj < 0.05) %>% dplyr::filter(direction %in% c("hypo")) %>% dplyr::group_by(test, direction) %>% dplyr::summarise(n = n()) %>% as.data.frame()
+dmr_hyper_count <- collapsed_dmrs %>% dplyr::filter(dmr_padj < 0.05) %>% dplyr::filter(direction %in% c("hyper")) %>% dplyr::group_by(test, direction) %>% dplyr::summarise(n = n()) %>% as.data.frame()
+dmr_hyper_count <- setNames(nm=dmr_hyper_count$test,dmr_hyper_count$n)
+dmr_hypo_count <- setNames(nm=dmr_hypo_count$test,dmr_hypo_count$n)
 
 
-#TEC vs Endo
-#CAF vs Fibro
-#basal DCIS vs HBCA
-#basal DCIS vs Synchronous
-#basal DCIS vs IDC
+hallmark_dmr <- readRDS(paste0(prefix,".GSEA_enrichment.",sample_name,".","hallmark",".rds"))
+plot_gsea(gsea=hallmark_dmr,out_setname="hallmark",prefix=prefix,dmr_hypo_count=dmr_hypo_count,dmr_hyper_count=dmr_hyper_count)
 
-comparisons<-as.data.frame(rbind(
-    caf_v_fibro=c(name="fibro_v_caf",A=paste(c("DCIS_CAF","Synchronous_CAF","IDC_CAF"),collapse=","),B="HBCA_fibroblast"),
-    tec_v_endo=c(name="endo_v_tec",A=paste(c("DCIS_TEC","Synchronous_TEC","IDC_TEC"),collapse=","),B="HBCA_endothelial"),
-    cancerBasal_v_basal=c(name="lumhr_v_dcisBasal",A=paste(c("DCIS_basal","Synchronous_basal","IDC_basal"),collapse=","),B="HBCA_basal"),
-    cBasal_v_basal=c(name="lumhr_v_dcisBasal",A="Synchronous_basal",B="HBCA_basal"),
-    dcisCancer_v_lumhr=c(name="lumhr_v_dcisCancer",A="DCIS_cancer",B="HBCA_lumhr"),
-    syncCancer_v_dcisCancer=c(name="dcisCancer_v_syncCancer",A="Synchronous_cancer",B="DCIS_cancer"),
-    idcCancer_v_dcisCancer=c(name="dcisCancer_v_syncCancer",A="IDC_cancer",B="DCIS_cancer"),
-    idcCancer_v_lumhr=c(name="dcisCancer_v_syncCancer",A="IDC_cancer",B="HBCA_lumhr")
+tft_dmr <- readRDS(paste0(prefix,".GSEA_enrichment.",sample_name,".","TFT",".rds"))
+tft_dmr <- tft_dmr %>% dplyr::filter(test %in% c("basal_HBCA_v_DCIS","endothelial_HBCA_v_cancer","fibroblast_HBCA_v_cancer","macro_HBCA_v_cancer")) 
+plot_gsea(gsea=tft_dmr,out_setname="TFT",prefix=prefix,dmr_hypo_count=dmr_hypo_count,dmr_hyper_count=dmr_hyper_count)
 
-))
+pos_dmr <- readRDS(paste0(prefix,".GSEA_enrichment.",sample_name,".","position",".rds"))
+plot_gsea(gsea=pos_dmr,out_setname="position",prefix=prefix,dmr_hypo_count=dmr_hypo_count,dmr_hyper_count=dmr_hyper_count)
 
-mclapply(row.names(comparisons), function(i) {
-    print(paste("Running DMRs across clones for:",i))
-    system(paste0("mkdir -p ",dmr_celltype_by_diag_outdir,"/",i))
-    dmrs <- testDMR(sum_mat, # Sum of c and t observations in each genomic window per group
-            comparisons=comparisons[i,],
-            nminTotal = 3, # Min number observations across all groups to include the region in calculations
-            nminGroup = 3) # Min number observations across either members or nonmembers to include the region
-    dmrs$type <- i
-    saveRDS(dmrs,file=paste0(dmr_celltype_by_diag_outdir,"/",i,"/",i,".",sample_name,".celltype_diagnosis.dmrs.unfilt.rds"))
-
-    print(paste("Filtering DMRs across clones for:",i))
-    dmrs <- filterDMR(dmrs, 
-                method = "bonferroni", # c("holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "fdr")
-                filter = TRUE, # If TRUE, removes insignificant results
-                pThreshold = 0.05 # Maxmimum adjusted p value to allow if filter = TRUE
-                ) # Minimum absolute value of the log2FC to allow if filter = TRUE
-    dmrs$type <- i
-    saveRDS(dmrs,file=paste0(dmr_celltype_by_diag_outdir,"/",i,"/",i,".",sample_name,".celltype_diagnosis.dmrs.filt.rds"))
-    collapsed_dmrs <- collapseDMR(obj, 
-                            dmrs, 
-                            maxDist = 2000, # Max allowable overlap between DMRs to be considered adjacent
-                            minLength = 2000, # Min length of collapsed DMR window to include in the output
-                            reduce = T, # Reduce results to unique observations (recommended)
-                            annotate = T) # Add column with overlapping gene names
-
-    collapsed_dmrs$type <- i
-    saveRDS(collapsed_dmrs,file=paste0(dmr_celltype_by_diag_outdir,"/",i,"/",i,".",sample_name,".celltype_diagnosis.dmrs.collapse.rds"))
-},mc.cores=20)
-
-
-celltype_dmr<-list.files(path=dmr_celltype_by_diag_outdir,full.name=T,recursive=T,pattern=".dmrs.collapse.rds")
-
-celltype_dmr<-do.call("rbind",lapply(celltype_dmr,function(x) readRDS(x)))
-
-
-#plot dmr counts per clone
-pal <- colorRampPalette(colors = c("#F9AB60", "#E7576E", "#630661", "#B5DCA5"))
-COLS <- pal(length(unique(celltype_dmr$type)))
-
-plt<-ggplot(celltype_dmr |> dplyr::group_by(type, direction) |> dplyr::summarise(n = n()), 
-    aes(y = type, x = n, fill = type)) + 
-    geom_col() + 
-    facet_grid(vars(direction,type), scales = "free") + 
-    scale_fill_manual(values = COLS) + 
-    theme_classic()
-ggsave(plt,file=paste0(dmr_celltype_by_diag_outdir,"/","celltype_comparisons",".dmr_counts.pdf"))
-
-#plot width of DMRs
-celltype_dmr$width<-width(GRanges(celltype_dmr))
-
-plt<-ggplot(celltype_dmr |> dplyr::group_by(type, direction) |> dplyr::summarise(n = n())), 
-    aes(y = type, x = n, fill = type)) + 
-    geom_col() + 
-    facet_grid(vars(direction,type), scales = "free") + 
-    scale_fill_manual(values = COLS) + 
-    theme_classic()
-ggsave(plt,file=paste0(dmr_celltype_by_diag_outdir,"/","celltype_comparisons",".dmr_counts.pdf"))
-
-
-#ADD HYPERGEO ENRICHMENT HERE GSEA
-plot_gsea(obj_sample,
-        sample_name=sample_name,collapsed_dmrs=collapsed_dmrs,
-        outdir=clone_outdir)
+cancermeta_dmr <- readRDS(paste0(prefix,".GSEA_enrichment.",sample_name,".","3CA",".rds"))
+plot_gsea(gsea=cancermeta_dmr,out_setname="3CA",prefix=prefix,dmr_hypo_count=dmr_hypo_count,dmr_hyper_count=dmr_hyper_count)
 
 
 ```
 
 
 
-```R
-#add plotting functions for DMR 
-#https://htmlpreview.github.io/?https://github.com/lrylaarsdam/amethyst/blob/main/vignettes/pbmc_vignette/pbmc_vignette.html
-#add dmr locations per clone over heatmap cnv plot
-
-obj<-readRDS(file="07_scaledcis.cnv_clones.amethyst.rds")
-
-#output to DMR analysis folder
-#clones (all lumhr treated as same group)
-dmr_clones_outdir=paste(sep="/",dmr_outdir,"cnv_clones_alllumhr")
-system(paste("mkdir -p", dmr_clones_outdir))
-
-obj_lumhr_all<-subsetObject(obj,cells=row.names(obj@metadata)[(obj@metadata$celltype %in% c("lumhr","cancer"))])
-obj_lumhr_all@metadata$cnv_clonename_alllumhr<-obj_lumhr_all@metadata$cnv_clonename
-obj_lumhr_all@metadata[obj_lumhr_all@metadata$celltype=="lumhr",]$cnv_clonename_alllumhr<-"lumhr"
-clone500bpwindows<-readRDS(file=paste0(dmr_clones_outdir,"/","dmr_analysis.cnv_clones_alllumhr.500bp_windows.rds"))
-
-#run dmr analysis clone with all lumhr
-#use dmr_analysis.cnv_clones_alllumhr.500bp_windows.rds matrix
-#note some of these also have the coverage to do specific clone vs lumhr analysis, can merge matrices for this case
-clone_v_lumhr_analysis<-c(
-'BCMHBCA04R',
-'BCMHBCA03R',
-'BCMHBCA83L-3h',
-'BCMDCIS05T',
-'BCMDCIS82T',
-'BCMDCIS99T',
-'BCMHBCA26L',
-'BCMDCIS22T',
-'BCMDCIS79T',
-'BCMDCIS28T',
-'BCMDCIS52T',
-'BCMDCIS80T',
-'ECIS48T',
-'BCMDCIS102T',
-'BCMDCIS92T',
-'BCMDCIS70T',
-'BCMDCIS124T',
-'ECIS36T',
-'BCMDCIS74T',
-'BCMDCIS97T',
-'BCMDCIS94T',
-'BCMDCIS41T',
-'ECIS25T',
-'ECIS26T',
-'BCMDCIS66T',
-'BCMDCIS35T'
-)
-
-lapply(clone_v_lumhr_analysis,function(x) dmr_clone_by_lumhr(obj,sample_name=x,dmr_clones_outdir,clone500bpwindows))
-
-
-```
-
-# DMR Per CNV Clone Per Sample    
-
-```R
-#output to DMR analysis folder
-dmr_outdir=paste(sep="/",project_data_directory,"DMR_analysis")
-dmr_clones_outdir=paste(sep="/",dmr_outdir,"cnv_clones")
-
-#run 500bp smoothed windows by clone split once, save and subset
-#run above, note that amethyst also allows for group by group specified comparisons now too
-clone500bpwindows<-readRDS(file=paste0(dmr_clones_outdir,"/","dmr_analysis.cnv_clones.500bp_windows.rds"))
-
-#samples with >= 2 clones and >=5% coverage per clone
-#use dmr_analysis.cnv_clones.500bp_windows.rds matrix
-clone_v_clone_analysis<-c('BCMDCIS05T',
-'BCMDCIS124T',
-'BCMDCIS28T',
-'BCMDCIS35T',
-'BCMDCIS41T',
-'BCMDCIS52T',
-'BCMDCIS66T',
-'BCMDCIS74T',
-'BCMDCIS79T',
-'BCMDCIS82T',
-'BCMDCIS97T',
-'ECIS25T',
-'ECIS26T',
-'ECIS36T',
-'ECIS48T')
-
-lapply(clone_v_clone_analysis,function(x) dmr_clone_by_clone(obj,sample_name=x,dmr_clones_outdir,clone500bpwindows))
-
-#add bedfile of dmrs, bigWig of CNVs per clone, stacked bigwig of methylation per clone
-#split bw into 4 files per cell type by methylation/average methylation
-for(i in colnames(clone500bpwindows[["pct_matrix"]])[4:ncol(clone500bpwindows[["pct_matrix"]])]){
-    sample<-strsplit(i,"_")[[1]]
-    sample<-paste(sample[1:length(sample)-1],collapse="_")
-    sample_dir=paste0(dmr_clones_outdir,"/",sample,"/bigwig")
-    system(paste("mkdir -p",sample_dir))
-
-    out_dat<-clone500bpwindows[["pct_matrix"]] %>% select(chr,start,end,i) 
-
-    hg38_seq_info<-Seqinfo(genome="hg38")
-    out_dat<-GRanges(out_dat[complete.cases(out_dat),]) #filter NA
-    out_dat<-out_dat[out_dat@seqnames %in% hg38_seq_info@seqnames,] #filter chr
-    out_dat<-out_dat[out_dat@seqnames %in% paste0("chr",c(1:22,"X")),] #filter chr
-    seqlevels(out_dat)<-paste0("chr",c(1:22,"X"))
-
-    out_dat<-resize(out_dat,width=500)
-    names(out_dat@elementMetadata)<-"score"
-    mean_score<-mean(mcols(out_dat)$score)
-
-    #bin to 100-mean, mean-50, 50-20, 20-0  
-    #color black, grey, lightgrey, celltypecol
-    #333333, #444444, #bcbcbc, celltypecol
-    #subtract score-meanscorevalue
-
-    out_dat_hypermet <- out_dat %>% 
-                        as.data.frame() %>% 
-                        filter(mcols(out_dat)$score > mean_score) %>% 
-                        mutate(score=score-mean_score) %>% 
-                        GRanges()
-    names(out_dat_hypermet@elementMetadata)<-"score"
-    genome(out_dat_hypermet)<-"hg38"
-    seqlengths(out_dat_hypermet)<-seqlengths(hg38_seq_info)[seqlevels(out_dat_hypermet)] #filter by seqlengths
-
-    out_dat_met_mid <- out_dat %>% 
-                      as.data.frame() %>% 
-                      filter(mcols(out_dat)$score <= mean_score & mcols(out_dat)$score > 50) %>% 
-                      mutate(score=score-mean_score) %>% 
-                      GRanges()
-    names(out_dat_met_mid@elementMetadata)<-"score"
-    genome(out_dat_met_mid)<-"hg38"
-    seqlengths(out_dat_met_mid)<-seqlengths(hg38_seq_info)[seqlevels(out_dat_met_mid)] #filter by seqlengths
-
-    out_dat_met_low <- out_dat %>% 
-                        as.data.frame() %>% 
-                        filter(mcols(out_dat)$score <= 50 & mcols(out_dat)$score > 20) %>% 
-                        mutate(score=score-mean_score) %>% 
-                        GRanges()
-    names(out_dat_met_low@elementMetadata)<-"score"
-    genome(out_dat_met_low)<-"hg38"
-    seqlengths(out_dat_met_low)<-seqlengths(hg38_seq_info)[seqlevels(out_dat_met_low)] #filter by seqlengths
-
-    out_dat_met_hypomet <- out_dat %>% 
-                            as.data.frame() %>% filter(mcols(out_dat)$score <= 20) %>%
-                            mutate(score=score-mean_score) %>% 
-                            GRanges()
-    names(out_dat_met_hypomet@elementMetadata)<-"score"
-    genome(out_dat_met_hypomet)<-"hg38"
-    seqlengths(out_dat_met_hypomet)<-seqlengths(hg38_seq_info)[seqlevels(out_dat_met_hypomet)] #filter by seqlengths
-
-    print(paste("Saving bedgraphs for...",i))
-    rtracklayer::export(out_dat_hypermet,con=paste0(sample_dir,"/",paste(i,"hypermet","bw",sep=".")))
-    rtracklayer::export(out_dat_met_mid,con=paste0(sample_dir,"/",paste(i,"midmet","bw",sep=".")))
-    rtracklayer::export(out_dat_met_low,con=paste0(sample_dir,"/",paste(i,"lowmet","bw",sep=".")))
-    rtracklayer::export(out_dat_met_hypomet,con=paste0(sample_dir,"/",paste(i,"hypomet","bw",sep=".")))
-    print(paste("Completed ",i, " for sample ",sample))
-    print(paste("Saved in ",sample_dir))
-    }
-
-#move some files around to make igv tracks per sample (including the bigwig from the cnv bedgraph)
-```
-
-
-
-Run DMR results through gene ontology for interpretation 
-
-- For 500bp windows, look for TF binding site enrichment
-- For collapsed DMRS, look for ontology and positional enrichments
-
-```R
-project_data_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1"
-dmr_outdir=paste(sep="/",project_data_directory,"DMR_analysis")
-dmr_clones_outdir=paste(sep="/",dmr_outdir,"cnv_clones_alllumhr")
-
-dmr_list <- list.files(path=dmr_outdir,full.names=TRUE,recursive=TRUE,pattern=".clones_lumhrall_dmr.rds")
-
-#USING JASPAR AND LOLA PACKAGE FOR ENRICHMENT
-
-
-#gsea of top DMR genes
-gsea_enrichment_againstlumhr<-function(dmr_indx,species="human",
-                          category="C3",
-                          subcategory="TFT:GTRD",
-                          out_setname="TFT",sample_name=sample_name,
-                          outdir=outdir,
-                          obj=obj){
-
-  dmr<-readRDS(dmr_list[dmr_indx]) #read in 500bp dmr
-  #run collapse, but without join 
-  #split by hypo and hyper and which is significant
-  #run LOLA with the universe as all 500bp sets on JASPAR
-
-  dmrfilt <- filterDMR(dmr, 
-              method = "bonferroni", # c("holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "fdr")
-              filter = FALSE) # Minimum absolute value of the log2FC to allow if filter = TRUE
-  dmr$cluster<-
-  dmr<-dmr %>% split(direction,test)select(chr,start,end,ends_with("_pval"))  %>% filter(if_any(where(is.numeric), ~ .x < 0.05)) #filter to pval column and only those significant
-     
-  collapsed_dmrs <- collapseDMR(obj, 
-                          dmr, 
-                          maxDist = 0, # Max allowable overlap between DMRs to be considered adjacent
-                          minLength = 1, # Min length of collapsed DMR window to include in the output
-                          reduce = F, # Reduce results to unique observations (recommended)
-                          annotate = T) # Add column with overlapping gene names
-
-  pathwaysDF <- msigdbr(species=species, 
-                        collection=category, 
-                        subcollection = subcategory)
-
-  #limit pathways to genes in our data
-  pathwaysDF<-pathwaysDF[pathwaysDF$ensembl_gene %in% unlist(lapply(strsplit(unique(obj@ref$gene_id),"[.]"),"[",1)),]
-  
-  pathways <- split(pathwaysDF$gene_symbol, pathwaysDF$gs_name)
-
-  #run plotting per group and per hyper and hypo? i think just using logFC is sufficient
-
-  plt_list<-lapply(unique(dmrs$type),function(group1){
-  #treat multiple gene overlaps as same logFC
-  #set -Inf to -3 and Inf to 3
-  group_features<-dmrs %>%
-    dplyr::filter(type == group1) %>%
-    dplyr::filter(dmr_padj<0.05) %>% 
-    dplyr::filter(gene_names!="NA") %>% 
-    dplyr::arrange(dmr_logFC) %>%
-    dplyr::select(gene_names, dmr_logFC) %>%
-    tidyr::separate_rows(gene_names) %>%
-    dplyr::mutate(across(where(is.numeric), ~ replace(., .==-Inf, -3))) %>%
-    dplyr::mutate(across(where(is.numeric), ~ replace(., .==Inf, 3)))
-
-  ranks<-setNames(nm=group_features$gene_names,group_features$dmr_logFC)
-  fgseaRes <- fgsea(pathways = pathways, 
-                    stats    = ranks,
-                    minSize  = 5,
-                    nproc = 1)
-
-  topPathwaysUp <- fgseaRes %>% filter(ES > 0) %>% slice_max(NES,n=10) %>% dplyr::select(pathway)
-  topPathwaysDown <- fgseaRes %>% filter(ES < 0) %>% slice_max(abs(NES),n=10) %>% dplyr::select(pathway)
-  topPathways <- unlist(c(topPathwaysUp, rev(topPathwaysDown)))
-  saveRDS(fgseaRes,file=paste0(outdir,sample_name,".",out_setname,".GSEA_enrichment.clone_lumhrall.rds"))
-
-  #not returned
-  plt1<-plotGseaTable(pathways[topPathways], ranks, fgseaRes, gseaParam=0.5)+
-        theme(axis.text.y = element_text( size = rel(0.2)),
-        axis.text.x = element_text( size = rel(0.2)))
-
-  # only plot the top 20 pathways NES scores
-  nes_plt_dat<-rbind(
-    fgseaRes  %>% slice_max(NES,n= 10),
-    fgseaRes  %>% slice_min(NES,n= 10))
-
-  plt2<-ggplot(nes_plt_dat, aes(reorder(pathway, NES), NES)) +
-    geom_point(aes(color= padj,size=size)) + scale_color_gradient2(low="darkred",high="grey",mid="red",midpoint=0.05)+
-    coord_flip() +
-    labs(x="Pathway", y="Normalized Enrichment Score \n Compared to normal LumHR \n (Hyper<->Hypo)",
-        title="Hallmark pathways NES from GSEA") + 
-    theme_minimal()+scale_fill_identity()+ggtitle(paste(group1,out_setname))+ylim(c(5,-5))
-  return(plt2)
-  })
-  patchwork::wrap_plots(plt_list,ncol=1)
-
-}
-
-```R
-project_data_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1"
-dmr_outdir=paste(sep="/",project_data_directory,"DMR_analysis")
-dmr_clones_outdir=paste(sep="/",dmr_outdir,"cnv_clones_alllumhr")
-
-collapsed_dmr_list <- list.files(path=dmr_outdir,full.names=TRUE,recursive=TRUE,pattern=".clones_lumhrall_dmr_filt_collapse.rds")
-
-
-#gsea of top DMR genes
-gsea_enrichment_againstlumhr<-function(dmrs,species="human",
-                          category="C3",
-                          subcategory="TFT:GTRD",
-                          out_setname="TFT",sample_name=sample_name,
-                          outdir=outdir,
-                          obj=obj){
-
-  pathwaysDF <- msigdbr(species=species, 
-                        collection=category, 
-                        subcollection = subcategory)
-
-  #limit pathways to genes in our data
-  pathwaysDF<-pathwaysDF[pathwaysDF$ensembl_gene %in% unlist(lapply(strsplit(unique(obj@ref$gene_id),"[.]"),"[",1)),]
-  
-  pathways <- split(pathwaysDF$gene_symbol, pathwaysDF$gs_name)
-
-  #run plotting per group and per hyper and hypo? i think just using logFC is sufficient
-
-  plt_list<-lapply(unique(dmrs$type),function(group1){
-  #treat multiple gene overlaps as same logFC
-  #set -Inf to -3 and Inf to 3
-  group_features<-dmrs %>%
-    dplyr::filter(type == group1) %>%
-    dplyr::filter(dmr_padj<0.05) %>% 
-    dplyr::filter(gene_names!="NA") %>% 
-    dplyr::arrange(dmr_logFC) %>%
-    dplyr::select(gene_names, dmr_logFC) %>%
-    tidyr::separate_rows(gene_names) %>%
-    dplyr::mutate(across(where(is.numeric), ~ replace(., .==-Inf, -3))) %>%
-    dplyr::mutate(across(where(is.numeric), ~ replace(., .==Inf, 3)))
-
-  ranks<-setNames(nm=group_features$gene_names,group_features$dmr_logFC)
-  fgseaRes <- fgsea(pathways = pathways, 
-                    stats    = ranks,
-                    minSize  = 5,
-                    nproc = 1)
-
-  topPathwaysUp <- fgseaRes %>% filter(ES > 0) %>% slice_max(NES,n=10) %>% dplyr::select(pathway)
-  topPathwaysDown <- fgseaRes %>% filter(ES < 0) %>% slice_max(abs(NES),n=10) %>% dplyr::select(pathway)
-  topPathways <- unlist(c(topPathwaysUp, rev(topPathwaysDown)))
-  saveRDS(fgseaRes,file=paste0(outdir,sample_name,".",out_setname,".GSEA_enrichment.clone_lumhrall.rds"))
-
-  #not returned
-  plt1<-plotGseaTable(pathways[topPathways], ranks, fgseaRes, gseaParam=0.5)+
-        theme(axis.text.y = element_text( size = rel(0.2)),
-        axis.text.x = element_text( size = rel(0.2)))
-
-  # only plot the top 20 pathways NES scores
-  nes_plt_dat<-rbind(
-    fgseaRes  %>% slice_max(NES,n= 10),
-    fgseaRes  %>% slice_min(NES,n= 10))
-
-  plt2<-ggplot(nes_plt_dat, aes(reorder(pathway, NES), NES)) +
-    geom_point(aes(color= padj,size=size)) + scale_color_gradient2(low="darkred",high="grey",mid="red",midpoint=0.05)+
-    coord_flip() +
-    labs(x="Pathway", y="Normalized Enrichment Score \n Compared to normal LumHR \n (Hyper<->Hypo)",
-        title="Hallmark pathways NES from GSEA") + 
-    theme_minimal()+scale_fill_identity()+ggtitle(paste(group1,out_setname))+ylim(c(5,-5))
-  return(plt2)
-  })
-  patchwork::wrap_plots(plt_list,ncol=1)
-
-}
-
-plot_gsea<-function(obj,
-                    sample_name,
-                    outdir){
-  print(paste("Loading DMRS for sample:",sample_name))
-
-  collapsed_dmrs<-readRDS(file=paste0(dmr_outdir,"/cnv_clones_alllumhr/",sample_name,"/",sample_name,".clones_lumhrall_dmr_filt_collapse.rds"))
-
-  #run gsea enrichment on different sets
-  print(paste("Calculating TF Binding Enrichment Compared to LumHR"))
-  tft_plt<-gsea_enrichment_againstlumhr(species="human",
-              category="C3",
-              subcategory="TFT:GTRD",
-              out_setname="TFT",sample_name=sample_name,
-              dmrs=collapsed_dmrs,obj=obj,outdir=outdir)
-
-  print(paste("Calculating Position Enrichment Compared to LumHR"))
-  position_plt<-gsea_enrichment_againstlumhr(species="human",
-              category="C1",
-              subcategory=NULL,
-              out_setname="position",sample_name=sample_name,
-              dmrs=collapsed_dmrs,obj=obj,outdir=outdir)
-
-  print(paste("Calculating Hallmark Enrichment Compared to LumHR"))
-  hallmark_plt<-gsea_enrichment_againstlumhr(species="human",
-              category="H",
-              subcategory=NULL,
-              out_setname="hallmark",sample_name=sample_name,
-              dmrs=collapsed_dmrs,obj=obj,outdir=outdir)
-
-  print(paste("Calculating Cancer Cell Atlas Enrichment Compared to LumHR"))
-  hallmark_plt<-gsea_enrichment_againstlumhr(species="human",
-              category="C4",
-              subcategory="3CA",
-              out_setname="3CA",sample_name=sample_name,
-              dmrs=collapsed_dmrs,obj=obj,outdir=outdir)
-  plt<-patchwork::wrap_plots(list((tft_plt),(position_plt),(hallmark_plt)),ncol=4,axes="collect")
-
-  ggsave(plt,
-          file=paste0(sample_name,".clones_lumhrall.GSEA_enrichment.pdf"),
-          path=outdir,
-          width=40,height=length(unique(collapsed_dmrs$type))*5,limitsize = FALSE)
-  print(paste("Finished sample:",sample_name))
-}
-
-lapply(clone_v_lumhr_analysis, function(sample_name){
-  plot_gsea(obj,
-          sample_name=sample_name,
-          outdir=paste0(dmr_outdir,"/cnv_clones_alllumhr/",sample_name,"/"))
-})
-
-
-```
-
-#coregulation by gsea https://bioconductor.org/packages/release/bioc/vignettes/fgsea/inst/doc/geseca-tutorial.html
-
--->

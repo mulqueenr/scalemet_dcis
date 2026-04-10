@@ -2,6 +2,7 @@
 Estimate integer copy number for clones
 
 Using scquantum, if scquantum fails (estimates ploidy below 2, use segment ratio mean)
+Note that integer 6 includes all above 6 as well.
 
 ```R
 library(GenomicRanges)
@@ -520,8 +521,8 @@ log_col=colorRamp2(c(-3,-2,-1,0,1,2,3),
                         c("#053061","#2166ac","#4393c3","white","#d6604d","#b2182b","#67001f"))
 int_col=c("0"="#053061","1"="#4393c3","2"="#f7f7f7","3"="#f4a582","4"="#b2182b","5"="#67001f","6"="#3d0229")
                         
-cg_perc_col=colorRamp2(c(40,60,80,100),
-                        c("#4d2d18","#CABA9C","#4C6444","#102820"))
+percent_met_col<-colorRamp2(c(100,75,60),c("black","white","#FF00FF"))
+           
 reads_col=colorRamp2(c(min(log10(scCNA@colData$unique_reads)),
                         max(log10(scCNA@colData$unique_reads))),
                         c("white","black"))
@@ -533,43 +534,29 @@ subclone_col=setNames(nm=unique(as.character(scCNA@colData$subclones)),
 cancerclone_col=setNames(nm=unique(as.character(scCNA@colData$clonename)),
                         colorRampPalette(brewer.pal(8, "Pastel2"))(length(unique(as.character(scCNA@colData$clonename)))))
 
-#set colors
-celltype_col=c(
-    "basal"="#87529a",
-    "lumsec"="#e0b0ff",
-    "lumhr"="#c500e8",
-    "cancer"="#ff00ff",
-    "pericyte_VSMC"="#ff6666",
-    "fibroblast"="#9b1c31",
-    "CAF"="#ff2222",
-    "endothelial"="#ffab5f",
-    "TEC"="#ffe922",
-    "monocyte"="#98d3b9",
-    "macrophage"="#00af5f",
-    "DC"="#008080",
-    "TAM"="#ccff00",
-    "nk_tnk"="#00ffff",
-    "tcell_cd4"="#00bae5",
-    "tcell_cd8"="#1800ff",
-    "tcell_cd8_2"="#0016b7",
-    "bcell"="#87ceeb",
-    "plasma"="#73abdb")
+group_col=c("DCIS"="#278192",
+            "HBCA"="#20223E",
+            "Synchronous"="#00B089",
+            "IDC"="#8FF7BD")
+
+scCNA@colData$Group<-NA
+scCNA@colData$Group<-obj@metadata[row.names(scCNA@colData),]$Group
+
+scCNA@colData$Sample<-NA
+scCNA@colData$Sample<-obj@metadata[row.names(scCNA@colData),]$Sample
 
 #make column annotations
 ha = rowAnnotation(
     reads=log10(scCNA@colData$unique_reads),
     cg_perc=scCNA@colData$mcg_pct,
-    celltype=scCNA@colData$celltype,
-    superclones=as.character(scCNA@colData$superclones),
-    subclones=as.character(scCNA@colData$subclones),
+    group=scCNA@colData$Group,
     cancerclone=as.character(scCNA@colData$clonename),
     col= list(
         celltype=celltype_col,
         reads=reads_col,
-        cg_perc=cg_perc_col,
-        superclones=superclone_col,
-        subclones=subclone_col,
-        cancerclone_col))
+        cg_perc=percent_met_col,
+        group=group_col,
+        cancerclone=cancerclone_col))
 
 dend <- t(scCNA@assays@data$scquantum_consensus_integer_discrete) %>% 
         dist(method="euclidean") %>% 
@@ -664,6 +651,100 @@ print(plt3+plt4)
 print(plt5+plt6)
 dev.off()
 
+
+pdf_outname=paste0(output_directory,"/","aneuploid.integer.percell.heatmap.pdf")
+pdf(pdf_outname,width=18,height=15)
+plt5<-Heatmap(t(SummarizedExperiment::assay(scCNA, "scquantum_singlecell_integer_discrete")),
+            col=int_col,
+            cluster_columns=FALSE,
+            #cluster_rows=dend,
+            show_row_names = FALSE, row_title_rot = 0,
+            show_column_names = FALSE,
+            cluster_row_slices = TRUE,
+            top_annotation = column_ha, left_annotation = ha,
+            name="Single cell copy number",
+            row_split=scCNA@colData$clonename,
+            column_split=scCNA@rowRanges@seqnames,
+            border = FALSE)
+print(plt5)
+dev.off()
+
+```
+
+```R
+########Plotting 41T alone########
+obj<-readRDS(file="09_scaledcis.final_ploidy.amethyst.rds")
+
+    prefix="all_samples.aneuploid_only"
+    output_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/copykit"
+
+scCNA <- readRDS(file=paste0(output_directory,"/","all_samples.aneuploid.copykit.Rds"))
+
+scCNA_41T<-scCNA[,colData(scCNA)$Sample %in% c("BCMDCIS41T")]
+
+
+#read in clone DMR data
+dmr<-readRDS("/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/DMR_analysis/DMR_clone_v_lumhr/08_scaledcis.final_celltype.clone_v_lumhr.collapsed.dmrs.rds")
+dmr<- dmr %>% filter(test %in% names(table(scCNA_41T@colData$clonename))) %>% filter(dmr_padj<0.05) %>% GRanges() 
+
+dmr<-split(dmr,f=dmr$test)
+
+#get significant DMR location across genome
+dmr_annot<- lapply(1:length(dmr),function(i){
+    dmr_overlap<-GenomicRanges::findOverlaps(scCNA@rowRanges,
+                                                dmr[[i]],
+                                                select="first")
+    return(as.numeric(unlist(lapply(dmr_overlap,function(j) 
+        ifelse(!is.na(j),dmr[[i]][j,]$dmr_logFC,"NA"))))
+        )
+})
+dmr_annot<-as.data.frame(do.call("cbind",dmr_annot))
+colnames(dmr_annot)<-names(dmr)
+dmr_annot[which(dmr_annot=="-Inf",arr.ind=T)]<- -3.5
+dmr_annot[which(dmr_annot=="Inf",arr.ind=T)]<- 3.5
+
+met_dmr_col<-colorRamp2(rev(c(-5,0,5)),c("#0012ff","white","#FF00FF"))
+
+column_ha_dmr = HeatmapAnnotation(
+    df=dmr_annot,
+    col=c(
+        "BCMDCIS41T_c1"=met_dmr_col,
+        "BCMDCIS41T_c2"=met_dmr_col,
+        "BCMDCIS41T_c3"=met_dmr_col
+    ))
+    
+#make column annotations
+ha = rowAnnotation(
+    reads=log10(scCNA_41T@colData$unique_reads),
+    cg_perc=scCNA_41T@colData$mcg_pct,
+    group=scCNA_41T@colData$Group,
+    cancerclone=as.character(scCNA_41T@colData$clonename),
+    col= list(
+        celltype=celltype_col,
+        reads=reads_col,
+        cg_perc=percent_met_col,
+        group=group_col,
+        cancerclone=cancerclone_col))
+
+pdf_outname=paste0(output_directory,"/","aneuploid.integer.BCMDCIS41T.heatmap.pdf")
+pdf(pdf_outname,width=18,height=15)
+plt5<-Heatmap(t(SummarizedExperiment::assay(scCNA_41T, "scquantum_singlecell_integer_discrete")),
+            col=int_col,
+            cluster_columns=FALSE,
+            #cluster_rows=dend,
+            show_row_names = FALSE, row_title_rot = 0,
+            show_column_names = FALSE,
+            cluster_row_slices = TRUE,
+            top_annotation = column_ha, left_annotation = ha,
+            name="Single cell copy number",
+            row_split=scCNA_41T@colData$clonename,
+            column_split=scCNA_41T@rowRanges@seqnames,
+            bottom_annotation=column_ha_dmr,
+            border = FALSE)
+print(plt5)
+dev.off()
+
+
 saveRDS(scCNA,file=paste0(output_directory,"/","all_samples.aneuploid.copykit.Rds"))
 
 
@@ -688,9 +769,14 @@ plt<-ggplot(plt_data, aes(x = scquantum_ploidy_cloneconsensus, y = log10(count),
 
 ggsave(plt,file=paste0(output_directory,"/","all_samples.scquantum.ploidy.pdf"),width=10,height=10)
 
+
+
+
 #now add cnv integer copy as assay in amethyst object
 obj <- readRDS(file="08_scaledcis.final_celltype.amethyst.rds")
-obj@genomeMatrices[["aneuploid_cnv"]] <- SummarizedExperiment::assay(scCNA, "scquantum_consensus_integer_discrete")
+obj@genomeMatrices[["aneuploid_cnv_clonelevel"]] <- SummarizedExperiment::assay(scCNA, "scquantum_consensus_integer_discrete")
+obj@genomeMatrices[["aneuploid_cnv_singlecell"]] <- SummarizedExperiment::assay(scCNA, "scquantum_singlecell_integer_discrete")
+
 row.names(obj@genomeMatrices[["aneuploid_cnv"]]) <- paste(as.character(seqnames(scCNA@rowRanges)),start(scCNA@rowRanges),end(scCNA@rowRanges),sep="_")
 scquantum_ploidy<-setNames(nm=row.names(colData(scCNA)),colData(scCNA)$ploidy)
 obj@metadata$scquantum_ploidy <- NA
@@ -703,8 +789,8 @@ saveRDS(obj,file="09_scaledcis.final_ploidy.amethyst.rds")
 options(future.globals.maxSize= 80000*1024^2) #80gb limit for parallelizing
 
 bed<-data.frame(chr=unlist(lapply(strsplit(row.names(obj@genomeMatrices[["aneuploid_cnv"]]),"_"),"[",1)),
-                start=unlist(lapply(strsplit(row.names(obj@genomeMatrices[["aneuploid_cnv"]]),"_"),"[",2)),
-                end=unlist(lapply(strsplit(row.names(obj@genomeMatrices[["aneuploid_cnv"]]),"_"),"[",3)))
+                start=as.integer(unlist(lapply(strsplit(row.names(obj@genomeMatrices[["aneuploid_cnv"]]),"_"),"[",2))),
+                end=as.integer(unlist(lapply(strsplit(row.names(obj@genomeMatrices[["aneuploid_cnv"]]),"_"),"[",3))))
 
 win_out <- makeWindows(obj, 
                     bed = bed,
@@ -714,10 +800,37 @@ win_out <- makeWindows(obj,
                     index = "chr_cg", 
                     nmin = 2) 
 obj@genomeMatrices[["cg_cnv_segments"]]<-win_out
+
 saveRDS(obj,file="09_scaledcis.final_ploidy.amethyst.rds")
 
-        
 ```
 
+Correlate methylation percentage and integer number across cnv segments
+```R
+
+int_cnv<-obj@genomeMatrices$aneuploid_cnv_singlecell
+met_cnv<-obj@genomeMatrices$cg_cnv_segments
+cells_to_keep<-intersect(colnames(met_cnv),colnames(int_cnv))
+met_cnv<-met_cnv[,cells_to_keep]
+int_cnv<-int_cnv[,cells_to_keep]
+dim(met_cnv)==dim(int_cnv)
+
+row.names(met_cnv)<-obj@genomeMatrices[["aneuploid_cnv"]]
+row.names(int_cnv)<-obj@genomeMatrices[["aneuploid_cnv"]]
+
+int_cnv<-int_cnv[apply(int_cnv, 1, var, na.rm = TRUE)>quantile(apply(int_cnv, 1, var, na.rm = TRUE),p=0.5),]
+met_cnv<-met_cnv[row.names(int_cnv),]
+dim(met_cnv)==dim(int_cnv)
+colnames(met_cnv) == colnames(int_cnv)
+
+#plot correlation int_cnv to met_cnv
+feature_cor<-unlist(lapply(1:nrow(met_cnv), function(i){
+    cor_out<-cor(unlist(met_cnv[i,]),unlist(int_cnv[i,]),method="spearman",use="complete.obs")
+    return(cor_out)
+}))
+
+feature_cor<-cbind(feature=row.names(int_cnv),met_cor=feature_cor)
+
+```
 
 
