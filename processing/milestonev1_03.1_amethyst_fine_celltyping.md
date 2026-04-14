@@ -80,17 +80,21 @@ wd=paste(sep="/",project_data_directory,merged_dat_folder)
 setwd(wd)
 system(paste0("mkdir -p ",project_data_directory,"/fine_celltyping"))
 
+#set colors
+celltype_col=c(
+"perivas"="#FF9900",
+"endothelial"="#FFFF66",
+"fibroblast"="#FF0000",
+"unknown"="#FF6699",
 
-cell_colors=c(
-"basal"="#844c9d",
-"lumhr"="#e23e96",
-"cancer"="#39FF14",
-"lumsec"="#ff6498",
-"fibro"="#f58e90",
-"endo"="#5bbb5a",
-"myeloid"="#8088c2",
-"tcell"="#1d87c8",
-"bcell"="#65cbe4")
+"myeloid"="#99FFFF",
+"nk_tcell"="#99FF99",
+"bcell"="#0099CC",
+
+"basal"="#990099",
+"lumsec"="#CC0066",
+"lumhr"="#FF00CC",
+"cancer"="#00FF99")
 
 ```
 
@@ -558,7 +562,8 @@ saveRDS(dat,file="07_scaledcis.cnv_clones.amethyst.rds")
 
 #### All cells, final setup for all cell umap
 #clustering on umap, to assign broad cell types, regressing cov, using 12 dims, of 50kb windows, filtering to 20% coverage  taking top 10000 featuers (by var)
-dat_sub<-subsetObject(dat,cells=row.names(dat@metadata)[dat@metadata$mcg_pct>65])
+#dat_sub<-subsetObject(dat,cells=row.names(dat@metadata)[dat@metadata$mcg_pct>65])
+dat_sub<-dat
 dat_sub<-cluster_subset(
   dat=dat_sub,
   broad_celltype=unique(dat_sub@metadata$broad_celltype), #note this is a list, doing all cells together here
@@ -603,15 +608,14 @@ c("all_cells_50kb_06_all_cells_50kb.finecelltyping_15",
 "all_cells_50kb_06_all_cells_50kb.finecelltyping_20"),]$broad_celltype<-"immune"
 
 #setting cancer by cnv clone
-dat_sub@metadata$ploidy<-NA
-dat_sub@metadata$ploidy<-ifelse(endsWith(dat_sub@metadata$cnv_clonename,suffix="diploid"),"diploid","aneuploid")
-dat_sub@metadata[dat_sub@metadata$cnv_clonename=="NA",]$ploidy<-NA
+dat_sub@metadata$ploidy_class<-NA
+dat_sub@metadata$ploidy_class<-ifelse(endsWith(dat_sub@metadata$cnv_clonename,suffix="diploid"),"diploid","aneuploid")
+dat_sub@metadata[dat_sub@metadata$cnv_clonename=="NA",]$ploidy_class<-NA
 #persisting NA values from CNV calls just have too low read count
-dat_sub@metadata[dat_sub@metadata$ploidy %in% c("aneuploid"),]$broad_celltype<-"cancer"
+dat_sub@metadata[dat_sub@metadata$ploidy_class %in% c("aneuploid"),]$broad_celltype<-"cancer"
 
 #save filtered windows for integration with RNA
 saveRDS(dat_sub@genomeMatrices[["cg_win_score"]],file="07_scaledcis.filtered_50kbwin.rds")
-
 
 
 #save the updated broad celltypes with all windows again
@@ -652,41 +656,40 @@ dat_sub<-cluster_subset(
   cluster_on_umap=TRUE)
 
 
+collapsed_dmrs<-calculate_dmrs(dat=dat_sub,split_by_group=FALSE,
+                prefix=prefix,
+                output_directory=output_directory, min_cells=20)
+                
 saveRDS(dat_sub,file=paste0(output_directory,"/","06_scaledcis.",prefix,"_finecelltyping.amethyst.rds"))
 
 
 #calculate dmrs per fine celltype grouping
-dat_sub<-readRDS(file=paste0(output_directory,"/","06_scaledcis.",prefix,"_finecelltyping.amethyst.rds"))
+#collapsed_dmrs<-readRDS("/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/fine_celltyping/immune_50kb/dmr_output_cluster/immune_50kb.clusterDMR.collapsed.rds")
 
-collapsed_dmrs<-calculate_dmrs(dat=dat_sub,split_by_group=FALSE,
-                prefix=prefix,
-                output_directory=output_directory, min_cells=20)
-
-collapsed_dmrs<-readRDS("/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/fine_celltyping/immune_50kb/dmr_output_cluster/immune_50kb.clusterDMR.collapsed.rds")
 collapsed_dmrs %>% 
-filter(type=="immune_50kb.reclust_06_immune_50kb.reclust.finecelltyping_9") %>% 
-filter(direction=="hypo") %>% 
-filter(dmr_padj<0.05) %>% 
-filter(gene_names!="NA") %>% 
-filter(is.finite(dmr_logFC)) %>% 
-slice_min(dmr_logFC, n=100) %>% 
-select(gene_names) %>% paste(collapse=",")
+  filter(type=="immune_50kb.reclust_06_immune_50kb.reclust.finecelltyping_9") %>% 
+  filter(direction=="hypo") %>% 
+  filter(dmr_padj<0.05) %>% 
+  filter(gene_names!="NA") %>% 
+  filter(is.finite(dmr_logFC)) %>% 
+  slice_min(dmr_logFC, n=100) %>% 
+  select(gene_names) %>% paste(collapse=",")
 
 celltype_assignment=c(
   'immune_50kb.reclust_06_immune_50kb.reclust.finecelltyping_10'='bcell',
-  'immune_50kb.reclust_06_immune_50kb.reclust.finecelltyping_3'='tcell_cd4',
-  'immune_50kb.reclust_06_immune_50kb.reclust.finecelltyping_12'='tcell_cd4',
-  'immune_50kb.reclust_06_immune_50kb.reclust.finecelltyping_8'='tcell_cd4',
-  'immune_50kb.reclust_06_immune_50kb.reclust.finecelltyping_2'='tcell_cd4',
-  'immune_50kb.reclust_06_immune_50kb.reclust.finecelltyping_1'='tcell_cd8',
-  'immune_50kb.reclust_06_immune_50kb.reclust.finecelltyping_11'='tcell_cd8',
-  'immune_50kb.reclust_06_immune_50kb.reclust.finecelltyping_14'='tcell_cd8',
-  'immune_50kb.reclust_06_immune_50kb.reclust.finecelltyping_6'='tcell_cd8',
-  'immune_50kb.reclust_06_immune_50kb.reclust.finecelltyping_9'='tcell_treg',
-  'immune_50kb.reclust_06_immune_50kb.reclust.finecelltyping_13'='monocyte',
-  'immune_50kb.reclust_06_immune_50kb.reclust.finecelltyping_4'='macrophage',
-  'immune_50kb.reclust_06_immune_50kb.reclust.finecelltyping_7'='macrophage',
-  'immune_50kb.reclust_06_immune_50kb.reclust.finecelltyping_5'='macrophage'
+  'immune_50kb.reclust_06_immune_50kb.reclust.finecelltyping_3'='nk_tcell',
+  'immune_50kb.reclust_06_immune_50kb.reclust.finecelltyping_12'='nk_tcell',
+  'immune_50kb.reclust_06_immune_50kb.reclust.finecelltyping_8'='nk_tcell',
+  'immune_50kb.reclust_06_immune_50kb.reclust.finecelltyping_2'='nk_tcell',
+  'immune_50kb.reclust_06_immune_50kb.reclust.finecelltyping_1'='nk_tcell',
+  'immune_50kb.reclust_06_immune_50kb.reclust.finecelltyping_11'='nk_tcell',
+  'immune_50kb.reclust_06_immune_50kb.reclust.finecelltyping_14'='nk_tcell',
+  'immune_50kb.reclust_06_immune_50kb.reclust.finecelltyping_6'='nk_tcell',
+  'immune_50kb.reclust_06_immune_50kb.reclust.finecelltyping_9'='nk_tcell',
+  'immune_50kb.reclust_06_immune_50kb.reclust.finecelltyping_13'='myeloid',
+  'immune_50kb.reclust_06_immune_50kb.reclust.finecelltyping_4'='myeloid',
+  'immune_50kb.reclust_06_immune_50kb.reclust.finecelltyping_7'='myeloid',
+  'immune_50kb.reclust_06_immune_50kb.reclust.finecelltyping_5'='myeloid'
 )      
 
 #treg might need further validation but fits with expected cell type proportions

@@ -892,9 +892,9 @@ plot_gsea(gsea=cancermeta_dmr,out_setname="3CA",prefix=prefix,dmr_hypo_count=dmr
 
 6-8. Group comparisons
 Group comparisons
-6. Endothelial (HBCA) vs TEC (dcis, synch, idc)
-7. Fibroblast (HBCA) vs CAF (dcis, synch, idc)
-8. Macrophage (HBCA) vs TAM (dcis, synch, idc)
+6. Endothelial (HBCA) vs TEC (idc)
+7. Fibroblast (HBCA) vs CAF (idc)
+8. Macrophage (HBCA) vs TAM (idc)
 
 ```R
 #set up directories
@@ -909,51 +909,86 @@ celltype500bpwindows<-readRDS(file=paste0(project_data_directory,"/merged_data/"
 
 comparisons_set=colnames(celltype500bpwindows[["pct_matrix"]])[4:ncol(celltype500bpwindows[["pct_matrix"]])]
 
-endothelial_comp<-cbind("name"="endothelial_HBCA_v_cancer",
-            "A"="endothelial.HBCA",
-            "B"=paste(c("endothelial.IDC","endothelial.DCIS","endothelial.Synchronous"),collapse=","))
-fibroblast_comp<-cbind("name"="fibroblast_HBCA_v_cancer",
-            "A"="fibroblast.HBCA",
-            "B"=paste(c("fibroblast.IDC","fibroblast.DCIS","fibroblast.Synchronous"),collapse=","))
-macro_comp<-cbind("name"="macro_HBCA_v_cancer",
-            "A"="macro.HBCA",
-            "B"=paste(c("macro.IDC","macro.DCIS","macro.Synchronous"),collapse=","))
-basal_comp<-cbind("name"="basal_HBCA_v_DCIS",
-            "A"="basal.HBCA",
-            "B"="basal.DCIS")
-lumhr_to_dcis_comp<-cbind("name"="lumhr_HBCA_v_cancer_DCIS",
+celltype_comparisons<-lapply(c("endothelial","fibroblast","macro","basal"),function(celltype){
+normal_dcis<-cbind("name"=paste0("1_",celltype,"_HBCA_v_DCIS"),
+                    "A"=paste0(celltype,".HBCA"),
+                    "B"=paste0(celltype,".DCIS"))
+dcis_synch<-cbind("name"=paste0("2_",celltype,"_DCIS_v_SYNCH"),
+                    "A"=paste0(celltype,".DCIS"),
+                    "B"=paste0(celltype,".Synchronous"))
+synch_idc<-cbind("name"=paste0("3_",celltype,"_SYNCH_v_IDC"),
+                    "A"=paste0(celltype,".Synchronous"),
+                    "B"=paste0(celltype,".IDC"))     
+dcis_idc<-cbind("name"=paste0("4_",celltype,"_DCIS_v_IDC"),
+                    "A"=paste0(celltype,".DCIS"),
+                    "B"=paste0(celltype,".IDC"))
+normal_synch<-cbind("name"=paste0("5_",celltype,"_HBCA_v_SYNCH"),
+                    "A"=paste0(celltype,".HBCA"),
+                    "B"=paste0(celltype,".Synchronous"))    
+normal_idc<-cbind("name"=paste0("6_",celltype,"_HBCA_v_IDC"),
+                    "A"=paste0(celltype,".HBCA"),
+                    "B"=paste0(celltype,".IDC"))
+normal_rest<-cbind("name"=paste0("7_",celltype,"_HBCA_v_allCancer"),
+                    "A"=paste0(celltype,".HBCA"),
+                    "B"=paste(c(paste0(celltype,".DCIS"),paste0(celltype,".Synchronous"),paste0(celltype,".IDC")),collapse=","))   
+rbind(normal_dcis,dcis_synch,synch_idc,normal_synch,normal_idc,normal_rest) 
+})
+celltype_comparisons<-do.call("rbind",celltype_comparisons)
+
+#adding these separate since they include additional celltypes
+lumhr_to_dcis_comp<-cbind("name"="1_lumhr_HBCA_v_cancer_DCIS",
             "A"="lumhr.HBCA",
             "B"="cancer.DCIS")
-dcis_to_synch_comp<-cbind("name"="cancer_DCIS_v_cancer_SYNCH",
+dcis_to_synch_comp<-cbind("name"="2_cancer_DCIS_v_cancer_SYNCH",
             "A"="cancer.DCIS",
             "B"="cancer.Synchronous")
-synch_to_idc_comp<-cbind("name"="cancer_SYNCH_v_cancer_IDC",
+synch_to_idc_comp<-cbind("name"="3_cancer_SYNCH_v_cancer_IDC",
             "A"="cancer.Synchronous",
             "B"="cancer.IDC")
-dcis_to_idc_comp<-cbind("name"="cancer_DCIS_v_cancer_IDC",
+dcis_to_idc_comp<-cbind("name"="4_cancer_DCIS_v_cancer_IDC",
             "A"="cancer.DCIS",
             "B"="cancer.IDC")
-lumhr_to_idc_comp<-cbind("name"="lumhr_HBCA_v_cancer_IDC",
+lumhr_to_synch_comp<-cbind("name"="5_lumhr_HBCA_v_cancer_SYNCH",
+            "A"="lumhr.HBCA",
+            "B"="cancer.Synchronous")
+lumhr_to_idc_comp<-cbind("name"="6_lumhr_HBCA_v_cancer_IDC",
             "A"="lumhr.HBCA",
             "B"="cancer.IDC")
-comp<-rbind(endothelial_comp,fibroblast_comp,macro_comp,basal_comp,
-lumhr_to_dcis_comp,dcis_to_synch_comp,synch_to_idc_comp,dcis_to_idc_comp,lumhr_to_idc_comp)
+lumhr_to_cancer_comp<-cbind("name"="7_lumhr_HBCA_v_allCancer",
+                    "A"="lumhr.HBCA",
+                    "B"=paste(c("cancer.DCIS","cancer.Synchronous","cancer.IDC"),collapse=","))          
+celltype_comparisons<-as.data.frame(rbind(celltype_comparisons,
+lumhr_to_dcis_comp,dcis_to_synch_comp,synch_to_idc_comp,dcis_to_idc_comp,lumhr_to_synch_comp,lumhr_to_idc_comp,lumhr_to_cancer_comp))
 
 collapsed_dmrs <- find_cluster_markers(dat=dat,
                   prefix=prefix,
                   celltype500bp_windows=celltype500bp_windows,
-                  comp=comp)
+                  comp=celltype_comparisons)
+
+#assign celltype for grouping
+collapsed_dmrs$celltype<-unlist(lapply(strsplit(collapsed_dmrs$test,"_"),"[",2)) 
+table(collapsed_dmrs$celltype)
+collapsed_dmrs[collapsed_dmrs$celltype %in% c("cancer","lumhr"),]$celltype<-"cancer"
+
+#do power analysis to limit to logFC we have sufficient power to test for each?
 
 #plot dmr counts per test
-collapsed_dmrs <- collapsed_dmrs %>% dplyr::filter(test %in% c("basal_HBCA_v_DCIS","endothelial_HBCA_v_cancer","fibroblast_HBCA_v_cancer","macro_HBCA_v_cancer")) 
+collapsed_dmrs %>% dplyr::filter(dmr_padj<0.05) %>% group_by(test,direction) %>% summarise(sum(dmr_length))
 
-collapsed_dmrs %>% dplyr::filter(test %in% c("basal_HBCA_v_DCIS","endothelial_HBCA_v_cancer","fibroblast_HBCA_v_cancer","macro_HBCA_v_cancer")) %>% dplyr::filter(dmr_padj<0.05) %>% group_by(test,direction) %>% summarise(sum(dmr_length))
-plt<-ggplot(collapsed_dmrs |> dplyr::filter(dmr_padj<0.05) |> dplyr::group_by(test, direction) |> dplyr::summarise(n = n()), 
-    aes(y = test, x = n, fill = test)) + 
+
+plt_dat<-collapsed_dmrs %>% 
+dplyr::filter(dmr_padj<0.05) %>% 
+dplyr::filter(abs(dmr_logFC)>1) %>% 
+dplyr::group_by(test, celltype, direction) %>% 
+dplyr::summarise(n = n())
+
+plt<-ggplot(plt_dat, aes(y = test, x = n, fill = test)) + 
     geom_col() + 
-    facet_grid(vars(direction), scales = "free_y") + 
-    theme_classic() +  theme(legend.position = "none")
-ggsave(plt,file=paste0(prefix,".collapsed.barplot.pdf"))
+    facet_grid(direction~celltype, scales = "free") + 
+    theme_classic() +  theme(legend.position = "none")+ coord_flip() + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+ggsave(plt,file=paste0(prefix,".",celltype,".collapsed.barplot.pdf"))
+
+
 
 sample_name="celltype_by_group"
 #gsea for dmr uses rank with hypomet down and hypermet up
@@ -965,7 +1000,7 @@ gsea_across_sets(obj=dat,
 #plot gsea
 collapsed_dmrs <- readRDS(file=paste0(prefix,".collapsed.dmrs.rds"))
 collapsed_dmrs <- collapsed_dmrs %>% dplyr::filter(test %in% c("basal_HBCA_v_DCIS","endothelial_HBCA_v_cancer","fibroblast_HBCA_v_cancer","macro_HBCA_v_cancer")) 
-dmr_hypo_count <- collapsed_dmrs %>% dplyr::filter(dmr_padj < 0.05) %>% dplyr::filter(direction %in% c("hypo")) %>% dplyr::group_by(test, direction) %>% dplyr::summarise(n = n()) %>% as.data.frame()
+dmr_hypo_count <- collapsed_dmrs %>% dplyr::filter(dmr_padj < 0.05) %>% %>% dplyr::filter(direction %in% c("hypo")) %>% dplyr::group_by(test, direction) %>% dplyr::summarise(n = n()) %>% as.data.frame()
 dmr_hyper_count <- collapsed_dmrs %>% dplyr::filter(dmr_padj < 0.05) %>% dplyr::filter(direction %in% c("hyper")) %>% dplyr::group_by(test, direction) %>% dplyr::summarise(n = n()) %>% as.data.frame()
 dmr_hyper_count <- setNames(nm=dmr_hyper_count$test,dmr_hyper_count$n)
 dmr_hypo_count <- setNames(nm=dmr_hypo_count$test,dmr_hypo_count$n)
