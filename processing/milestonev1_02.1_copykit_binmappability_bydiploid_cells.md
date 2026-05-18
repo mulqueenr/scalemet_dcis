@@ -24,6 +24,7 @@ This controls for mappability, then just add into granges object as new ref
 
 *Ended up using the diploid coverage per bin to remove outlier mapping bins (those over mean +/- 1.5 SD away). Didn't use diploid mapping for bin-level correction. But did plot it as annotation bar.*
 
+Note that most of this code is just minor adjustments to native copykit processing functions run line-by-line.
 
 ## Read in diploid cells from amethyst metadata
 ```R
@@ -47,15 +48,15 @@ table(cyto$stain) #set colors for these
 set.seed(111)
 options(future.globals.maxSize= 80000*1024^2) #80gb limit for parallelizing
 task_cpus=300
+
 project_data_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1"
-merged_dat_folder="merged_data"
-wd=paste(sep="/",project_data_directory,merged_dat_folder)
-setwd(wd)
-obj<-readRDS(file="05_scaledcis.fine_celltype.amethyst.rds")
-#write.table(as.data.frame(obj@metadata),file="05_scaledcis.fine_celltype.amethyst.metadata.csv",header=T,sep=",")
+obj<-readRDS(file=paste(project_data_directory,"01_amethyst_initial_object","01.0.patient.filt.amethyst.rds",sep="/"))
 
 #make output directory
-system(paste0("mkdir -p ",project_data_directory,"/copykit" ))
+processing_folder="02_copykit_cnv_calling"
+wd=paste(sep="/",project_data_directory,processing_folder)
+system(paste0("mkdir -p ",wd))
+setwd(wd)
 
 #count reads in 220kb, then use varbin_count data to split reads 
 read_scalebio_bam<-function(obj_met,x,sample_name){
@@ -81,15 +82,15 @@ read_scalebio_bam<-function(obj_met,x,sample_name){
 }
 
 #count nonlumhr cells in high resolution bins, redefine bin sizes to roughly match 220kb coverage
-output_directory<-paste0(project_data_directory,"/copykit")
+output_directory<-getwd()
 remove_Y = TRUE
 min_bincount = 10
 cores=100
 genome = "hg38"
 #resolution="220kb"
 #run at 500kb and 280 as well
-#resolution="500kb"
-resolution="280kb"
+resolution="500kb"
+#resolution="280kb"
 
 # bindings for NSE and data
 Chr <- chr <- strand <- GeneID <- NULL
@@ -128,14 +129,11 @@ message("Counting reads for genome ",genome," and resolution: ",resolution)
 #filter to exclude any potential cancer cells (removing lumhr cells from DCIS and IDC)
 #get list of bams and cellids
 diploid_cells<-rbind(
-    obj@metadata %>% filter(fine_celltype!="lumhr"),
-    obj@metadata %>% filter(Group=="HBCA") %>% filter(fine_celltype=="lumhr"))
+    obj@metadata %>% filter(coarse_celltype!="lumhr"),
+    obj@metadata %>% filter(Group=="HBCA") %>% filter(coarse_celltype=="lumhr"))
 
 #dim(diploid_cells)
-#[1] 16632    39
-
-####SUBSET FOR SPEED####
-#diploid_cells<-diploid_cells[sample(row.names(diploid_cells),size=2000),]
+#[1] 20745    44
 
 #return chr start position for reads filtered in bam to cell id
 varbin_counts_list_all_fields<-mclapply(
@@ -159,9 +157,8 @@ varbin_counts_list <-mclapply(varbin_counts_list_all_fields,
                                 mc.cores=cores)
 
 
-saveRDS(varbin_counts_list,file=paste0("/data/rmulqueen/projects/scalebio_dcis/ref/copykit.met_windows.",resolution,".diploidcount.rds"))
-
-varbin_counts_list<-readRDS(file=paste0("/data/rmulqueen/projects/scalebio_dcis/ref/copykit.met_windows.",resolution,".diploidcount.rds"))
+saveRDS(varbin_counts_list,file=paste0("copykit.met_windows.",resolution,".diploidcount.rds"))
+varbin_counts_list<-readRDS(file=paste0("copykit.met_windows.",resolution,".diploidcount.rds"))
 
 #TRY MAPPABILITY CORRECTION INSTEAD OF VARIABLE BIN SIZES, DISTRIBUTION TO BIG AND I THINK IT MASKS CNVS
 dip_cov<-do.call("cbind",varbin_counts_list)
@@ -178,17 +175,19 @@ ref$band<-cyto[cyto_overlap$subjectHits,]$band
 ref$arm<-cyto[cyto_overlap$subjectHits,]$arm
 ref$stain<-cyto[cyto_overlap$subjectHits,]$stain
 
-saveRDS(ref,file=paste0("/data/rmulqueen/projects/scalebio_dcis/ref/copykit.met_windows.",resolution,".diploidcorrected.ref.rds"))
+saveRDS(ref,file=paste0("copykit.met_windows.",resolution,".diploidcorrected.ref.rds"))
 ```
 
-## Count original 220kb original windows for metrics
+## Count original 500kb original windows for metrics
 
 ```R
-varbin_counts_list<-readRDS(file=paste0("/data/rmulqueen/projects/scalebio_dcis/ref/copykit.met_windows.",resolution,".diploidcount.rds"))
+varbin_counts_list<-readRDS(file=paste0("copykit.met_windows.",resolution,".diploidcount.rds"))
 
-#hg38_grangeslist[["hg38_200kb"]]<-readRDS(file=paste0("/data/rmulqueen/projects/scalebio_dcis/ref/copykit.met_windows.",resolution,".diploidcorrected.ref.rds"))
-hg38_grangeslist[["hg38_500kb"]]<-readRDS(file=paste0("/data/rmulqueen/projects/scalebio_dcis/ref/copykit.met_windows.",resolution,".diploidcorrected.ref.rds"))
-hg38_grangeslist[["hg38_250kb"]]<-readRDS(file=paste0("/data/rmulqueen/projects/scalebio_dcis/ref/copykit.met_windows.",resolution,".diploidcorrected.ref.rds"))
+#substitute our new diploid corrected ref in place of copykit default
+hg38_grangeslist[["hg38_500kb"]]<-readRDS(file=paste0("copykit.met_windows.",resolution,".diploidcorrected.ref.rds"))
+
+#if you wanna run it for a different resolution, youll have to reperform the counting
+#hg38_grangeslist[["hg38_250kb"]]<-readRDS(file=paste0("copykit.met_windows.",resolution,".diploidcorrected.ref.rds"))
 
 hg38_rg <- switch(resolution,
     "55kb" = hg38_grangeslist[["hg38_50kb"]],
@@ -214,14 +213,14 @@ if (remove_Y == TRUE) {
 ref<-as(rg,"GRanges")
 
 
-varbin_counts_list <-mclapply(varbin_counts_list,
-                                function(x) 
-                                GenomicRanges::countOverlaps(
-                                query=ref,
-                                subject=x,
-                                type="any",
-                                ignore.strand=TRUE),
-                                mc.cores=cores)
+#varbin_counts_list <-mclapply(varbin_counts_list,
+#                                function(x) 
+#                                GenomicRanges::countOverlaps(
+#                                query=ref,
+#                                subject=x,
+#                                type="any",
+#                                ignore.strand=TRUE),
+#                                mc.cores=cores)
 message("Counted reads across all bins.")
 
 varbin_counts_list <- lapply(varbin_counts_list,as.vector)
@@ -279,7 +278,7 @@ S4Vectors::metadata(cna_obj)$resolution <- resolution #note this is different wi
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
 
 # saving info and removing columns from list elements
-bam_metrics <- diploid_cells[c("unique_reads","tss_enrich","mcg_pct","cg_cov","batch","plate_info","tgmt_well","i7_well","i5_well","fine_celltype")]
+bam_metrics <- diploid_cells[c("unique_reads","tss_enrich","mcg_pct","cg_cov","batch","plate_info","tgmt_well","i7_well","i5_well","coarse_celltype")]
 
 # making sure metrics match varbin_counts_df
 bam_metrics <- bam_metrics[good_cells,]
@@ -293,9 +292,9 @@ SummarizedExperiment::colData(cna_obj) <-
     S4Vectors::DataFrame(bam_metrics)
 colnames(cna_obj) <- names(varbin_counts_df)
 
-sample_name="diploid_2200kb_notcorrected"
+sample_name="diploid_500kb_notcorrected"
 
-saveRDS(cna_obj,file=paste0(output_directory,"/copykit",".",sample_name,".",resolution,".rds"))
+saveRDS(cna_obj,file=paste0("copykit",".",sample_name,".",resolution,".rds"))
 
 #runvarbin module
 cna_obj <- runVst(cna_obj)
@@ -311,6 +310,11 @@ cna_obj <- runUmap(cna_obj)
 cna_obj <- findSuggestedK(cna_obj)
 S4Vectors::metadata(cna_obj)$suggestedK
 
+```
+
+# This plotting is to just spot check how the CNV semi-raw data looks on diploid
+```R
+
 #define colors based on data
 log_col=colorRamp2(c(-2,-1,0,1,2),
                         c("darkblue","blue","white","red","darkred"))
@@ -322,23 +326,22 @@ reads_col=colorRamp2(c(min(log10(cna_obj@colData$unique_reads)),
 
 #set colors
 celltype_col=c(
-'peri'='#c1d552',
-'fibro1'='#7f1911',
-'fibro2'='#e791f9',
-'endo'='#f0b243',
-'endo2'='#d0bd4a',
 'tcell'='#2e3fa3',
 'bcell'='#00adea',
-'myeloid1'='#00a487',
-'myeloid2'='#006455',
+'myeloid'='#00a487',
+'peri_VSMC'='#c1d552',
+'fibroblast'='#7f1911',
+'endothelial'='#f0b243',
+'adipocyte'='#d0bd4a',
 'basal'='#7200cc',
 'lumsec'='#af00af',
 'lumhr'='#d8007c')
+
     #plot heatmap
     ha = rowAnnotation(
         reads=log10(cna_obj@colData$unique_reads),
         cg_perc=cna_obj@colData$mcg_pct,
-        celltype=cna_obj@colData$fine_celltype,
+        celltype=cna_obj@colData$coarse_celltype,
         col= list(
             celltype=celltype_col,
             reads=reads_col,
@@ -365,38 +368,19 @@ celltype_col=c(
         top_annotation=column_ha,cluster_columns=FALSE,cluster_column_slices=FALSE,column_split=seqnames(cna_obj@rowRanges),
         name="logr")
 
-    pdf(paste0(output_directory,"/copykit.",sample_name,".",resolution,".pdf"),width=20)
+    pdf(paste0("copykit.",sample_name,".",resolution,".pdf"),width=20)
 
     print(plt)
     dev.off()
-    paste0(output_directory,"/copykit.",sample_name,".",resolution,".pdf")
+    paste0("copykit.",sample_name,".",resolution,".pdf")
 
-    saveRDS(cna_obj,file=paste0(output_directory,"/copykit",".",sample_name,".",resolution,".rds"))
-
-    #replot different resolutions on -2 to 2 scale  scale
-    #define colors based on data
-    log_col=colorRamp2(c(-2,-1,0,1,2),c("darkblue","blue","white","red","darkred"))
-    lapply(c("200kb","250kb","500kb"),function(res){
-        cna_obj<-readRDS(file=paste0(output_directory,"/copykit",".",sample_name,".",resolution,".rds"))
-
-    plt<-Heatmap(
-        t(cna_obj@assays@data$logr),
-        left_annotation=ha,col=log_col,
-        show_column_names=FALSE,show_row_names=FALSE,
-        top_annotation=column_ha,cluster_columns=FALSE,cluster_column_slices=FALSE,column_split=seqnames(cna_obj@rowRanges),
-        name="logr")
-
-    pdf(paste0(output_directory,"/copykit.",sample_name,".",resolution,".pdf"),width=20)
-    print(plt)
-    dev.off()
-    paste0(output_directory,"/copykit.",sample_name,".",resolution,".pdf")})
-
+    saveRDS(cna_obj,file=paste0("copykit",".",sample_name,".",resolution,".rds"))
 ```
 
+Use this diploid counted reads per window for filtering in 02.2 script.
 
-
+<!--
 ## Changing window sizes to correct for mappability
-
 
 Decimate every range to add more modular scaling of size for met coverage
 
@@ -1226,7 +1210,7 @@ runCountReads_amethyst <- function(obj,
 
 ```
 
-# old version where i resize windows
+# old version where i resize windows, commented out.
 
 <!---
 

@@ -25,43 +25,41 @@ library(RColorBrewer)
 library(ComplexHeatmap)
 library(parallel)
 library(BiocParallel)
-
-set.seed(111)
-
-#set colors
-celltype_col=c(
-"basal"="#87529a",
-"lumsec"="#e0b0ff",
-"lumhr"="#c500e8",
-"cancer"="#ff00ff",
-"pericyte_VSMC"="#ff6666",
-"fibroblast"="#9b1c31",
-"CAF"="#ff2222",
-"endothelial"="#ffab5f",
-"TEC"="#ffe922",
-"monocyte"="#98d3b9",
-"macrophage"="#00af5f",
-"DC"="#008080",
-"TAM"="#ccff00",
-"nk_tnk"="#00ffff",
-"tcell_cd4"="#00bae5",
-"tcell_cd8"="#1800ff",
-"tcell_cd8_2"="#0016b7",
-"bcell"="#87ceeb",
-"plasma"="#73abdb")
-
+library(Rsamtools)
+library(copykit)
+library(circlize)
+library(RColorBrewer)
+library(ComplexHeatmap)
+library(dendextend)
+library(amethyst)
+library(dplyr)
 
 #set environment and read in data
 set.seed(111)
 options(future.globals.maxSize= 80000*1024^2) #80gb limit for parallelizing
-task_cpus=300
-register(MulticoreParam(progressbar = T, workers = task_cpus), default = T)
+task_cpus=150
 
 project_data_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1"
-merged_dat_folder="merged_data"
-wd=paste(sep="/",project_data_directory,merged_dat_folder)
+obj<-readRDS(file=paste(project_data_directory,"01_amethyst_initial_object","01.0.patient.filt.amethyst.rds",sep="/"))
+
+#make output directory (should already exist from 02.1 script)
+processing_folder="02_copykit_cnv_calling"
+wd=paste(sep="/",project_data_directory,processing_folder)
+system(paste0("mkdir -p ",wd))
 setwd(wd)
-obj<-readRDS(file="06_scaledcis.celltype.amethyst.rds")
+
+#set colors
+celltype_col=c(
+'tcell'='#2e3fa3',
+'bcell'='#00adea',
+'myeloid'='#00a487',
+'peri_VSMC'='#c1d552',
+'fibroblast'='#7f1911',
+'endothelial'='#f0b243',
+'adipocyte'='#d0bd4a',
+'basal'='#7200cc',
+'lumsec'='#af00af',
+'lumhr'='#d8007c')
 
 #read in cyto info
 cyto=read.table(file="/data/rmulqueen/projects/scalebio_dcis/ref/cytoBand.txt",sep="\t")
@@ -71,26 +69,23 @@ cyto<-cyto[!is.na(cyto$band),]
 cyto<-cyto[cyto$chr %in% c(paste0("chr",1:22),"chrX"),]
 table(cyto$stain) #set colors for these
 
-#make output directory
-system(paste0("mkdir -p ",project_data_directory,"/copykit" ))
-
 #using my own granges list with the coverage and cyto information added
 #setting it and updating it here because both bin counting and running segmentation use it 
-hg38_grangeslist[["hg38_200kb"]]<-readRDS(file=paste0("/data/rmulqueen/projects/scalebio_dcis/ref/copykit.met_windows.220kb.diploidcorrected.ref.rds")) #11268
-hg38_grangeslist[["hg38_250kb"]]<-readRDS(file=paste0("/data/rmulqueen/projects/scalebio_dcis/ref/copykit.met_windows.280kb.diploidcorrected.ref.rds")) #8747
-hg38_grangeslist[["hg38_500kb"]]<-readRDS(file=paste0("/data/rmulqueen/projects/scalebio_dcis/ref/copykit.met_windows.500kb.diploidcorrected.ref.rds")) #4107
+#hg38_grangeslist[["hg38_200kb"]]<-readRDS(file=paste0("/data/rmulqueen/projects/scalebio_dcis/ref/copykit.met_windows.220kb.diploidcorrected.ref.rds")) #11268
+#hg38_grangeslist[["hg38_250kb"]]<-readRDS(file=paste0("/data/rmulqueen/projects/scalebio_dcis/ref/copykit.met_windows.280kb.diploidcorrected.ref.rds")) #8747
+hg38_grangeslist[["hg38_500kb"]]<-readRDS(file=paste0("copykit.met_windows.",resolution,".diploidcorrected.ref.rds"))
 
 #filtering genomic bins by coverage, takes about 10% of bins
-hg38_grangeslist[["hg38_200kb"]]<-hg38_grangeslist[["hg38_200kb"]][
-    which(
-        hg38_grangeslist[["hg38_200kb"]]$diploid_cov < mean(hg38_grangeslist[["hg38_200kb"]]$diploid_cov)+(1.5*sd(hg38_grangeslist[["hg38_200kb"]]$diploid_cov)) &
-        hg38_grangeslist[["hg38_200kb"]]$diploid_cov > mean(hg38_grangeslist[["hg38_200kb"]]$diploid_cov)-(1.5*sd(hg38_grangeslist[["hg38_200kb"]]$diploid_cov))),]
+#hg38_grangeslist[["hg38_500kb"]]<-hg38_grangeslist[["hg38_500kb"]][
+#    which(
+#        hg38_grangeslist[["hg38_500kb"]]$diploid_cov < mean(hg38_grangeslist[["hg38_500kb"]]$diploid_cov)+(1.5*sd(hg38_grangeslist#[["hg38_500kb"]]$diploid_cov)) &
+#        hg38_grangeslist[["hg38_500kb"]]$diploid_cov > mean(hg38_grangeslist[["hg38_500kb"]]$diploid_cov)-(1.5*sd(hg38_grangeslist#[["hg38_500kb"]]$diploid_cov))),]
 #9691
 
-hg38_grangeslist[["hg38_250kb"]]<-hg38_grangeslist[["hg38_250kb"]][
-    which(
-        hg38_grangeslist[["hg38_250kb"]]$diploid_cov < mean(hg38_grangeslist[["hg38_250kb"]]$diploid_cov)+(1.5*sd(hg38_grangeslist[["hg38_250kb"]]$diploid_cov)) &
-        hg38_grangeslist[["hg38_250kb"]]$diploid_cov > mean(hg38_grangeslist[["hg38_250kb"]]$diploid_cov)-(1.5*sd(hg38_grangeslist[["hg38_250kb"]]$diploid_cov))),]
+#hg38_grangeslist[["hg38_250kb"]]<-hg38_grangeslist[["hg38_250kb"]][
+#    which(
+#        hg38_grangeslist[["hg38_250kb"]]$diploid_cov < mean(hg38_grangeslist[["hg38_250kb"]]$diploid_cov)+(1.5*sd(hg38_grangeslist[["hg38_250kb"]]$diploid_cov)) &
+#        hg38_grangeslist[["hg38_250kb"]]$diploid_cov > mean(hg38_grangeslist[["hg38_250kb"]]$diploid_cov)-(1.5*sd(hg38_grangeslist[["hg38_250kb"]]$diploid_cov))),]
 #7548
 
 hg38_grangeslist[["hg38_500kb"]]<-hg38_grangeslist[["hg38_500kb"]][
@@ -142,8 +137,8 @@ runCountReads_amethyst <- function(obj,
                         superclone_addition=2,
                         clus_distance="euclidean",
                         correct_mappability=FALSE) {
-    output_directory=paste0(project_data_directory,"/copykit/",sample_name[1])
-    system(paste0("mkdir -p ",project_data_directory,"/copykit/",sample_name[1]))
+    output_directory=paste0(sample_name[1]) #make directory per sample as subdir
+    system(paste0("mkdir -p ",output_directory))
     
     # bindings for NSE and data
     Chr <- chr <- strand <- GeneID <- NULL
@@ -386,7 +381,6 @@ runCountReads_amethyst <- function(obj,
     return(cna_obj)
 }
 
-
 #running with no bin filter
 register(MulticoreParam(progressbar = T, workers = 125), default = T)
 
@@ -401,8 +395,6 @@ runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS22T'),resolution=res)
 runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS28T'),resolution=res)
 runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS32T'),resolution=res)
 runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS35T'),resolution=res)
-
-res='500kb' #'500kb'
 runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS41T'),resolution=res,superclone_addition=15) 
 runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS49T'),resolution=res) #59 cells
 runCountReads_amethyst(obj=obj,sample_name=c('BCMDCIS52T'),resolution=res)

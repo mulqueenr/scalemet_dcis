@@ -104,6 +104,7 @@ Wrapping each step into a function, so I can run it on stromal cell types as wel
 ```R
 
 celltype_umap<-function(obj=dat,prefix="allcells",dims=12,pc_use,regressCov=TRUE,regressCG=FALSE,k_pheno=50,k_umap=50,neigh=25,dist=1e-5,method="cosine",output_directory,window_name,cluster_on_umap=FALSE){
+  
   print("Running IRLBA reduction...")
   obj@reductions[[paste(window_name,"irlba",sep="_")]] <- runIrlba(obj, genomeMatrices = c(window_name), dims = dims, replaceNA = c(0))
 
@@ -133,6 +134,7 @@ celltype_umap<-function(obj=dat,prefix="allcells",dims=12,pc_use,regressCov=TRUE
   #filter irlba output to just pcs to use
   print(paste("Using IRLBA PC:", min(pc_use), "to", max(pc_use)))
   obj@reductions[[paste(window_name,"irlba_regressed",sep="_")]]<-obj@reductions[[paste(window_name,"irlba_regressed",sep="_")]][,pc_use]
+
 
   obj <- amethyst::runCluster(obj, k_phenograph = k_pheno, reduction = paste(window_name,"irlba_regressed",sep="_")) 
 
@@ -189,6 +191,7 @@ cluster_subset<-function(
   if(any(is.na(pc_use))){
     pc_use=1:max(dims)
   }
+
   #subset to windows with 5% coverage
   req_cov<-as.integer(nrow(dat_sub@metadata)*perc_cell_cov_per_window)
   print(paste("Requiring",perc_cell_cov_per_window,"of cells for window coverage filter:",as.character(req_cov),"cells."))
@@ -297,7 +300,7 @@ testDMR <- function(sumMatrix, eachVsAll = TRUE, comparisons = NULL, nminTotal =
   return(counts)
 }
 
-calculate_dmrs<-function(dat=dat,prefix=prefix,groupBy="fine_cluster_id",output_directory=output_directory,split_by_group=TRUE,split_by_group_DMR=FALSE,min_cells=10){
+calculate_dmrs<-function(dat=dat,prefix=prefix,groupBy="fine_cluster_id",output_directory=output_directory,split_by_group=FALSE,split_by_group_DMR=FALSE,min_cells=10){
 
   bigwig_output_dir=paste0(output_directory,"/bigwig_output_cluster")
   dmr_output_dir=paste0(output_directory,"/dmr_output_cluster")
@@ -335,10 +338,13 @@ calculate_dmrs<-function(dat=dat,prefix=prefix,groupBy="fine_cluster_id",output_
 
   #output tracks as bigwig
   system(paste("mkdir -p ", bigwig_output_dir))
-  bigwig_output(obj=dat,
-                tracks=paste0("cg_",prefix,"_cells_perc"),
-                output_directory=bigwig_output_dir,
-                prefix=prefix)
+  lapply(colnames(celltype500bpwindows[["pct_matrix"]])[4:ncol(celltype500bpwindows[["pct_matrix"]])],
+  function(i) {
+    write_binned_bigwigs(celltype_tracks=celltype500bpwindows[["pct_matrix"]],
+                          outdir=bigwig_output_dir,
+                          i=i)
+  })
+
 
   #save subset amethyst file
   print(paste("Saving new amethyst file:",paste("06_scaledcis.",prefix,"_finecelltyping.amethyst.rds")))
@@ -353,8 +359,6 @@ calculate_dmrs<-function(dat=dat,prefix=prefix,groupBy="fine_cluster_id",output_
   if(!split_by_group){
     #note i might want to rewrite so if split by group, we'd also have comparison within cluster across groups.
     system(paste("mkdir -p ", dmr_output_dir))
-    comparisons_set=colnames(pct_mat)[4:ncol(pct_mat)]
-    row.names(comparisons)<-comparisons$name
 
     dmrs <- testDMR(sum_mat, # Sum of c and t observations in each genomic window per group
             eachVsAll=TRUE,
@@ -515,6 +519,7 @@ setwd(wd)
 
 #Set up variables for output.
 dat<-readRDS(file="07_scaledcis.cnv_clones.amethyst.rds")
+dim(dat@metadata)
 
 #filter out contigs
 x<-50 #5, 10running, 25running, 50running, 100done
@@ -558,54 +563,45 @@ output_directory=paste0(project_data_directory,"/fine_celltyping/",prefix)
 system(paste("mkdir -p",output_directory))
 dat@genomeMatrices[["cg_win_score"]]<-win_in
 saveRDS(dat,file="07_scaledcis.cnv_clones.amethyst.rds")
+dim(dat@genomeMatrices[["cg_win_score"]])
 
 
 #### All cells, final setup for all cell umap
 #clustering on umap, to assign broad cell types, regressing cov, using 12 dims, of 50kb windows, filtering to 20% coverage  taking top 10000 featuers (by var)
 #dat_sub<-subsetObject(dat,cells=row.names(dat@metadata)[dat@metadata$mcg_pct>65])
+#rerun TRUE TRUE also added k_umap=10 (was 100) and neigh=10 (was 50), false false is best so far 
 dat_sub<-dat
 dat_sub<-cluster_subset(
   dat=dat_sub,
   broad_celltype=unique(dat_sub@metadata$broad_celltype), #note this is a list, doing all cells together here
   window_name="cg_win_score", 
   prefix=prefix,
-  dims=12, 
+  dims=9, #8 was pretty good
   regressCov=TRUE, 
-  regressCG=FALSE,
-  var_features=10000,
+  regressCG=TRUE,
+  var_features=50000,
   k_pheno=200,
-  k_umap=20,
-  neigh=20, 
-  dist=0.001,
+  k_umap=10,
+  neigh=10, 
+  dist=1e-8,
   perc_cell_cov_per_window=0.2,
   method="cosine",
   output_directory=output_directory,
-  cluster_on_umap=TRUE)
-
-scale(table(dat_sub@metadata$broad_celltype,dat_sub@metadata$fine_cluster_id))
+  cluster_on_umap=FALSE)
+#10 dims splits by clones
+#8 dims needs a bit more in my opinion
+#trying 9
+#used 20k features, was using 10k before
+dat_sub@metadata$all_cells_broad_cluster<-dat_sub@metadata$cluster_id
+scale(table(dat_sub@metadata$broad_celltype,dat_sub@metadata$cluster_id))
 
 #reassign broad celltypes based on broad celltyping clustering
 dat_sub@metadata$broad_celltype<-"lumhr"
-dat_sub@metadata[dat_sub@metadata$fine_cluster_id %in% 
-c("all_cells_50kb_06_all_cells_50kb.finecelltyping_7",
-"all_cells_50kb_06_all_cells_50kb.finecelltyping_9"),]$broad_celltype<-"basal"
-
-dat_sub@metadata[dat_sub@metadata$fine_cluster_id %in% 
-c("all_cells_50kb_06_all_cells_50kb.finecelltyping_2",
-"all_cells_50kb_06_all_cells_50kb.finecelltyping_5"),]$broad_celltype<-"lumsec"
-
-dat_sub@metadata[dat_sub@metadata$fine_cluster_id %in% 
-c("all_cells_50kb_06_all_cells_50kb.finecelltyping_1",
-"all_cells_50kb_06_all_cells_50kb.finecelltyping_12",
-"all_cells_50kb_06_all_cells_50kb.finecelltyping_10",
-"all_cells_50kb_06_all_cells_50kb.finecelltyping_11"),]$broad_celltype<-"stromal"
-
-dat_sub@metadata[dat_sub@metadata$fine_cluster_id %in% 
-c("all_cells_50kb_06_all_cells_50kb.finecelltyping_15",
-"all_cells_50kb_06_all_cells_50kb.finecelltyping_19",
-"all_cells_50kb_06_all_cells_50kb.finecelltyping_21",
-"all_cells_50kb_06_all_cells_50kb.finecelltyping_3",
-"all_cells_50kb_06_all_cells_50kb.finecelltyping_20"),]$broad_celltype<-"immune"
+dat_sub@metadata[dat_sub@metadata$cluster_id %in% c("9"),]$broad_celltype<-"basal"
+dat_sub@metadata[dat_sub@metadata$cluster_id %in% c("11"),]$broad_celltype<-"lumsec"
+dat_sub@metadata[dat_sub@metadata$cluster_id %in% c("3"),]$broad_celltype<-"stromal"
+dat_sub@metadata[dat_sub@metadata$cluster_id %in% c("5","6"),]$broad_celltype<-"immune"
+scale(table(dat_sub@metadata$broad_celltype,dat_sub@metadata$cluster_id))
 
 #setting cancer by cnv clone
 dat_sub@metadata$ploidy_class<-NA
@@ -614,26 +610,23 @@ dat_sub@metadata[dat_sub@metadata$cnv_clonename=="NA",]$ploidy_class<-NA
 #persisting NA values from CNV calls just have too low read count
 dat_sub@metadata[dat_sub@metadata$ploidy_class %in% c("aneuploid"),]$broad_celltype<-"cancer"
 
-#save filtered windows for integration with RNA
-saveRDS(dat_sub@genomeMatrices[["cg_win_score"]],file="07_scaledcis.filtered_50kbwin.rds")
+p1 <- dimFeature(dat_sub, colorBy = ploidy_class, reduction = "umap",pointSize=3) + ggtitle(paste(" ploidy"))
+p2 <- dimFeature(dat_sub, colorBy = broad_celltype, reduction = "umap",pointSize=3) + ggtitle(paste("broad_celltype"))
+ggsave((p1|p2),file=paste0(output_directory,"/","final_celltype","_umap.pdf"),width=20,height=10)  
 
-
-#save the updated broad celltypes with all windows again
-dat_sub@genomeMatrices[["cg_win_score"]]<-win_in
 saveRDS(dat_sub,file="07_scaledcis.cnv_clones.amethyst.rds")
 
-dat<-dat_sub
 ```
 
-Immune cells
+## Immune cells
 
 ```R
 ### Immune
 dat<-readRDS(file="07_scaledcis.cnv_clones.amethyst.rds")
 
-
 x=50
-dat_sub<-subsetObject(dat,cells=row.names(dat@metadata)[dat@metadata$mcg_pct>65])
+dat_sub<-dat
+#dat_sub<-subsetObject(dat,cells=row.names(dat@metadata)[dat@metadata$mcg_pct>65])
 prefix=paste0("immune","_",as.character(x),"kb")
 output_directory=paste0(project_data_directory,"/fine_celltyping/",prefix)
 
@@ -642,19 +635,18 @@ dat_sub<-cluster_subset(
   broad_celltype=c("immune"), #note this is a list, doing all cells together here
   window_name="cg_win_score", #coarse_cluster_dmr_sites orinitial_cluster_5kb_win for 5kb require more coverage
   prefix=paste0(prefix,".reclust"),
-  dims=8, 
+  dims=11, 
   regressCov=TRUE, 
   regressCG=FALSE,
-  k_pheno=125,
-  k_umap=40,
-  #var_features=30000,
-  neigh=30, 
+  k_pheno=50,
+  k_umap=10,
+  var_features=10000,
+  neigh=100, 
   dist=0.001,
-  perc_cell_cov_per_window=0.3,
+  perc_cell_cov_per_window=0.2,
   method="cosine",
   output_directory=output_directory,
-  cluster_on_umap=TRUE)
-
+  cluster_on_umap=FALSE)
 
 collapsed_dmrs<-calculate_dmrs(dat=dat_sub,split_by_group=FALSE,
                 prefix=prefix,
@@ -675,42 +667,25 @@ collapsed_dmrs %>%
   slice_min(dmr_logFC, n=100) %>% 
   select(gene_names) %>% paste(collapse=",")
 
+#myeloid
+#nk_tcell
+#bcell
+
 celltype_assignment=c(
-  'immune_50kb.reclust_06_immune_50kb.reclust.finecelltyping_10'='bcell',
-  'immune_50kb.reclust_06_immune_50kb.reclust.finecelltyping_3'='nk_tcell',
-  'immune_50kb.reclust_06_immune_50kb.reclust.finecelltyping_12'='nk_tcell',
-  'immune_50kb.reclust_06_immune_50kb.reclust.finecelltyping_8'='nk_tcell',
-  'immune_50kb.reclust_06_immune_50kb.reclust.finecelltyping_2'='nk_tcell',
-  'immune_50kb.reclust_06_immune_50kb.reclust.finecelltyping_1'='nk_tcell',
-  'immune_50kb.reclust_06_immune_50kb.reclust.finecelltyping_11'='nk_tcell',
-  'immune_50kb.reclust_06_immune_50kb.reclust.finecelltyping_14'='nk_tcell',
-  'immune_50kb.reclust_06_immune_50kb.reclust.finecelltyping_6'='nk_tcell',
-  'immune_50kb.reclust_06_immune_50kb.reclust.finecelltyping_9'='nk_tcell',
-  'immune_50kb.reclust_06_immune_50kb.reclust.finecelltyping_13'='myeloid',
-  'immune_50kb.reclust_06_immune_50kb.reclust.finecelltyping_4'='myeloid',
-  'immune_50kb.reclust_06_immune_50kb.reclust.finecelltyping_7'='myeloid',
-  'immune_50kb.reclust_06_immune_50kb.reclust.finecelltyping_5'='myeloid'
+  'immune_50kb.reclust_1'='myeloid',
+  'immune_50kb.reclust_2'='myeloid',
+  'immune_50kb.reclust_3'='myeloid',
+  'immune_50kb.reclust_4'='myeloid',
+  'immune_50kb.reclust_5'='myeloid',
+  'immune_50kb.reclust_6'='myeloid',
+  'immune_50kb.reclust_7'='myeloid',
+  'immune_50kb.reclust_8'='myeloid'
 )      
 
 #treg might need further validation but fits with expected cell type proportions
 dat_sub@metadata$celltype<-celltype_assignment[dat_sub@metadata$fine_cluster_id]
 saveRDS(dat_sub,file=paste0(output_directory,"/","06_scaledcis.",prefix,"_finecelltyping.amethyst.rds"))
 
-
-collapsed_dmrs<-calculate_dmrs(dat=dat_sub, 
-                                split_by_group=FALSE, 
-                                split_by_group_DMR=FALSE,
-                                groupBy="celltype",
-                                prefix="immune_celltype",
-                                output_directory=output_directory, min_cells=20)
-
-
-collapsed_dmrs<-calculate_dmrs(dat=dat_sub, 
-                                split_by_group=TRUE, 
-                                split_by_group_DMR=TRUE,
-                                groupBy="celltype",
-                                prefix="immune_celltype",
-                                output_directory=output_directory, min_cells=20)
 
 ```
 
@@ -720,7 +695,8 @@ Stromal
 dat<-readRDS(file="07_scaledcis.cnv_clones.amethyst.rds")
 
 x=50
-dat_sub<-subsetObject(dat,cells=row.names(dat@metadata)[dat@metadata$mcg_pct>65])
+#dat_sub<-subsetObject(dat,cells=row.names(dat@metadata)[dat@metadata$mcg_pct>65])
+dat_sub<-dat
 prefix=paste0("stromal","_",as.character(x),"kb")
 output_directory=paste0(project_data_directory,"/fine_celltyping/",prefix)
 
@@ -755,39 +731,28 @@ collapsed_dmrs<-calculate_dmrs(dat=dat_sub,split_by_group=FALSE,
 
 
 collapsed_dmrs<-readRDS("/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/fine_celltyping/stromal_50kb/dmr_output_cluster/stromal_50kb.clusterDMR.collapsed.rds")
-collapsed_dmrs %>% filter(type=="stromal_50kb_9") %>% filter(direction=="hypo") %>% filter(dmr_padj<0.05) %>% filter(gene_names!="NA") %>% slice_min(dmr_logFC, n=50) %>% as.data.frame() %>% select(gene_names)
+collapsed_dmrs %>% filter(type=="stromal_50kb_9") %>% filter(direction=="hypo") %>% filter(dmr_padj<0.05) %>% filter(gene_names!="NA") %>% slice_min(dmr_logFC, n=10) %>% as.data.frame() %>% select(gene_names)
 
 
 celltype_assignment=c(
-  'stromal_50kb_5'='endothelial',
-  'stromal_50kb_4'='endothelial',
-  'stromal_50kb_3'='perivascular', 
-  'stromal_50kb_2'='fibroblast', 
-  'stromal_50kb_9'='fibroblast',
-  'stromal_50kb_6'='fibroblast',
+  'stromal_50kb_6'='endothelial',
+  'stromal_50kb_11'='endothelial',
+  'stromal_50kb_4'='endothelial', 
+  'stromal_50kb_9'='unknown', 
+  'stromal_50kb_10'='unknown',
+  'stromal_50kb_12'='fibroblast',
+  'stromal_50kb_5'='fibroblast',
   'stromal_50kb_8'='fibroblast',
-  'stromal_50kb_1'='fibroblast',#CAF most likely
-  'stromal_50kb_7'='unknown'
+  'stromal_50kb_1'='fibroblast',
+  'stromal_50kb_2'='fibroblast',
+  'stromal_50kb_7'='fibroblast',
+  'stromal_50kb_3'='perivasc'
+
 )   
 
 #i think its better to split on group for caf, tec analysis since they arent cleanly splitting 
 dat_sub@metadata$celltype<-celltype_assignment[dat_sub@metadata$fine_cluster_id]
 saveRDS(dat_sub,file=paste0(output_directory,"/","06_scaledcis.",prefix,"_finecelltyping.amethyst.rds"))
-
-collapsed_dmrs<-calculate_dmrs(dat=dat_sub, 
-                                split_by_group=FALSE, 
-                                split_by_group_DMR=FALSE,
-                                groupBy="celltype",
-                                prefix="stromal_celltype",
-                                output_directory=output_directory, min_cells=20)
-
-
-collapsed_dmrs<-calculate_dmrs(dat=dat_sub, 
-                                split_by_group=TRUE, 
-                                split_by_group_DMR=TRUE,
-                                groupBy="celltype",
-                                prefix="stromal_celltype",
-                                output_directory=output_directory, min_cells=20)
 
 ```
 

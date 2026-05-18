@@ -20,4 +20,4 @@ bamDedupOut: true
 fastqOut: false
 trimOut: true
 covOut: false
-allcOut: false
+allcOut: true
