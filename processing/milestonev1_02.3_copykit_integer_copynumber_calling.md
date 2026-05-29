@@ -24,27 +24,39 @@ seed=1234
 register(MulticoreParam(progressbar = T, workers = task_cpus), default = T)
 options(future.globals.maxSize= 80000*1024^2) #80gb limit for parallelizing
 
-#set environment and read in data
+
 project_data_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1"
-merged_dat_folder="merged_data"
-wd=paste(sep="/",project_data_directory,merged_dat_folder)
+resolution="500kb"
+
+#read in object from directory
+processing_folder="02_copykit_cnv_calling"
+wd=paste(sep="/",project_data_directory,processing_folder)
 setwd(wd)
+obj<-readRDS(file="02_scaledcis.cnv_clones.amethyst.rds")
+
+hg38_grangeslist[["hg38_500kb"]]<-readRDS(file=paste0("copykit.met_windows.",resolution,".diploidcorrected.ref.rds"))
+length(hg38_grangeslist[["hg38_500kb"]])
+#4107
 
 
-hg38_grangeslist[["hg38_500kb"]]<-readRDS(file=paste0("/data/rmulqueen/projects/scalebio_dcis/ref/copykit.met_windows.500kb.diploidcorrected.ref.rds")) #4107
+#limit our cnv calling to those with less than 1.5SD in diploid
 hg38_grangeslist[["hg38_500kb"]]<-hg38_grangeslist[["hg38_500kb"]][
     which(
         hg38_grangeslist[["hg38_500kb"]]$diploid_cov < mean(hg38_grangeslist[["hg38_500kb"]]$diploid_cov)+(1.5*sd(hg38_grangeslist[["hg38_500kb"]]$diploid_cov)) &
         hg38_grangeslist[["hg38_500kb"]]$diploid_cov > mean(hg38_grangeslist[["hg38_500kb"]]$diploid_cov)-(1.5*sd(hg38_grangeslist[["hg38_500kb"]]$diploid_cov))),]
-copykit_output_500kb <- list.files(path=paste0(project_data_directory,"/copykit/"),recursive=TRUE,full.names=TRUE,pattern=".500kb.rds")
+#3559
 
+
+copykit_output<-list.files(path=paste0(project_data_directory,"/",processing_folder),recursive=TRUE,full.names=TRUE,pattern="kb.rds")
 #remove diploid cell call rds used for bin correction
-copykit_output_500kb <- copykit_output_500kb[!grepl(copykit_output_500kb,pattern="diploid")]
+copykit_output<-copykit_output[!grepl(copykit_output,pattern="diploid")]
+
 
 #merge all copykit and run at same time (to help with integer estimation)
-merged_copykit <- do.call("cbind",lapply(copykit_output_500kb,function(x){
-    obj<-readRDS(x)
-    obj@colData<-obj@colData[c("unique_reads","tss_enrich","mcg_pct","cg_cov","batch","plate_info",
+merged_copykit <- do.call("cbind",lapply(copykit_output_500kb,
+    function(x){
+        obj<-readRDS(x)
+        obj@colData<-obj@colData[c("unique_reads","tss_enrich","mcg_pct","cg_cov","batch","plate_info",
                             "tgmt_well","i7_well",
                             "i5_well","fine_celltype",
                             "sample","sample_name",
@@ -53,17 +65,17 @@ merged_copykit <- do.call("cbind",lapply(copykit_output_500kb,function(x){
                             "superclones","ploidy",
                             "clones_split","clonename",
                             "celltype")]
-    obj@assays@data<-obj@assays@data[c("bincounts","smoothed_bincounts","ratios","ft","logr")]
-return(obj)}))
+        obj@assays@data<-obj@assays@data[c("bincounts","smoothed_bincounts","ratios","ft","logr")]
+    return(obj)}))
 
 
 #filter to just aneuploid, or not
 merged_copykit<-merged_copykit[,!endsWith(colData(merged_copykit)$clonename,"_diploid")]
+hg38_grangeslist[["hg38_500kb"]]<-merged_copykit@rowRanges
 
 ############ Segmentation ############
-
-    #modified to require less regions width, since im using bigger windows
-    runSegmentation <- function(scCNA,
+#modified to require less regions width, since im using bigger windows
+runSegmentation <- function(scCNA,
                                 method = c("CBS", "multipcf"),
                                 seed = 17,
                                 alpha = 1e-5,
@@ -339,109 +351,108 @@ merged_copykit<-merged_copykit[,!endsWith(colData(merged_copykit)$clonename,"_di
 
         return(scCNA)
 
-    }
+}
 
-    prefix="all_samples.aneuploid_only"
-    output_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/copykit"
+prefix="all_samples.aneuploid_only"
+output_directory=paste0(project_data_directory,"/",processing_folder)
+merged_copykit<-runSegmentation(merged_copykit,
+    method = "CBS",
+    undo.splits = "none",
+    name = "segment_ratios")
+saveRDS(merged_copykit,file=paste0("all_samples.aneuploid.preintegerprocessing.copykit.Rds"))
 
-    merged_copykit<-runSegmentation(merged_copykit,
-        method = "CBS",
-        undo.splits = "none",
-        name = "segment_ratios")
+scCNA<-merged_copykit
+scCNA <- calcConsensus(scCNA,
+                        consensus_by="clonename",
+                        assay='segment_ratios',
+                        fun="median")
 
-    saveRDS(merged_copykit,file=paste0(output_directory,"/","all_samples.aneuploid.preintegerprocessing.copykit.Rds"))
-merged_copykit<-readRDS(file=paste0(output_directory,"/","all_samples.aneuploid.preintegerprocessing.copykit.Rds"))
-    scCNA<-merged_copykit
 
-    scCNA <- calcConsensus(scCNA,
-                            consensus_by="clonename",
-                            assay='segment_ratios',
-                            fun="median")
-
+############################################################
 ############ Estimating ploidy by segment ratios ############
+############################################################
 
-    #assign ploidy by mean ratios, old way to do it
-    #changing this ploidy assignment to scquantum to account for larger deviation from diploid
-    est_ploidy_clone<-setNames(nm=names(colMeans(scCNA@consensus)),colMeans(scCNA@consensus)*2)
-    SummarizedExperiment::colData(scCNA)$estimated_ratio_ploidy<-unname(est_ploidy_clone[SummarizedExperiment::colData(scCNA)$clonename])
-    SummarizedExperiment::colData(scCNA)$ploidy<-SummarizedExperiment::colData(scCNA)$estimated_ratio_ploidy
+#assign ploidy by mean ratios, old way to do it
+#changing this ploidy assignment to scquantum to account for larger deviation from diploid
+est_ploidy_clone<-setNames(nm=names(colMeans(scCNA@consensus)),colMeans(scCNA@consensus)*2)
+SummarizedExperiment::colData(scCNA)$estimated_ratio_ploidy<-unname(est_ploidy_clone[SummarizedExperiment::colData(scCNA)$clonename])
+SummarizedExperiment::colData(scCNA)$ploidy<-SummarizedExperiment::colData(scCNA)$estimated_ratio_ploidy
 
-    #calc integer using segment ratio values
-    scCNA<-calcInteger(scCNA,
-                        assay = "segment_ratios",
-                        method = "metadata",
-                        name = "integer",
-                        penalty = 15)
-    SummarizedExperiment::assay(scCNA, 'singlecell_integer_by_estimated_ratio')<-SummarizedExperiment::assay(scCNA, 'integer')
+#calc integer using segment ratio values
+scCNA<-calcInteger(scCNA,
+                    assay = "segment_ratios",
+                    method = "metadata",
+                    name = "integer",
+                    penalty = 15)
+SummarizedExperiment::assay(scCNA, 'singlecell_integer_by_estimated_ratio')<-SummarizedExperiment::assay(scCNA, 'integer')
 
-    #consensus to per clone slot (integer)
-    scCNA <- calcConsensus(scCNA,consensus_by="clonename",assay='singlecell_integer_by_estimated_ratio',fun="median")
+#consensus to per clone slot (integer)
+scCNA <- calcConsensus(scCNA,consensus_by="clonename",assay='singlecell_integer_by_estimated_ratio',fun="median")
 
-    consensus_integer<-mclapply(1:ncol(scCNA@assays@data$singlecell_integer_by_estimated_ratio),function(i){
-        cellid<-colnames(scCNA@assays@data$singlecell_integer_by_estimated_ratio)[i]
-        cloneid<-colData(scCNA)[cellid,]$clonename
-        print(paste(i,cellid,cloneid))
-        return(scCNA@consensus[[cloneid]])
-    },mc.cores=100)
+consensus_integer<-mclapply(1:ncol(scCNA@assays@data$singlecell_integer_by_estimated_ratio),function(i){
+    cellid<-colnames(scCNA@assays@data$singlecell_integer_by_estimated_ratio)[i]
+    cloneid<-colData(scCNA)[cellid,]$clonename
+    print(paste(i,cellid,cloneid))
+    return(scCNA@consensus[[cloneid]])
+},mc.cores=100)
 
-    consensus_integer<-as.data.frame(do.call("cbind",consensus_integer))
-    colnames(consensus_integer)<-colnames(scCNA@assays@data$singlecell_integer_by_estimated_ratio)
-    SummarizedExperiment::assay(scCNA, 'consensus_integer_by_estimated_ratio') <- consensus_integer
+consensus_integer<-as.data.frame(do.call("cbind",consensus_integer))
+colnames(consensus_integer)<-colnames(scCNA@assays@data$singlecell_integer_by_estimated_ratio)
+SummarizedExperiment::assay(scCNA, 'consensus_integer_by_estimated_ratio') <- consensus_integer
 
-    SummarizedExperiment::assay(scCNA, 'consensus_integer_by_estimated_ratio_discrete')<-SummarizedExperiment::assay(scCNA, 'consensus_integer_by_estimated_ratio')
-    SummarizedExperiment::assay(scCNA, 'consensus_integer_by_estimated_ratio_discrete') <- as.data.frame(apply(SummarizedExperiment::assay(scCNA, 'consensus_integer_by_estimated_ratio_discrete'), 2, as.integer))
-    SummarizedExperiment::assay(scCNA, 'consensus_integer_by_estimated_ratio_discrete')[which(SummarizedExperiment::assay(scCNA, 'consensus_integer_by_estimated_ratio_discrete')>=6,arr.ind=T)]<-6
-    table(unlist(SummarizedExperiment::assay(scCNA, 'consensus_integer_by_estimated_ratio_discrete')),useNA="ifany")
+SummarizedExperiment::assay(scCNA, 'consensus_integer_by_estimated_ratio_discrete')<-SummarizedExperiment::assay(scCNA, 'consensus_integer_by_estimated_ratio')
+SummarizedExperiment::assay(scCNA, 'consensus_integer_by_estimated_ratio_discrete') <- as.data.frame(apply(SummarizedExperiment::assay(scCNA, 'consensus_integer_by_estimated_ratio_discrete'), 2, as.integer))
+SummarizedExperiment::assay(scCNA, 'consensus_integer_by_estimated_ratio_discrete')[which(SummarizedExperiment::assay(scCNA, 'consensus_integer_by_estimated_ratio_discrete')>=6,arr.ind=T)]<-6
+table(unlist(SummarizedExperiment::assay(scCNA, 'consensus_integer_by_estimated_ratio_discrete')),useNA="ifany")
 
-    SummarizedExperiment::assay(scCNA, 'singlecell_integer_by_estimated_ratio_discrete')<-SummarizedExperiment::assay(scCNA, 'singlecell_integer_by_estimated_ratio')
-    SummarizedExperiment::assay(scCNA, 'singlecell_integer_by_estimated_ratio_discrete')[which(SummarizedExperiment::assay(scCNA, 'singlecell_integer_by_estimated_ratio')>=6,arr.ind=T)]<-6
-    table(t(SummarizedExperiment::assay(scCNA, "singlecell_integer_by_estimated_ratio_discrete")),useNA="ifany")
+SummarizedExperiment::assay(scCNA, 'singlecell_integer_by_estimated_ratio_discrete')<-SummarizedExperiment::assay(scCNA, 'singlecell_integer_by_estimated_ratio')
+SummarizedExperiment::assay(scCNA, 'singlecell_integer_by_estimated_ratio_discrete')[which(SummarizedExperiment::assay(scCNA, 'singlecell_integer_by_estimated_ratio')>=6,arr.ind=T)]<-6
+table(t(SummarizedExperiment::assay(scCNA, "singlecell_integer_by_estimated_ratio_discrete")),useNA="ifany")
 
-    saveRDS(scCNA,file=paste0(output_directory,"/",prefix,".copykit.Rds"))
+saveRDS(scCNA,file=paste0("all_samples.aneuploid.preintegerprocessing.copykit.Rds"))
 
 ############################################################
 ###############Estimating ploidy by scQuantum ##############
 ############################################################
 
-    #check to ensure ploidy
-    rg <- as.data.frame(SummarizedExperiment::rowRanges(scCNA))
-    seg <- SummarizedExperiment::assay(scCNA, "segment_ratios")
-    bin <- SummarizedExperiment::assay(scCNA, 'smoothed_bincounts')
+#check to ensure ploidy
+rg <- as.data.frame(SummarizedExperiment::rowRanges(scCNA))
+seg <- SummarizedExperiment::assay(scCNA, "segment_ratios")
+bin <- SummarizedExperiment::assay(scCNA, 'smoothed_bincounts')
 
-    sc_quants <- mclapply(seq_along(seg), function(z) {
-        # extracting segments rle id and lengths
-        segnums <- cumsum(c(TRUE, abs(diff(seg[, z])) > 0.00001))
-        seg_length <- rle(seg[, z])$lengths
+sc_quants <- mclapply(seq_along(seg), function(z) {
+    # extracting segments rle id and lengths
+    segnums <- cumsum(c(TRUE, abs(diff(seg[, z])) > 0.00001))
+    seg_length <- rle(seg[, z])$lengths
 
-        # extracting segment-wise means and index of dispersion
-        seg_bins_mean <- tapply(bin[, z], segnums, mean)
+    # extracting segment-wise means and index of dispersion
+    seg_bins_mean <- tapply(bin[, z], segnums, mean)
 
-        if (any(seg_length <= 3)) {
-            iod.est <- timeseries.iod(bin[,z])
-        } else {
-            iod.est <- tapply(bin[, z], segnums, timeseries.iod)
-        }
-        # bincount mean estimate
-        mean.est <- mean(bin[, z])
-        estimates <- scquantum::ploidy.inference(
-            x = seg_bins_mean,
-            chrom = NULL,
-            start = NULL,
-            end = NULL,
-            seg_length = seg_length,
-            iod = iod.est,
-            mean_bincount = mean.est,
-            do_segmentation = FALSE)
+    if (any(seg_length <= 3)) {
+        iod.est <- timeseries.iod(bin[,z])
+    } else {
+        iod.est <- tapply(bin[, z], segnums, timeseries.iod)
+    }
+    # bincount mean estimate
+    mean.est <- mean(bin[, z])
+    estimates <- scquantum::ploidy.inference(
+        x = seg_bins_mean,
+        chrom = NULL,
+        start = NULL,
+        end = NULL,
+        seg_length = seg_length,
+        iod = iod.est,
+        mean_bincount = mean.est,
+        do_segmentation = FALSE)
+},mc.cores=100)
 
-        },mc.cores=100)
+sc_ploidies <- vapply(sc_quants, function(x) x$ploidy, numeric(1)) # extracting ploidies from sc_quantum object
+sc_confidence <- vapply(sc_quants, function(x) x$confidence_ratio, numeric(1)) # extracting ploidies from sc_quantum object
+ploidy_score <- abs(1-sc_confidence) # calculating ploidy score from scquantum confidence ratio
 
-    sc_ploidies <- vapply(sc_quants, function(x) x$ploidy, numeric(1)) # extracting ploidies from sc_quantum object
-    sc_confidence <- vapply(sc_quants, function(x) x$confidence_ratio, numeric(1)) # extracting ploidies from sc_quantum object
-    ploidy_score <- abs(1-sc_confidence) # calculating ploidy score from scquantum confidence ratio
-
-    SummarizedExperiment::colData(scCNA)$scquantum_ploidy <- sc_ploidies
-    SummarizedExperiment::colData(scCNA)$scquantum_confidence_ratio <- sc_confidence
-    SummarizedExperiment::colData(scCNA)$scquantum_ploidy_score <- ploidy_score
+SummarizedExperiment::colData(scCNA)$scquantum_ploidy <- sc_ploidies
+SummarizedExperiment::colData(scCNA)$scquantum_confidence_ratio <- sc_confidence
+SummarizedExperiment::colData(scCNA)$scquantum_ploidy_score <- ploidy_score
 
 #consensus sc_quantum ploidy per clone
 scquant_consensus <- SummarizedExperiment::colData(scCNA) %>% 
@@ -486,6 +497,9 @@ SummarizedExperiment::assay(scCNA, 'scquantum_consensus_integer_discrete')<-Summ
 SummarizedExperiment::assay(scCNA, 'scquantum_consensus_integer_discrete') <- as.data.frame(apply(SummarizedExperiment::assay(scCNA, 'scquantum_consensus_integer_discrete'), 2, as.integer))
 SummarizedExperiment::assay(scCNA, 'scquantum_consensus_integer_discrete')[which(SummarizedExperiment::assay(scCNA, 'scquantum_consensus_integer_discrete')>=6,arr.ind=T)]<-6
 table(unlist(SummarizedExperiment::assay(scCNA, 'scquantum_consensus_integer_discrete')),useNA="ifany")
+
+saveRDS(scCNA,file=paste0("all_samples.aneuploid.preintegerprocessing.copykit.Rds"))
+
 #######################################
 ############# Plotting #############
 #######################################
@@ -551,6 +565,7 @@ ha = rowAnnotation(
     cg_perc=scCNA@colData$mcg_pct,
     group=scCNA@colData$Group,
     cancerclone=as.character(scCNA@colData$clonename),
+    celltype=as.character(scCNA@colData$coarse_celltype),
     col= list(
         celltype=celltype_col,
         reads=reads_col,
@@ -644,7 +659,7 @@ plt6<-Heatmap(t(SummarizedExperiment::assay(scCNA, "scquantum_consensus_integer_
             column_split=scCNA@rowRanges@seqnames,
             border = FALSE)
 
-pdf_outname=paste0(output_directory,"/","all_cells.aneuploid.integer.heatmap.pdf")
+pdf_outname=paste0("all_cells.aneuploid.integer.heatmap.pdf")
 pdf(pdf_outname,width=40,height=20)
 print(plt1+plt2)
 print(plt3+plt4)
@@ -669,18 +684,100 @@ plt5<-Heatmap(t(SummarizedExperiment::assay(scCNA, "scquantum_singlecell_integer
 print(plt5)
 dev.off()
 
+
+#add scquantum assay to amethyst object
+obj@genomeMatrices[['scquantum_cnv']]<-SummarizedExperiment::assay(scCNA, "scquantum_singlecell_integer_discrete")
+row.names(obj@genomeMatrices[['scquantum_cnv']])<-paste(as.character(seqnames(scCNA@rowRanges)),start(scCNA@rowRanges),end(scCNA@rowRanges),sep="_")
+saveRDS(obj,file="02_scaledcis.cnv_clones.amethyst.rds")
+
 ```
 
+
+Plot 1q, 16q SV clones
+
 ```R
-########Plotting 41T alone########
-obj<-readRDS(file="09_scaledcis.final_ploidy.amethyst.rds")
+########Plotting clones with 1q gain or 16q loss (or both)
 
-    prefix="all_samples.aneuploid_only"
-    output_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/copykit"
+sv_clones<-c("BCMDCIS74T_c3",
+"BCMDCIS66T_c4",
+"BCMDCIS66T_c1",
+"BCMDCIS74T_c1",
+"BCMDCIS41T_c3",
+"BCMHBCA83L−3h_c1",
+"BCMDCIS74T_c4",
+"BCMDCIS65T_c1",
+"BCMDCIS102T_24hTis_c1",
+"BCMHBCA03R_c1",
+"BCMDCIS28T_c1",
+"BCMDCIS70T_c1",
+"BCMDCIS35T_c2",
+"BCMDCIS35T_c1",
+"BCMDCIS74T_c2",
+"BCMDCIS94T_24hTis_c1",
+"BCMDCIS94T_24hTis_c2",
+"ECIS26T_c1",
+"ECIS26T_c2",
+"ECIS48T_c1",
+"BCMDCIS102T_24hTis_c2",
+"BCMDCIS102T_24hTis_c3",
+"ECIS36T_c3",
+"ECIS36T_c1",
+"ECIS36T_c2",
+"BCMDCIS41T_c1",
+"BCMDCIS70T_c2",
+"BCMDCIS79T_24hTis_DCIS_c2",
+"BCMDCIS97T_c1",
+"BCMDCIS79T_24hTis_DCIS_c1",
+"BCMDCIS92T_24hTis_c1",
+"BCMDCIS41T_c2",
+"BCMDCIS97T_c2",
+"BCMDCIS97T_c5",
+"BCMDCIS97T_c3",
+"BCMDCIS97T_c4")
 
-scCNA <- readRDS(file=paste0(output_directory,"/","all_samples.aneuploid.copykit.Rds"))
+scCNA_sv<-scCNA[,colData(scCNA)$clonename %in% sv_clones]
 
-scCNA_41T<-scCNA[,colData(scCNA)$Sample %in% c("BCMDCIS41T")]
+
+#make column annotations
+ha = rowAnnotation(
+    reads=log10(scCNA_sv@colData$unique_reads),
+    cg_perc=scCNA_sv@colData$mcg_pct,
+    group=scCNA_sv@colData$Group,
+    cancerclone=as.character(scCNA_sv@colData$clonename),
+    celltype=as.character(scCNA_sv@colData$coarse_celltype),
+    col= list(
+        celltype=celltype_col,
+        reads=reads_col,
+        cg_perc=percent_met_col,
+        group=group_col,
+        cancerclone=cancerclone_col))
+
+dend <- t(scCNA_sv@assays@data$scquantum_consensus_integer_discrete) %>% 
+        dist(method="euclidean") %>% 
+        hclust(method="ward.D2") %>% 
+        as.dendrogram
+saveRDS(dend,file=paste0(output_directory,"/1q16q_SV_clones.integer.heatmap.segment_ratios.dendrogram.rds"))
+
+
+pdf_outname=paste0(output_directory,"/","1q16q_SV_clones.integer.percell.heatmap.pdf")
+pdf(pdf_outname,width=18,height=15)
+plt5<-Heatmap(t(SummarizedExperiment::assay(scCNA_sv, "scquantum_singlecell_integer_discrete")),
+            col=int_col,
+            cluster_columns=FALSE,
+            #cluster_rows=dend,
+            show_row_names = FALSE, row_title_rot = 0,
+            show_column_names = FALSE,
+            cluster_row_slices = TRUE,
+            top_annotation = column_ha, left_annotation = ha,
+            name="Single cell copy number",
+            row_split=scCNA_sv@colData$clonename,
+            column_split=scCNA_sv@rowRanges@seqnames,
+            border = FALSE)
+print(plt5)
+dev.off()
+
+```
+<!--
 
 
 #read in clone DMR data
@@ -832,5 +929,5 @@ feature_cor<-unlist(lapply(1:nrow(met_cnv), function(i){
 feature_cor<-cbind(feature=row.names(int_cnv),met_cor=feature_cor)
 
 ```
-
+-->
 

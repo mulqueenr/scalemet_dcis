@@ -498,7 +498,7 @@ saveRDS(dat_cellline,file="01.0.cellline.filt.amethyst.rds")
 
 
 Patient
-````
+````R
 #4. Perform initial clustering via iterative PCA into UMAP
 
 dat_patient<-vmr_cluster(obj=dat_patient,suffix="patient.predoubletfilter") 
@@ -574,7 +574,7 @@ clus_celltype<-c(
 '16'='basal',
 '18'='basal',
 '21'='basal',
-'17'='basal',
+'17'='lumhr', #changed after finding cancer cells in cluster
 '9'='lumsec',
 '19'='lumsec',
 '20'='lumsec',
@@ -599,5 +599,5 @@ dat_patient@metadata$celltype_lineage<-unname(clus_lineage[dat_patient@metadata$
 dat_patient@metadata$coarse_celltype<-unname(clus_celltype[dat_patient@metadata$coarse_cluster_phenograph])
 #9. Save final objects.
 saveRDS(dat_patient,file="01.0.patient.filt.amethyst.rds")
-
+```
 # next up! call CNVs and define cancer cells.

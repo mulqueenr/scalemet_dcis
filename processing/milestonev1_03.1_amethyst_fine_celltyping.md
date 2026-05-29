@@ -33,7 +33,7 @@ Idents(rna)<-rna$fine_celltype
 rna_markers<-FindMarkers(rna,assay="RNA",ident.1="tcell_nk",ident.2=NULL,only.pos=TRUE)
 rna_markers %>% mutate(gene=row.names(rna_markers)) %>% filter(p_val_adj<0.05) %>% filter(avg_log2FC>2) %>% head(n=20) %>% select(gene)
 
-Idents(rna)<-rna$coarse_celltype
+Idents(rna)<-rna$fine_celltype
 rna_markers<-FindMarkers(rna,assay="RNA",ident.1="bcell",ident.2="plasma",only.pos=TRUE)
 rna_markers %>% mutate(gene=row.names(rna_markers)) %>% filter(p_val_adj<0.05) %>% filter(avg_log2FC>2) %>% head(n=20) %>% select(gene)
 
@@ -51,7 +51,7 @@ rna_markers %>% filter(p_val_adj<0.05) %>% filter(avg_log2FC>1) %>% filter(clust
 
 
 # Read in methylation data and additional libraries
-From processing/milestonev1_01_amethyst_coarse_celltyping.md
+From processing/milestonev1_01_amethyst_fine_celltyping.md
 ```R
 
 set.seed(111)
@@ -72,38 +72,77 @@ library(patchwork)
 library(GeneOverlap)
 library(RPhenograph)
 library(matrixStats)
+library(sparseMatrixStats)
+library(irlba)
 
-task_cpus=300
 project_data_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1"
-merged_dat_folder="merged_data"
-wd=paste(sep="/",project_data_directory,merged_dat_folder)
+
+#read in object from directory
+task_cpus=300
+processing_folder="03_fine_celltyping"
+wd=paste(sep="/",project_data_directory,processing_folder)
+system(paste0("mkdir -p ",wd))
 setwd(wd)
-system(paste0("mkdir -p ",project_data_directory,"/fine_celltyping"))
+obj<-readRDS(file=paste(project_data_directory,"02_copykit_cnv_calling","02_scaledcis.cnv_clones.amethyst.rds",sep="/"))
+
+
+#confirming cell type labelling by cnvs (cancer vs lumhr)
+write.table(obj@metadata,col.names=T,row.names=T,paste0(project_data_directory,"/","metadata.csv"))
+
+# validation plots on clones and coarse cell types
+plt_clonename<-obj@metadata %>% 
+    ggplot(aes(x = coarse_cluster_UMAP_X, y = coarse_cluster_UMAP_Y, color = cnv_clonename)) +
+    geom_point() +
+    coord_fixed()
+ggsave(plt_clonename,file=paste0("02.0.VMR_umap.",suffix,".clone.pdf"),width=20,height=20)
+
+plt_celltype<-obj@metadata %>% 
+    ggplot(aes(x = coarse_cluster_UMAP_X, y = coarse_cluster_UMAP_Y, color = coarse_celltype)) +
+    geom_point() +
+    coord_fixed()
+ggsave(plt_celltype,file=paste0("02.0.VMR_umap.",suffix,".coarse_celltype.pdf"),width=20,height=20)
+
+plt_celltype<-obj@metadata %>% 
+    ggplot(aes(x = coarse_cluster_UMAP_X, y = coarse_cluster_UMAP_Y, color = celltype_lineage)) +
+    geom_point() +
+    coord_fixed()
+ggsave(plt_celltype,file=paste0("02.0.VMR_umap.",suffix,".celltype_lineage.pdf"),width=20,height=20)
+
+plt_celltype<-obj@metadata %>% 
+    ggplot(aes(x = coarse_cluster_UMAP_X, y = coarse_cluster_UMAP_Y, color = cnv_ploidy_500kb)) +
+    geom_point() +
+    coord_fixed()
+ggsave(plt_celltype,file=paste0("02.0.VMR_umap.",suffix,".cnv_ploidy_500kb.pdf"),width=20,height=20)
+
+#theres one cluster that is a little suspect. has aneuploid cells but is labelled as basal
+#coarse_cluster_phenograph 17 has strong basal epithelial signature despite aneuploidy 
+#looks like its 97T c1 (which has big and clear CNV events), the diploid cells also seem to be from 97T which suggests some patient specific clustering?
+#besides that, happy with clustering!
+#ffpe looks like Sclerosing adenosis which is only known precurser of tnbc, maybe reflects basal like
+#check for loss of er
 
 #set colors
 celltype_col=c(
-"perivas"="#FF9900",
-"endothelial"="#FFFF66",
-"fibroblast"="#FF0000",
-"unknown"="#FF6699",
-
-"myeloid"="#99FFFF",
-"nk_tcell"="#99FF99",
-"bcell"="#0099CC",
-
-"basal"="#990099",
-"lumsec"="#CC0066",
-"lumhr"="#FF00CC",
+'tcell'='#2e3fa3',
+'bcell'='#00adea',
+'myeloid'='#00a487',
+'peri_VSMC'='#c1d552',
+'fibroblast'='#7f1911',
+'endothelial'='#f0b243',
+'adipocyte'='#d0bd4a',
+'basal'='#7200cc',
+'lumsec'='#af00af',
+'lumhr'='#d8007c',
 "cancer"="#00FF99")
 
 ```
 
-## Subcluster on just immune cells
+Subset cell types by immune, and stromal, then recluster on VMR
 Wrapping each step into a function, so I can run it on stromal cell types as well.
 
 ```R
 
-celltype_umap<-function(obj=dat,prefix="allcells",dims=12,pc_use,regressCov=TRUE,regressCG=FALSE,k_pheno=50,k_umap=50,neigh=25,dist=1e-5,method="cosine",output_directory,window_name,cluster_on_umap=FALSE){
+#celltype_umap<-function(obj=dat,prefix="allcells",dims=12,pc_use,regressCov=TRUE,regressCG=FALSE,k_pheno=50,k_umap=50,neigh=25,dist=1e-5,method="cosine",output_directory,window_name,cluster_on_umap=FALSE){
   
   print("Running IRLBA reduction...")
   obj@reductions[[paste(window_name,"irlba",sep="_")]] <- runIrlba(obj, genomeMatrices = c(window_name), dims = dims, replaceNA = c(0))
@@ -160,13 +199,13 @@ celltype_umap<-function(obj=dat,prefix="allcells",dims=12,pc_use,regressCov=TRUE
   ggsave((p1|p2)/(p3|p4)/(p5|p6),file=paste0(output_directory,"/",outname,"_umap.pdf"),width=20,height=30)  
   return(obj)
 
-}
+#}
 
-cluster_subset<-function(
+#cluster_subset<-function(
   dat=dat,
   broad_celltype=c("immune"), #note this is a list
   output_directory,
-  window_name="coarse_cluster_dmr_sites",
+  window_name="fine_cluster_dmr_sites",
   #umap function args
   prefix="immune",
   dims=12,
@@ -227,9 +266,9 @@ cluster_subset<-function(
 
   dat_sub@metadata$fine_cluster_id<-paste(prefix,dat_sub@metadata$cluster_id,sep="_")
   return(dat_sub)
-}
+#}
 
-testDMR <- function(sumMatrix, eachVsAll = TRUE, comparisons = NULL, nminTotal = 3,nminGroup = 3) {
+#testDMR <- function(sumMatrix, eachVsAll = TRUE, comparisons = NULL, nminTotal = 3,nminGroup = 3) {
   if (!eachVsAll && is.null(comparisons)) {
     stop("Please either specify eachVsAll = TRUE or provide a data frame of comparisons to make.")
   }
@@ -298,9 +337,9 @@ testDMR <- function(sumMatrix, eachVsAll = TRUE, comparisons = NULL, nminTotal =
     }
   }
   return(counts)
-}
+#}
 
-calculate_dmrs<-function(dat=dat,prefix=prefix,groupBy="fine_cluster_id",output_directory=output_directory,split_by_group=FALSE,split_by_group_DMR=FALSE,min_cells=10){
+#calculate_dmrs<-function(dat=dat,prefix=prefix,groupBy="fine_cluster_id",output_directory=output_directory,split_by_group=FALSE,split_by_group_DMR=FALSE,min_cells=10){
 
   bigwig_output_dir=paste0(output_directory,"/bigwig_output_cluster")
   dmr_output_dir=paste0(output_directory,"/dmr_output_cluster")
@@ -403,9 +442,9 @@ calculate_dmrs<-function(dat=dat,prefix=prefix,groupBy="fine_cluster_id",output_
     ggsave(plt,file=paste0(dmr_output_dir,"/",prefix,".clusterDMR.collapsed.barplot.pdf"))
     return(collapsed_dmrs)
   }
-}
+#}
 
-find_cluster_markers<-function(dat,celltype500bp_windows,comp){
+#find_cluster_markers<-function(dat,celltype500bp_windows,comp){
   #comparisons: If eachVsAll is not desired, provide a data frame
    #       describing which tests to run. The data.frame should have
    #       three columns with rows describing conditions of each test.
@@ -436,9 +475,9 @@ find_cluster_markers<-function(dat,celltype500bp_windows,comp){
   rename_dmr_output<-setNames(nm=1:length(unique(collapsed_dmrs$test)),gsub(colnames(sum_mat)[grepl(colnames(sum_mat),pattern="_t$")],pattern="_t",replacement=""))
   collapsed_dmrs$type <- rename_dmr_output[collapsed_dmrs$test]
   return(collapsed_dmrs)
-}
+#}
 
-write_binned_bigwigs<-function(celltype_tracks=celltype_tracks,
+#write_binned_bigwigs<-function(celltype_tracks=celltype_tracks,
                                 outdir=celltype_outdir,
                                 i){
     #split bw into 4 files per cell type by methylation/average methylation
@@ -496,16 +535,482 @@ write_binned_bigwigs<-function(celltype_tracks=celltype_tracks,
     rtracklayer::export(out_dat_met_mid,con=paste0(outdir,"/",i,".midmet.bw"))
     rtracklayer::export(out_dat_met_low,con=paste0(outdir,"/",i,".lowmet.bw"))
     rtracklayer::export(out_dat_met_hypomet,con=paste0(outdir,"/",i,".hypomet.bw"))
+#}
+
+
+prcomp_iterative <- function(x, n=10, n_iter=50, min_gain=0.001, ...) {
+  mse <- rep(NA, n_iter)
+  na_loc <- is.na(x)
+  x[na_loc] = 0  # zero is our first guess
+
+  for (i in 1:n_iter) {
+    prev_imp <- x[na_loc]  # what we imputed in the previous round
+    # PCA on the imputed matrix
+    pr <- prcomp_irlba(x, center = F, scale. = F, n = n, ...)
+    # impute missing values with PCA
+    new_imp <- (pr$x %*% t(pr$rotation))[na_loc]
+    x[na_loc] <- new_imp
+    # compare our new imputed values to the ones from the previous round
+    mse[i] = mean((prev_imp - new_imp) ^ 2)
+    # if the values didn't change a lot, terminate the iteration
+    gain <- mse[i] / max(mse, na.rm = T)
+    if (gain < min_gain) {
+      message(paste(c("\n\nTerminated after ", i, " iterations.")))
+      break
+    }
+  }
+  pr$mse_iter <- mse[1:i]
+  pr
 }
 
+#similar to coarse vmr function
+fine_celltype_vmr_cluster<-function(obj=immune,suffix="immune",
+                      outdir="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/03_fine_celltyping/",
+                      npc=15,
+                      reduction_name="irlba_immune",
+                      leiden_cluster_resolution=3e-6,
+                      pheno_k=200,
+                      min_dist=0.05,
+                      feat_filt=NA,
+                      n_neighbors=5){
+
+  plot_dir=paste0(outdir,"/","plot_",suffix)
+  system(paste0("mkdir -p ",plot_dir))
+
+  print(paste0("Saving plots to ",plot_dir))
+  #run clustering on doublet object, code same as initial clustering code
+  if(!is.na(feat_filt)){
+        print(paste("Filtering to",feat_filt,"features..."))
+
+    mat<-obj@genomeMatrices[["vmr_matrix_cg_residuals"]]
+    row_list <- asplit(mat, MARGIN = 1)
+
+    #row_indices <- 1:nrow(mat)
+    #row_list <- split(mat, row(mat))
+
+    row_variance<-mclapply(row_list,function(x){
+        return(var(x,na.rm=T))
+    },mc.cores=task_cpus)
+
+    row_variance<-as.data.frame(cbind(gene=names(row_variance),var=as.numeric(unlist(row_variance))))
+    feat_select<-row_variance %>% slice_max(n=feat_filt,order_by=var)
+    print("Calculating PCA...")
+
+  pca <- t(obj@genomeMatrices[["vmr_matrix_cg_residuals"]][feat_select$gene,]) %>%
+      scale(center = T, scale = F) %>%
+      prcomp_iterative(n = npc)  # this is number of principle components (npc in args)
+  }else{ 
+      print("Calculating PCA...")
+
+  pca <- t(obj@genomeMatrices[["vmr_matrix_cg_residuals"]]) %>%
+      scale(center = T, scale = F) %>%
+      prcomp_iterative(n = npc)  # this is number of principle components (npc in args)
+  }
+  pca_dims <- pca$x %>% 
+    magrittr::set_rownames(colnames(obj@genomeMatrices[["vmr_matrix_cg_residuals"]]))
+  
+  print("Running UMAP...")
+  umap_obj <- uwot::umap(X=as.matrix(pca_dims), 
+                          metric="cosine", 
+                          min_dist=min_dist, 
+                          n_neighbors=n_neighbors, 
+                          seed=2, 
+                          ret_nn=T)
+
+  umap_tbl <- umap_obj$embedding %>% as.data.frame() %>% 
+    mutate(cell=row.names(umap_obj$embedding)) %>%
+    magrittr::set_colnames(c("UMAP1", "UMAP2","cell")) 
+
+  # get the edges of the neighbor graph from the UMAP object
+  neighbor_graph_edges <- 
+    tibble(from = rep(1:nrow(umap_obj$nn$cosine$idx), times=ncol(umap_obj$nn$cosine$idx)),
+          to = as.vector(umap_obj$nn$cosine$idx),
+          weight = as.vector(umap_obj$nn$cosine$dist)) %>%
+    filter(from != to) %>%
+    mutate(from = colnames(obj@genomeMatrices[["vmr_matrix_cg_residuals"]])[from],
+          to = colnames(obj@genomeMatrices[["vmr_matrix_cg_residuals"]])[to])
+
+  # run Leiden clustering
+  print("Leiden clustering...")
+  clust_obj <- neighbor_graph_edges %>%
+    igraph::graph_from_data_frame(directed=F) %>% 
+    igraph::cluster_leiden(resolution_parameter = leiden_cluster_resolution)  # adjust the resolution parameter to your needs, overclustering to identify more doublet clusters
+
+  # put the clustering results into a data frame (tibble) for plotting
+  clust_tbl <- tibble(
+    leiden_cluster = as.character(clust_obj$membership),
+    cell= clust_obj$names) %>% 
+    full_join(umap_tbl, by="cell")
+
+  print("Adding PCA to reduction slot...")
+  obj@reductions[[reduction_name]]<-pca_dims
+
+  print("Adding clusters to metadata...")
+  fine_cluster_leidenclus<-setNames(nm=clust_tbl$cell,clust_tbl$leiden_cluster)
+  fine_cluster_UMAP1<-setNames(nm=clust_tbl$cell,clust_tbl$UMAP1)
+  fine_cluster_UMAP2<-setNames(nm=clust_tbl$cell,clust_tbl$UMAP2)
+
+  obj@metadata$fine_cluster_UMAP_X<-NA
+  obj@metadata$fine_cluster_UMAP_Y<-NA
+  obj@metadata$fine_cluster_leidenclus<-NA
+
+  obj@metadata$fine_cluster_UMAP_X<-fine_cluster_UMAP1[row.names(obj@metadata)]
+  obj@metadata$fine_cluster_UMAP_Y<-fine_cluster_UMAP2[row.names(obj@metadata)]
+  obj@metadata$fine_cluster_leidenclus<-paste0(suffix,"_",fine_cluster_leidenclus[row.names(obj@metadata)])
+
+  #cluster on umap as well
+  umap_clus<-obj@metadata %>% 
+    select(c("fine_cluster_UMAP_X","fine_cluster_UMAP_Y")) %>% 
+    magrittr::set_rownames(row.names(obj@metadata))
+
+  umap_clus<-Rphenograph::Rphenograph(umap_clus,k=pheno_k)
+
+  obj@metadata$fine_cluster_phenograph<-paste0(suffix,"_",as.character(unlist(as.list(igraph::membership(umap_clus[[2]])))))
+  print("Plotting...")
+  if("fine_cluster_leidenclus" %in% colnames(obj@metadata)){
+  plt_clus<-obj@metadata %>% 
+    ggplot(aes(x = fine_cluster_UMAP_X, y = fine_cluster_UMAP_Y, color = fine_cluster_leidenclus)) +
+    geom_point() +
+    coord_fixed()
+      ggsave(plt_clus,file=paste0(plot_dir,"/","03.1.VMR_umap.",suffix,".",as.character(npc),".",as.character(feat_filt),".",as.character(min_dist),".","clus.leiden.pdf"),width=20,height=20)
+  }
+
+  if("fine_cluster_phenograph" %in% colnames(obj@metadata)){
+  plt_clus<-obj@metadata %>% 
+    ggplot(aes(x = fine_cluster_UMAP_X, y = fine_cluster_UMAP_Y, color = fine_cluster_phenograph)) +
+    geom_point() +
+    coord_fixed()
+      ggsave(plt_clus,file=paste0(plot_dir,"/","03.1.VMR_umap.",suffix,".",as.character(npc),".",as.character(feat_filt),".",as.character(min_dist),".","clus.pheno.pdf"),width=20,height=20)
+  }
+
+  if("Sample" %in% colnames(obj@metadata)){
+  plt_sample<-obj@metadata %>% 
+    ggplot(aes(x = fine_cluster_UMAP_X, y = fine_cluster_UMAP_Y, color = Sample)) +
+    geom_point() +
+    coord_fixed()
+      ggsave(plt_sample,file=paste0(plot_dir,"/","03.1.VMR_umap.",suffix,".",as.character(npc),".",as.character(feat_filt),".",as.character(min_dist),".","sample.pdf"),width=20,height=20)
+  }
+
+  if("mcg_pct" %in% colnames(obj@metadata)){
+  plt_mcg<-obj@metadata %>% 
+    ggplot(aes(x = fine_cluster_UMAP_X, y = fine_cluster_UMAP_Y, color = mcg_pct)) +
+    geom_point() +
+    coord_fixed()
+  ggsave(plt_mcg,file=paste0(plot_dir,"/","03.1.VMR_umap.",suffix,".",as.character(npc),".",as.character(feat_filt),".",as.character(min_dist),".","mcg.pdf"),width=20,height=20)
+  }
+
+  if("unique_reads" %in% colnames(obj@metadata)){
+  plt_reads<-obj@metadata %>% 
+    ggplot(aes(x = fine_cluster_UMAP_X, y = fine_cluster_UMAP_Y, color = log10(unique_reads))) +
+    geom_point() +
+    coord_fixed()
+  ggsave(plt_reads,file=paste0(plot_dir,"/","03.1.VMR_umap.",suffix,".",as.character(npc),".",as.character(feat_filt),".",as.character(min_dist),".","reads.pdf"),width=20,height=20)
+  }
+
+  if("doublet_score" %in% colnames(obj@metadata)){
+  plt_reads<-obj@metadata %>% 
+    ggplot(aes(x = fine_cluster_UMAP_X, y = fine_cluster_UMAP_Y, color = doublet_score)) +
+    geom_point() +
+    coord_fixed()
+  ggsave(plt_reads,file=paste0(plot_dir,"/","03.1.VMR_umap.",suffix,".",as.character(npc),".",as.character(feat_filt),".",as.character(min_dist),".","doublet_score.pdf"),width=20,height=20)
+  }
+  return(obj)
+}
+
+write_binned_bigwigs<-function(celltype_tracks=celltype_tracks,
+                                outdir=celltype_outdir,
+                                i){
+    #split bw into 4 files per cell type by methylation/average methylation
+    out_dat<-celltype_tracks %>% select(chr,start,end,i) 
+
+    hg38_seq_info<-Seqinfo(genome="hg38")
+    out_dat<-GRanges(out_dat[complete.cases(out_dat),]) #filter NA
+    out_dat<-out_dat[out_dat@seqnames %in% hg38_seq_info@seqnames,] #filter chr
+    out_dat<-resize(out_dat,width=500)
+    names(out_dat@elementMetadata)<-"score"
+    mean_score<-mean(mcols(out_dat)$score)
+
+    #bin to 100-mean, mean-50, 50-20, 20-0  
+    #color black, grey, lightgrey, celltypecol
+    #333333, #444444, #bcbcbc, celltypecol
+    #subtract score-meanscorevalue
+
+    out_dat_hypermet <- out_dat %>% 
+                        as.data.frame() %>% 
+                        filter(mcols(out_dat)$score > mean_score) %>% 
+                        mutate(score=score-mean_score) %>% 
+                        GRanges() %>% unique()
+    names(out_dat_hypermet@elementMetadata)<-"score"
+    genome(out_dat_hypermet)<-"hg38"
+    seqlengths(out_dat_hypermet)<-as.data.frame(hg38_seq_info)[hg38_seq_info@seqnames %in% out_dat_hypermet@seqnames,]$seqlengths #filter by seqlengths
+
+    out_dat_met_mid <- out_dat %>% 
+                      as.data.frame() %>% 
+                      filter(mcols(out_dat)$score <= mean_score & mcols(out_dat)$score > 50) %>% 
+                      mutate(score=score-mean_score) %>% 
+                      GRanges() %>% unique()
+    names(out_dat_met_mid@elementMetadata)<-"score"
+    genome(out_dat_met_mid)<-"hg38"
+    seqlengths(out_dat_met_mid)<-as.data.frame(hg38_seq_info)[hg38_seq_info@seqnames %in% out_dat_met_mid@seqnames,]$seqlengths #filter by seqlengths
+
+    out_dat_met_low <- out_dat %>% 
+                        as.data.frame() %>% 
+                        filter(mcols(out_dat)$score <= 50 & mcols(out_dat)$score > 20) %>% 
+                        mutate(score=score-mean_score) %>% 
+                        GRanges() %>% unique()
+    names(out_dat_met_low@elementMetadata)<-"score"
+    genome(out_dat_met_low)<-"hg38"
+    seqlengths(out_dat_met_low)<-as.data.frame(hg38_seq_info)[hg38_seq_info@seqnames %in% out_dat_met_low@seqnames,]$seqlengths #filter by seqlengths
+
+    out_dat_met_hypomet <- out_dat %>% 
+                            as.data.frame() %>% filter(mcols(out_dat)$score <= 20) %>%
+                            mutate(score=score-mean_score) %>% 
+                            GRanges() %>% unique()
+    names(out_dat_met_hypomet@elementMetadata)<-"score"
+    genome(out_dat_met_hypomet)<-"hg38"
+    seqlengths(out_dat_met_hypomet)<-as.data.frame(hg38_seq_info)[hg38_seq_info@seqnames %in% out_dat_met_hypomet@seqnames,]$seqlengths #filter by seqlengths
+
+    print(paste("Saving bedgraphs for...",i))
+    rtracklayer::export(out_dat_hypermet,con=paste0(outdir,"/",i,".hypermet.bw"))
+    rtracklayer::export(out_dat_met_mid,con=paste0(outdir,"/",i,".midmet.bw"))
+    rtracklayer::export(out_dat_met_low,con=paste0(outdir,"/",i,".lowmet.bw"))
+    rtracklayer::export(out_dat_met_hypomet,con=paste0(outdir,"/",i,".hypomet.bw"))
+}
+
+generate_bigwig<-function(obj=immune,
+                      suffix="immune",
+                      groupBy="fine_cluster_phenograph",
+                      outdir="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/03_fine_celltyping/"){
+
+  bigwig_output_dir=paste0(outdir,"/bigwig_output_",suffix)
+  system(paste("mkdir -p ", bigwig_output_dir))
+
+  obj@h5paths$path<-obj@h5paths$paths
+  obj@h5paths$barcode<-row.names(obj@h5paths)
+
+  #update to new smoothed windows
+  celltype500bpwindows <- calcSmoothedWindows(obj, 
+                                          type = "CG", 
+                                          threads = 200,
+                                          step = 500, 
+                                          smooth = 3,
+                                          genome = "hg38",
+                                          index = "chr_cg",
+                                          groupBy = groupBy,
+                                          returnSumMatrix = TRUE, # save sum matrix for DMR analysis
+                                          returnPctMatrix = TRUE)
+  saveRDS(celltype500bpwindows,file=paste0(bigwig_output_dir,"/","03.1.VMR_umap.",suffix,".fine_cluster.500bp_windows.rds"))
+  obj@genomeMatrices[[paste0("cg_",suffix,"_cells_perc")]] <- celltype500bpwindows[["pct_matrix"]]
+  #output tracks as bigwig
+  groups<-colnames(celltype500bpwindows[["pct_matrix"]])[4:ncol(celltype500bpwindows[["pct_matrix"]])]
+  groups<-groups[groups!="NA"]
+  lapply(groups,function(i) {
+    write_binned_bigwigs(celltype_tracks=celltype500bpwindows[["pct_matrix"]],
+                          outdir=bigwig_output_dir,
+                          i=i)})
+  return(obj)
+}
+
+```
+
+# Cluster on VMRs per immune cells
+
+```R
+obj<-readRDS(file=paste(project_data_directory,"02_copykit_cnv_calling","02_scaledcis.cnv_clones.amethyst.rds",sep="/"))
+
+#filter to immune cells by fine_celltype defined lineages
+immune<-subsetObject(obj,cells=row.names(obj@metadata[obj@metadata$celltype_lineage %in% c("immune"),]))
+
+#run VMR clustering on subtype
+
+immune<-fine_celltype_vmr_cluster(obj=immune,
+                    suffix="immune",
+                    npc=20,
+                    outdir=getwd(),
+                    leiden_cluster_resolution=3e-6,
+                    reduction_name="irlba_immune",
+                    pheno_k=100,
+                    #feat_filt=10000,
+                    min_dist=1e-6,
+                    n_neighbors=5)
+
+immune<-generate_bigwig(obj=immune,
+                        suffix="immune",
+                        groupBy="fine_cluster_phenograph",
+                        outdir=getwd())
+saveRDS(immune,file="03_scaledcis.fine_celltyping.immune.rds")
+
+#assign cell types via IGV tracks
+
+celltype_assignment=c(
+  'immune_50kb.reclust_1'='myeloid',
+  'immune_50kb.reclust_2'='myeloid',
+  'immune_50kb.reclust_3'='myeloid',
+  'immune_50kb.reclust_4'='myeloid',
+  'immune_50kb.reclust_5'='myeloid',
+  'immune_50kb.reclust_6'='myeloid',
+  'immune_50kb.reclust_7'='myeloid',
+  'immune_50kb.reclust_8'='myeloid'
+)      
+#calculate DMRs
+collapsed_dmrs<-calculate_dmrs(dat=dat_sub,split_by_group=FALSE,
+                prefix=prefix,
+                output_directory=output_directory, min_cells=20)
+                
+saveRDS(dat_sub,file=paste0(output_directory,"/","06_scaledcis.",prefix,"_finecelltyping.amethyst.rds"))
+
+
+#calculate dmrs per fine celltype grouping
+#collapsed_dmrs<-readRDS("/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/fine_celltyping/immune_50kb/dmr_output_cluster/immune_50kb.clusterDMR.collapsed.rds")
 
 
 
 ```
 
-#Recluster at windows with differing resolutions
+# Cluster on VMRs per stromal cells
 
 ```R
+obj<-readRDS(file=paste(project_data_directory,"02_copykit_cnv_calling","02_scaledcis.cnv_clones.amethyst.rds",sep="/"))
+
+#filter to immune cells by fine_celltype defined lineages
+stromal<-subsetObject(obj,cells=row.names(obj@metadata[obj@metadata$celltype_lineage %in% c("stromal"),]))
+
+#run VMR clustering on subtype
+stromal<-fine_celltype_vmr_cluster(obj=stromal,
+                    suffix="stromal",
+                    npc=20,
+                    outdir=getwd(),
+                    leiden_cluster_resolution=3e-6,
+                    reduction_name="irlba_stromal",
+                    pheno_k=100,
+                    #feat_filt=10000,
+                    min_dist=1e-6,
+                    n_neighbors=5)
+
+stromal<-generate_bigwig(obj=stromal,
+                        suffix="stromal",
+                        groupBy="fine_cluster_phenograph",
+                        outdir=getwd())
+saveRDS(stromal,file="03_scaledcis.fine_celltyping.stromal.rds")
+
+#assign cell types via IGV tracks
+```
+# Cluster on VMRs per epithelial cells
+
+```R
+obj<-readRDS(file=paste(project_data_directory,"02_copykit_cnv_calling","02_scaledcis.cnv_clones.amethyst.rds",sep="/"))
+obj@metadata[which(obj@metadata$coarse_celltype=="cancer"),]$celltype_lineage<-"epithelial"
+
+epithelial<-subsetObject(obj,cells=row.names(obj@metadata[obj@metadata$celltype_lineage %in% c("epithelial"),]))
+
+#run VMR clustering on subtype
+epithelial<-fine_celltype_vmr_cluster(obj=epithelial,
+                    suffix="epithelial",
+                    npc=20,
+                    outdir=getwd(),
+                    leiden_cluster_resolution=3e-6,
+                    reduction_name="irlba_epithelial",
+                    pheno_k=100,
+                    #feat_filt=10000,
+                    min_dist=1e-6,
+                    n_neighbors=5)
+
+epithelial<-generate_bigwig(obj=epithelial,
+                        suffix="epithelial",
+                        groupBy="fine_cluster_phenograph",
+                        outdir=getwd())
+saveRDS(epithelial,file="03_scaledcis.fine_celltyping.epithelial.rds")
+
+
+celltype_assignment=c(
+  'epithelial_28'='basal',
+  'epithelial_13'='basal',
+  'epithelial_18'='basal',
+  'epithelial_17'='basal',
+  'epithelial_9'='basal',
+  'epithelial_11'='lumsec',
+  'epithelial_22'='lumsec',
+  'epithelial_3'='lumsec',
+  'epithelial_26'='lumsec',
+  'epithelial_20'='lumsec',
+  'epithelial_15'='lumsec',
+  'epithelial_12'='lumsec',
+  'epithelial_25'='lumsec',
+  'epithelial_21'='lumsec',
+  'epithelial_23'='lumsec',
+  'epithelial_24'='lumsec'
+)
+
+#get clusters with cancer clones assigned, assign the whole cluster as cancer
+epithelial@metadata$fine_celltype<-"NA"
+epithelial@metadata$fine_celltype<-celltype_assignment[epithelial@metadata$fine_cluster_phenograph]
+epithelial@metadata[!is.na(epithelial@metadata$cnv_clonename) & !endsWith(epithelial@metadata$cnv_clonename,suffix="diploid"),]$fine_celltype<-"cancer"
+epithelial@metadata[is.na(epithelial@metadata$fine_celltype),]$fine_celltype<-"lumhr"
+
+#now assign cancer to cells in the same cluster and CNV called cancer cells
+hm<-table(epithelial@metadata$fine_celltype,epithelial@metadata$fine_cluster_phenograph)
+hm_count<-as.data.frame(hm) #convert it back into a data frame, now with the counts
+hm_scale<-as.data.frame(scale(hm,center=F))
+colnames(hm_count)<-c("celltype","cluster","count")
+hm_count$scaled <- hm_scale$Freq #combine count and scaled data to plot both
+plt<-ggplot(hm_count, aes(x=celltype, y=cluster, fill=scaled,label=count)) + 
+  geom_tile() + 
+  geom_text(color="white") + 
+  theme(axis.text.x = element_text(angle = 90))
+ggsave(plt,file="03_scaledcis.fine_celltyping.epithelial.cancer_cluster.heatmap.pdf")
+
+#cancer clusters have >50% cancer cells
+cancer_assignment=c(
+  'epithelial_10'='cancer',
+  'epithelial_13'='cancer',
+  'epithelial_16'='cancer',
+  'epithelial_19'='cancer',
+  'epithelial_2'='cancer',
+  'epithelial_27'='cancer',
+  'epithelial_28'='cancer',
+  'epithelial_29'='cancer',
+  'epithelial_30'='cancer',
+  'epithelial_31'='cancer',
+  'epithelial_32'='cancer',
+  'epithelial_33'='cancer',
+  'epithelial_34'='cancer',
+  'epithelial_35'='cancer',
+  'epithelial_36'='cancer',
+  'epithelial_37'='cancer',
+  'epithelial_38'='cancer',
+  'epithelial_39'='cancer',
+  'epithelial_40'='cancer',
+  'epithelial_41'='cancer',
+  'epithelial_42'='cancer',
+  'epithelial_43'='cancer',
+  'epithelial_6'='cancer',
+  'epithelial_8'='cancer'
+)
+epithelial@metadata[epithelial@metadata$fine_cluster_phenograph %in% names(cancer_assignment),]$fine_celltype<-"cancer"
+
+ plt_celltype<-epithelial@metadata %>% 
+    ggplot(aes(x = fine_cluster_UMAP_X, y = fine_cluster_UMAP_Y, color = fine_celltype)) +
+    geom_point() +
+    coord_fixed()
+  ggsave(plt_celltype,file="03.1.epithelial.celltype.umap.pdf",width=20,height=20)
+
+
+saveRDS(epithelial,file="03_scaledcis.fine_celltyping.epithelial.rds")
+
+#also looks like cluster 28 is mislabelled (shows basal and lumhr markers, see KRT5 and ANKRD30A resp. So calling lumhr since its the expected source for ER+ cancer, but noted to investigate further, patient 97T)
+#it has cancer clones from BCMDCIS97T and 102T
+
+#also note some HBCA cells in cluster 13 are now assigned as cancer
+
+#assign cell types via IGV tracks
+
+```
+
+# Write out fine cell types into shared amethyst object.
+
+```R
+
+```
 
 set.seed(111)
 options(future.globals.maxSize= 500000*1024^2) #80gb limit for parallelizing
@@ -633,7 +1138,7 @@ output_directory=paste0(project_data_directory,"/fine_celltyping/",prefix)
 dat_sub<-cluster_subset(
   dat=dat_sub,
   broad_celltype=c("immune"), #note this is a list, doing all cells together here
-  window_name="cg_win_score", #coarse_cluster_dmr_sites orinitial_cluster_5kb_win for 5kb require more coverage
+  window_name="cg_win_score", #fine_cluster_dmr_sites orinitial_cluster_5kb_win for 5kb require more coverage
   prefix=paste0(prefix,".reclust"),
   dims=11, 
   regressCov=TRUE, 
@@ -703,7 +1208,7 @@ output_directory=paste0(project_data_directory,"/fine_celltyping/",prefix)
   dat_sub<-cluster_subset(
     dat=dat_sub,
     broad_celltype=c("stromal"), #note this is a list, doing all cells together here
-    window_name="cg_win_score", #coarse_cluster_dmr_sites orinitial_cluster_5kb_win for 5kb require more coverage
+    window_name="cg_win_score", #fine_cluster_dmr_sites orinitial_cluster_5kb_win for 5kb require more coverage
     prefix=prefix,
     dims=8, #i think use at least 14 dims
     regressCov=TRUE, 
@@ -1059,7 +1564,7 @@ collapsed_dmrs %>%
 #Set up variables for output.
 prefix="fibroblast"
 output_directory=paste0(project_data_directory,"/fine_celltyping/",prefix)
-dat<-readRDS(file="05_scaledcis.coarse_clusters.amethyst.rds")
+dat<-readRDS(file="05_scaledcis.fine_clusters.amethyst.rds")
 
 dat_sub<-subsetObject(dat,cells=row.names(dat@metadata)[dat@metadata$mcg_pct>65])
 
@@ -1067,7 +1572,7 @@ dat_sub<-subsetObject(dat,cells=row.names(dat@metadata)[dat@metadata$mcg_pct>65]
 dat_sub<-cluster_subset(
   dat=dat_sub,
   broad_celltype=c("fibroblast"), #note this is a list
-  window_name="coarse_cluster_dmr_sites",
+  window_name="fine_cluster_dmr_sites",
   prefix=prefix,
   dims=18,
   regressCov=TRUE,
@@ -1169,7 +1674,7 @@ See /Volumes/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/fine
 Assign cell types:
 
 ```R
-dat<-readRDS(file="05_scaledcis.coarse_clusters.amethyst.rds")
+dat<-readRDS(file="05_scaledcis.fine_clusters.amethyst.rds")
 dat_immune<-readRDS(file="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/fine_celltyping/immune/06_scaledcis.immune_finecelltyping.amethyst.rds")
 dat_stromal<-readRDS(file="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/fine_celltyping/stromal/06_scaledcis.stromal_finecelltyping.amethyst.rds")
 
