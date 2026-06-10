@@ -12,16 +12,26 @@ set.seed(111)
 options(future.globals.maxSize= 80000*1024^2) #80gb limit for parallelizing
 task_cpus=300
 project_data_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1"
-merged_dat_folder="merged_data"
-wd=paste(sep="/",project_data_directory,merged_dat_folder)
+
+#read in object from directory
+processing_folder="10_fig_plots"
+wd=paste(sep="/",project_data_directory,processing_folder)
+system(paste0("mkdir -p ",wd))
 setwd(wd)
-obj<-readRDS(file="09_scaledcis.final_ploidy.amethyst.rds")
+
+obj<-readRDS(file=paste(project_data_directory,"03_fine_celltyping","03_scaledcis.final_celltypes.amethyst.rds",sep="/"))
+obj<-subsetObject(obj,cells=row.names(obj@metadata[!(obj@metadata$celltype %in% c("stromal_unknown")),]))
+
+obj@metadata[obj@metadata$Sample %in% c("BCMHBCA38L-3h","BCMDCIS65T"),]$Race_Ethnicity<-"Hispanic_or_Latino" #update metadata
+saveRDS(obj,file=paste(project_data_directory,"03_fine_celltyping","03_scaledcis.final_celltypes.amethyst.rds",sep="/"))
+
+
 rna<-readRDS("/data/rmulqueen/projects/scalebio_dcis/rna/tenx_dcis.pf.rds")
 
 ####################################################
 #           Fig 1 Sample Heatmap                  #
 ###################################################
-outdir=paste0(project_data_directory,"/","figure_1")
+outdir=paste0(wd,"/","figure_1")
 system(paste0("mkdir -p ", outdir))
 
 met<-obj@metadata
@@ -73,17 +83,13 @@ group_col=c("DCIS"="#278192",
 
 #color assignment is fluor as cancer associated cell type, rest muted versions
 celltype_col=c(
-"perivascular"="#FF9900",
+"pericyte"="#FF9900",
 "fibroblast"="#FF0000",
 "endothelial"="#FFFF66",
-"unknown"="#FF6699",
 
-"monocyte"="#99FFFF",
-"macrophage"="#0066FF",
+"myeloid"="#99FFFF",
 "bcell"="#0099CC",
-"tcell_treg"="#99FF99",
-"tcell_cd4"="#009966",
-"tcell_cd8"="#66FF00",
+"tcell"="#99FF99",
 
 "basal"="#990099",
 "lumsec"="#CC0066",
@@ -110,7 +116,7 @@ plt<-Heatmap(meta_cat[,c("ER","PR","HER2")],
  cluster_row_slices=FALSE,
  left_annotation=ha,row_order=row_order)
 
- pdf(paste0(outdir,"/","scaledcis.metadata.heatmap.pdf"),width=10)
+ pdf(paste0(outdir,"/","sample.metadata.heatmap.pdf"),width=10)
  print(plt)
  dev.off()
 
@@ -132,7 +138,7 @@ ggsave(plt1,file=paste0(outdir,"/","scaledcis.counts_per_sample.barplots.pdf"),w
 #met cell types percent
 met_cell<-obj@metadata %>% as.data.frame() %>% dplyr::count(Sample,celltype, .drop=TRUE)
 met_cell$celltype<-factor(met_cell$celltype,levels=names(celltype_col))
-plt5<-ggplot(met_cell,aes(x=Sample,fill=celltype,y=n))+geom_bar(position="fill",stat="identity")+theme_minimal()+scale_x_discrete(limits=c(row_order))+scale_fill_manual(values=celltype_col)
+plt2<-ggplot(met_cell,aes(x=Sample,fill=celltype,y=n))+geom_bar(position="fill",stat="identity")+theme_minimal()+scale_x_discrete(limits=c(row_order))+scale_fill_manual(values=celltype_col)
 ggsave(plt2,file=paste0(outdir,"/","scaledcis.assigned_celltype_by_sample.barplots.pdf"),width=50,limitsize=F)
 
 #rna cell counts
@@ -156,13 +162,10 @@ rna@meta.data[rna@meta.data$fine_celltype %in% c("endo_artery","endo_capillary",
 rna@meta.data[rna@meta.data$fine_celltype %in% c("fibro_CAF","fibro_major","fibro_matrix","fibro_prematrix","fibro_SFRP4"),]$coarse_celltype<-"fibroblast"
 rna@meta.data[rna@meta.data$fine_celltype %in% c("fibro_CAF","fibro_major","fibro_matrix","fibro_prematrix","fibro_SFRP4"),]$coarse_celltype<-"fibroblast"
 
-rna@meta.data[rna@meta.data$fine_celltype %in% c("myeloid_3","myeloid_cycling","myeloid_DC","myeloid_macro","myeloid_mast","myeloid_neutrophil","myeloid_TAM"),]$coarse_celltype<-"macrophage"
-rna@meta.data[rna@meta.data$fine_celltype %in% c("myeloid_mono"),]$coarse_celltype<-"monocyte"
-rna@meta.data[rna@meta.data$fine_celltype %in% c("peri","periVSMC_unknown","VSMC"),]$coarse_celltype<-"perivascular"
+rna@meta.data[rna@meta.data$fine_celltype %in% c("myeloid_3","myeloid_cycling","myeloid_DC","myeloid_macro","myeloid_mast","myeloid_neutrophil","myeloid_TAM","myeloid_mono"),]$coarse_celltype<-"myeloid"
+rna@meta.data[rna@meta.data$fine_celltype %in% c("peri","periVSMC_unknown","VSMC"),]$coarse_celltype<-"pericyte"
+rna@meta.data[rna@meta.data$fine_celltype %in% c("tcell_cd4","tcell_cd8","tcell_gdT","tcell_nk","tcell_interferon","tcell_treg"),]$coarse_celltype<-"tcell"
 
-rna@meta.data[rna@meta.data$fine_celltype %in% c("tcell_cd4"),]$coarse_celltype<-"tcell_cd4"
-rna@meta.data[rna@meta.data$fine_celltype %in% c("tcell_cd8","tcell_gdT","tcell_nk","tcell_interferon"),]$coarse_celltype<-"tcell_cd8"
-rna@meta.data[rna@meta.data$fine_celltype %in% c("tcell_treg"),]$coarse_celltype<-"tcell_treg"
 
 rna_cell<-rna@meta.data %>% as.data.frame() %>% filter(coarse_celltype %in% names(celltype_col)) %>% dplyr::count(sample,coarse_celltype, .drop=FALSE)
 rna_cell$Group<-group[rna_cell$sample]
@@ -173,7 +176,7 @@ plt<-patchwork::wrap_plots(plt1,plt2,plt3,plt4,ncol=1,guides='collect')
 ggsave(plt,file=paste0(outdir,"/","scaledcis_and_rna.assigned_celltype_barplots.pdf"),width=50,limitsize=F)
 
 rna<-subset(rna,coarse_celltype %in% names(celltype_col))
-Idents(rna)<-factor(rna$coarse_celltype,levels=c("perivascular","fibroblast","endothelial","tcell_treg","tcell_cd4","tcell_cd8","bcell","macrophage","monocyte","basal","lumsec","lumhr","cancer"))
+Idents(rna)<-factor(rna$coarse_celltype,levels=c("pericyte","fibroblast","endothelial","tcell","bcell","myeloid","basal","lumsec","lumhr","cancer"))
 genes<-c("RGS5","COL1A1","PECAM1","PTPRC","CD8A","CD8B","CD19","AIF1","KRT17","KRT15","ANKRD30A")
 plt<-DotPlot(rna,features=factor(genes,levels=rev(genes)),cols=c("lightgrey","#e57528"))
 ggsave(plt,file=paste0(outdir,"/","rna.gene_dotplot.pdf"),width=10,limitsize=F)
@@ -199,27 +202,6 @@ rna_group_plt<-ggplot(rna_meta,aes(x=umap_x,y=umap_y,color=Group))+geom_point(co
 ggsave(rna_group_plt,file=paste0(outdir,"/","scaledcis.rna.group.umap.pdf"))
 
 
-
-####################################################
-# Box plot of %met per clone #
-####################################################
-met_meta_celltype<-obj@metadata %>% filter(Group=="HBCA")
-met_meta_celltype$celltype<-factor(met_meta_celltype$celltype,levels=names(celltype_col))
-
-met_meta<-obj@metadata %>% filter(!endsWith(cnv_clonename,suffix="diploid")) %>% filter(!is.na(cnv_clonename)) %>% filter(!is.na(scquantum_ploidy))  %>% filter(Group!="HBCA")
-met_meta_clone<- met_meta[!duplicated(met_meta$cnv_clonename),] 
-clone_order<-met_meta_clone %>% arrange(scquantum_ploidy) %>% select(cnv_clonename) %>% unlist()
-
-met_meta$cnv_clonename<-factor(met_meta$cnv_clonename,levels=clone_order)
-met_meta_clone$cnv_clonename<-factor(met_meta_clone$cnv_clonename,levels=clone_order)
-
-plt1<-ggplot(met_meta, aes(x=cnv_clonename,y=mcg_pct,fill=Group)) +geom_boxplot(outlier.shape = NA) +ylim(c(50,100))
-plt2<-ggplot(met_meta_clone, aes(x=cnv_clonename,y=scquantum_ploidy,fill=Group)) + geom_bar(stat="identity")
-plt3<-ggplot(met_meta_celltype, aes(x=celltype,y=mcg_pct,fill=celltype)) +geom_boxplot(outlier.shape = NA) +ylim(c(50,100)) +scale_fill_manual(values=celltype_col)
-ggsave(plt1/plt2/plt3,file=paste0(outdir,"/","scaledcis.cnv_clonename.percmet.pdf"))
-
-
-
 ####################################################
 #           Fig 1 UMAP            MET               #
 ###################################################
@@ -229,21 +211,41 @@ library(ggplot2)
 library(patchwork)
 
 #plot all methylation cells
-met_celltype_plt<-ggplot(data=obj@metadata,aes(x=umap_x,y=umap_y,color=celltype_color))+geom_point(size=2,color="black")+geom_point(size=1,alpha=0.5)+scale_color_identity()+theme_void()
-ggsave(plt1,file=paste0(outdir,"/","scaledcis.methylation.celltype.umap.pdf"))
+met_celltype_plt<-ggplot(data=obj@metadata,aes(x=final_celltype_UMAP_X,y=final_celltype_UMAP_Y,color=celltype,fill=celltype))+geom_point(size=2,color="black",fill="black")+geom_point(size=1,alpha=0.5)+scale_color_manual(values=celltype_col)+scale_fill_manual(values=celltype_col)+theme_void()
+ggsave(met_celltype_plt,file=paste0(outdir,"/","scaledcis.methylation.celltype.umap.pdf"))
 
-met_group_plt<-ggplot(data=obj@metadata,aes(x=umap_x,y=umap_y,color=Group))+geom_point(size=2,color="black")+geom_point(size=1,alpha=0.5)+scale_color_manual(values=group_col)+theme_void()
-ggsave(plt2,file=paste0(outdir,"/","scaledcis.methylation.group.umap.pdf"))
+met_group_plt<-ggplot(data=obj@metadata,aes(x=final_celltype_UMAP_X,y=final_celltype_UMAP_Y,color=Group,fill=Group))+geom_point(size=2,color="black",fill="black")+geom_point(size=1,alpha=0.5)+scale_color_manual(values=group_col)+scale_fill_manual(values=group_col)+theme_void()
+ggsave(met_group_plt,file=paste0(outdir,"/","scaledcis.methylation.group.umap.pdf"))
 
 percent_met_col<-colorRampPalette(c(min(obj@metadata$mcg_pct,na.rm=T),max(obj@metadata$mcg_pct,na.rm=T)),c("grey","#FF00FF"))
 
-met_percmet_plot<-ggplot(data=obj@metadata,aes(x=umap_x,y=umap_y,color=mcg_pct))+geom_point(size=2,color="black")+geom_point(size=1,alpha=0.5)+scale_colour_gradient2(high="black",mid="white",low="#FF00FF",midpoint=75)+theme_void()
+met_percmet_plot<-ggplot(data=obj@metadata,aes(x=final_celltype_UMAP_X,y=final_celltype_UMAP_Y,color=mcg_pct))+geom_point(size=2,color="black",fill="black")+geom_point(size=1,alpha=0.5)+scale_colour_gradient2(high="black",mid="white",low="#FF00FF",midpoint=75)+theme_void()
 
-ggsave(plt3,file=paste0(outdir,"/","scaledcis.methylation.percmet.umap.pdf"))
+ggsave(met_percmet_plot,file=paste0(outdir,"/","scaledcis.methylation.percmet.umap.pdf"))
 
 plt<-patchwork::wrap_plots(met_celltype_plt,met_group_plt,met_percmet_plot,rna_celltype_plt,rna_group_plt,ggplot(),ncol=3,guides='collect')
 ggsave(plt,file=paste0(outdir,"/","scaledcis.umap.pdf"),width=14.5,height=9)
 ggsave(plt,file=paste0(outdir,"/","scaledcis.umap.png"),width=14.5,height=9,dpi = 600)
+
+
+####################################################
+# Box plot of %met per clone #
+####################################################
+met_meta_celltype<-obj@metadata %>% filter(Group=="HBCA")
+met_meta_celltype$celltype<-factor(met_meta_celltype$celltype,levels=names(celltype_col))
+
+met_meta<-obj@metadata %>% filter(!endsWith(cnv_clonename,suffix="diploid")) %>% filter(!is.na(cnv_clonename)) %>% filter(!is.na(cnv_ploidy_500kb))  %>% filter(Group!="HBCA")
+met_meta_clone<- met_meta[!duplicated(met_meta$cnv_clonename),] 
+clone_order<-met_meta_clone %>% arrange(cnv_ploidy_500kb) %>% select(cnv_clonename) %>% unlist()
+
+met_meta$cnv_clonename<-factor(met_meta$cnv_clonename,levels=clone_order)
+met_meta_clone$cnv_clonename<-factor(met_meta_clone$cnv_clonename,levels=clone_order)
+
+plt1<-ggplot(met_meta, aes(x=cnv_clonename,y=mcg_pct,fill=Group)) +geom_boxplot(outlier.shape = NA) +ylim(c(0,100))
+plt2<-ggplot(met_meta_clone, aes(x=cnv_clonename,y=cnv_ploidy_500kb,fill=Group)) + geom_bar(stat="identity")
+plt3<-ggplot(met_meta_celltype, aes(x=celltype,y=mcg_pct,fill=celltype)) +geom_boxplot(outlier.shape = NA) +ylim(c(0,100)) +scale_fill_manual(values=celltype_col)
+ggsave(plt1/plt2/plt3,file=paste0(outdir,"/","scaledcis.cnv_clonename.percmet.pdf"))
+
 
 
 ############################################################

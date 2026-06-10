@@ -499,6 +499,7 @@ SummarizedExperiment::assay(scCNA, 'scquantum_consensus_integer_discrete')[which
 table(unlist(SummarizedExperiment::assay(scCNA, 'scquantum_consensus_integer_discrete')),useNA="ifany")
 
 saveRDS(scCNA,file=paste0("all_samples.aneuploid.preintegerprocessing.copykit.Rds"))
+scCNA<-readRDS(file=paste0("all_samples.aneuploid.preintegerprocessing.copykit.Rds"))
 
 #######################################
 ############# Plotting #############
@@ -688,6 +689,9 @@ dev.off()
 #add scquantum assay to amethyst object
 obj@genomeMatrices[['scquantum_cnv']]<-SummarizedExperiment::assay(scCNA, "scquantum_singlecell_integer_discrete")
 row.names(obj@genomeMatrices[['scquantum_cnv']])<-paste(as.character(seqnames(scCNA@rowRanges)),start(scCNA@rowRanges),end(scCNA@rowRanges),sep="_")
+
+obj@metadata$scquantum_ploidy<-NA
+obj@metadata[row.names(scCNA@colData),]$scquantum_ploidy<-scCNA@colData$scquantum_ploidy_cloneconsensus
 saveRDS(obj,file="02_scaledcis.cnv_clones.amethyst.rds")
 
 ```

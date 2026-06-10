@@ -5,21 +5,28 @@
 # Generate methyltree formatted input for each sample
 
 ```R
-library(amethyst)
-library(GenomicRanges)
-#set environment and read in data
 set.seed(111)
-options(future.globals.maxSize= 80000*1024^2) #80gb limit for parallelizing
-task_cpus=300
-project_data_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1"
-merged_dat_folder="merged_data"
-wd=paste(sep="/",project_data_directory,merged_dat_folder)
-setwd(wd)
-obj<-readRDS(file="07_scaledcis.cnv_clones.amethyst.rds")
+options(future.globals.maxSize= 500000*1024^2) #80gb limit for parallelizing
+library(amethyst)
+library(data.table)
+library(dplyr)
+library(GenomicRanges)
+library(parallel)
 
+project_data_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1"
+
+#read in object from directory
+task_cpus=300
+processing_folder="04_collapsed_bam_and_dmr"
+wd=paste(sep="/",project_data_directory,processing_folder)
+system(paste0("mkdir -p ",wd))
+setwd(wd)
 
 #make output directory
-system(paste0("mkdir -p ",project_data_directory,"/methyltree"))
+output_directory=paste0(wd,"/methyltree_input")
+system(paste0("mkdir -p ",output_directory))
+
+obj<-readRDS(file=paste(project_data_directory,"03_fine_celltyping","03_scaledcis.final_celltypes.amethyst.rds",sep="/"))
 
 
 # Output files for methyltree format
@@ -27,9 +34,10 @@ methyltree_output<-function(obj=obj,
                             sample_name="BCMDCIS41T",
                             filt_min_pct=10,
                             filt_max_pct=90,
+                            output_dir=output_directory,
                             threads=1){
         
-        output_directory=paste0(project_data_directory,"/methyltree/",sample_name[1])
+        output_directory=paste0(output_dir,"/",sample_name[1])
         system(paste0("mkdir -p ",output_directory))
 
         obj_met<-subsetObject(obj, cells = row.names(obj@metadata[obj@metadata$Sample %in% sample_name,]))
@@ -60,6 +68,7 @@ methyltree_output<-function(obj=obj,
         print(paste("Filtered window average width:",as.character(mean(width(methyltreewindows)))))
         print(paste("Total genome covered:",as.character(sum(width(methyltreewindows))/1000000),"Mbp"))
         #make a merged windows percentile matrix per cell for methyltree
+        options(future.globals.maxSize= 500000*1024^2) #80gb limit for parallelizing
 
         methyltreeoutput<-makeWindows(obj_met,
                     type = "CG", 
@@ -114,7 +123,8 @@ methyltree_output<-function(obj=obj,
       rhdf5::h5createFile(file=methyltree_input_file)
       rhdf5::h5write(methyltreeoutput,file=methyltree_input_file,name="data")
       rhdf5::h5write(out_metadata,file=methyltree_input_file,name="metadata")
-    }
+}
+
 
 methyltree_output(obj=obj,sample_name=c('BCMDCIS05T'),threads=1)
 methyltree_output(obj=obj,sample_name=c('BCMDCIS07T'),threads=1)
@@ -151,18 +161,11 @@ methyltree_output(obj=obj,sample_name=c('BCMHBCA38L-3h'),threads=1)
 methyltree_output(obj=obj,sample_name=c('BCMHBCA29L-2h'),threads=1)
 methyltree_output(obj=obj,sample_name=c('BCMHBCA83L-3h'),threads=1) 
 methyltree_output(obj=obj,sample_name=c('ECIS26T'),threads=1)
-#done
-
-
-#running
-
 methyltree_output(obj=obj,sample_name=c('ECIS57T'),threads=1)
-
-#todo
-methyltree_output(obj=obj,sample_name=c('ECIS48T'),threads=1) #crashed
-methyltree_output(obj=obj,sample_name=c('BCMDCIS35T'),threads=1)  #to rerun (crashed on it)
-methyltree_output(obj=obj,sample_name=c('BCMDCIS66T'),threads=1) #to rerun
-methyltree_output(obj=obj,sample_name=c('BCMHBCA26L-24hTis-4h'),threads=1) #to rerun
+methyltree_output(obj=obj,sample_name=c('ECIS48T'),threads=1) 
+methyltree_output(obj=obj,sample_name=c('BCMDCIS35T'),threads=1)  
+methyltree_output(obj=obj,sample_name=c('BCMDCIS66T'),threads=1) 
+methyltree_output(obj=obj,sample_name=c('BCMHBCA26L-24hTis-4h'),threads=1) 
 
 
 ```

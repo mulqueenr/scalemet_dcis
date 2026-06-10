@@ -859,9 +859,6 @@ obj@metadata[row.names(cnv_meta_500kb),]$cnv_clones_split_500kb<-cnv_meta_500kb$
 #final cnv clones based on 500kb calling
 obj@metadata$cnv_clonename<-obj@metadata$cnv_clonename_500kb
 
-#also looks like cluster 17 is mislabelled (shows basal and lumhr markers, see KRT5 and ANKRD30A resp. So calling lumhr since its the expected source for ER+ cancer, but noted to investigate further, patient 97T)
-obj@metadata[which(obj@metadata$coarse_cluster_phenograph=="17"),]$coarse_celltype<-"lumhr"
-
 obj@metadata[which(obj@metadata$cnv_ploidy_500kb=="aneuploid"),]$coarse_celltype<-"cancer"
 saveRDS(obj,file="02_scaledcis.cnv_clones.amethyst.rds")
 
