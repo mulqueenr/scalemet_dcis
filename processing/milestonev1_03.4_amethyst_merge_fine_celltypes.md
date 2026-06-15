@@ -8,6 +8,8 @@ library(amethyst)
 library(data.table)
 library(rtracklayer)
 
+project_data_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1"
+
 #read in object from directory
 task_cpus=300
 processing_folder="03_fine_celltyping"
@@ -53,15 +55,23 @@ obj<-generate_bigwig(obj=obj,
                         outdir=getwd())
 
 #assign nonlumhr and noncancer cell types as diploid, excluding any lumhr or cancer cells
-table(obj@metadata[!(obj@metadata$cnv_ploidy_500kb=="aneuploid") & !(obj@metadata$celltype %in% c("lumhr","cancer")),]$celltype)
 
-obj@metadata[!(obj@metadata$cnv_ploidy_500kb=="aneuploid") & !(obj@metadata$celltype %in% c("lumhr","cancer")),]$cnv_ploidy_500kb<-"diploid"
+obj@metadata[obj@metadata$celltype=="cancer",]$celltype<-"lumhr"
+table(obj@metadata$celltype,obj@metadata$cnv_ploidy_group_500kb)
 
-table(obj@metadata[obj@metadata$cnv_ploidy_500kb=="diploid",]$cnv_clonename)
+#assign all aneuploid cells as cancer
+table(obj@metadata[!(obj@metadata$cnv_ploidy_group_500kb=="aneuploid") & !(obj@metadata$celltype %in% c("lumhr","cancer")),]$celltype)
 
-#can now assign diploidy to NA samples with too low of read count (~1k cells)
-obj@metadata[obj@metadata$cnv_ploidy_500kb=="diploid",]$cnv_clonename<-paste0(
-                      obj@metadata[obj@metadata$cnv_ploidy_500kb=="diploid",]$Sample,"_diploid")
+obj@metadata[obj@metadata$cnv_ploidy_group_500kb=="aneuploid",]$celltype<-"cancer"
+
+table(obj@metadata$celltype,obj@metadata$cnv_ploidy_group_500kb)
+#note that some lumhr cells may still be cancerous, just not CNV identified due to low cell count
+
+obj@metadata[!(obj@metadata$celltype %in% c("lumhr","cancer")),]$cnv_ploidy_group_500kb<-"diploid"
+
+#can now assign diploidy to NA samples with too low of read count (~1k cells) that are assigned as non-cancer/lumhr
+obj@metadata[obj@metadata$cnv_ploidy_group_500kb=="diploid",]$cnv_clonename<-paste0(
+                      obj@metadata[obj@metadata$cnv_ploidy_group_500kb=="diploid",]$Sample,"_diploid")
 
 obj<-generate_bigwig(obj=obj,
                         suffix="cnv_clonename",
@@ -73,6 +83,11 @@ saveRDS(obj,file="03_scaledcis.final_celltypes.amethyst.rds")
 
 Generate UMAP of all cells 
 ```R
+library(amethyst)
+library(dplyr)
+library(ggplot2)
+
+obj<-readRDS(file="03_scaledcis.final_celltypes.amethyst.rds")
 
 prcomp_iterative <- function(x, n=10, n_iter=50, min_gain=0.001, ...) {
   mse <- rep(NA, n_iter)
@@ -126,11 +141,11 @@ celltype_col=c(
 
 suffix="final_celltype_final_plots"
 outdir="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/03_fine_celltyping/"
-npc=15
+npc=25
 reduction_name="irlba_final_celltype"
 min_dist=1e-5
 n_neighbors=10
-
+leiden_cluster_resolution=1e-5
 plot_dir=paste0(outdir,"/","plot_",suffix)
 system(paste0("mkdir -p ",plot_dir))
 

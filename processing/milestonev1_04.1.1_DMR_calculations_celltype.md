@@ -428,9 +428,7 @@ gsea_across_sets<-function(obj,
 
 plot_gsea<-function(gsea=hallmark_dmr,
                     out_setname="hallmark",
-                    prefix=prefix,
-                    dmr_hypo_count,
-                    dmr_hyper_count){
+                    prefix=prefix){
 
   gsea_nes <- gsea %>% tidyr::pivot_wider(names_from=test, id_cols=pathway, values_from=NES)  %>% as.data.frame()
   row.names(gsea_nes) <- gsea_nes$pathway
@@ -440,8 +438,8 @@ plot_gsea<-function(gsea=hallmark_dmr,
   row.names(gsea_pval) <- gsea_pval$pathway
   gsea_pval<-gsea_pval[,2:ncol(gsea_pval)]
   feature_to_keep<- gsea_pval %>% filter(if_any(everything(), ~ .x < 0.05, na.rm=T)) %>% row.names() #filter hallmark to just columns with signficance
+  
   if(length(feature_to_keep)>0){
-
   gsea_pval <- -log10(gsea_pval)
   col_fun = circlize::colorRamp2(c(-5, 0, 5), c("#b84d9c","white","#2c50a3"))
 
@@ -453,10 +451,7 @@ plot_gsea<-function(gsea=hallmark_dmr,
   max_size=quantile(unlist(gsea_pval),na.rm=T,probs=0.75)
   gsea_pval[which(gsea_pval>max_size,arr.ind=T)]<-max_size
 
-  column_ha = HeatmapAnnotation(
-    hyper_n = anno_barplot(dmr_hyper_count[colnames(gsea_nes)],gp = gpar(fill="black",col="black")),
-    hypo_n = anno_barplot(dmr_hypo_count[colnames(gsea_nes)],gp = gpar(fill="#FF00FF",col="#FF00FF")))
-
+  column_order=factor(colnames(gsea_nes), levels=comparison_order_for_plotting)
   if(out_setname=="position"){
   #for plotting position in order
   row.names(gsea_nes)<-gsub(row.names(gsea_nes),pattern="chr",replacement="")
@@ -469,9 +464,7 @@ plot_gsea<-function(gsea=hallmark_dmr,
   row.names(row_order)<-row.names(gsea_nes)
   row_order<-row_order %>% arrange(chr,arm,band) 
   gsea_nes<-gsea_nes[row.names(row_order),]
-
-  plt<-Heatmap(gsea_nes,
-      bottom_annotation=column_ha,
+  plt<-Heatmap(t(gsea_nes), #adding transpose for plotting, so column and row swapped
       col = col_fun,rect_gp = gpar(type = "none"),
       cell_fun = function(j, i, x, y, width, height, fill) {
           #draw a rectangle at all sites
@@ -481,11 +474,12 @@ plot_gsea<-function(gsea=hallmark_dmr,
             grid.circle(x = x, y = y, 
                   r = (abs(gsea_pval[i, j])/max_size)/2 * min(unit.c(width, height)), 
                   gp = gpar(fill = col_fun(gsea_nes[i, j]), col = NA))}},
-    row_order=1:nrow(gsea_nes),
-    cluster_rows=FALSE,cluster_columns=TRUE)
+    column_order=1:nrow(gsea_nes),
+    row_order=column_order)
+  
   } else {
-  plt<-Heatmap(gsea_nes,
-      bottom_annotation=column_ha,
+
+  plt<-Heatmap(t(gsea_nes), #adding transpose for plotting, so column and row swapped
       col = col_fun,rect_gp = gpar(type = "none"),
       cell_fun = function(j, i, x, y, width, height, fill) {
           #draw a rectangle at all sites
@@ -495,7 +489,8 @@ plot_gsea<-function(gsea=hallmark_dmr,
             grid.circle(x = x, y = y, 
                   r = (abs(gsea_pval[i, j])/max_size)/2 * min(unit.c(width, height)), 
                   gp = gpar(fill = col_fun(gsea_nes[i, j]), col = NA))}},
-    cluster_rows=TRUE,cluster_columns=TRUE)
+    cluster_columns=TRUE,
+    row_order=column_order)
   }
 
   pdf(paste0(prefix,".",out_setname,".NES.heatmap.pdf"),width=10,height=10)
@@ -550,7 +545,6 @@ sum_mat<-celltype500bpwindows[["sum_matrix"]]
 
 
 #do 1v1 and 1vrest for all celltype comparisons possible
-
 #1vrest
 comparisons_1vrest<-do.call("rbind",lapply(unique(dat@metadata$celltype),function(celltype){
   comparisons_set<-colnames(pct_mat)[grepl(colnames(pct_mat),pattern=celltype)]
@@ -639,9 +633,46 @@ dmr_out<-do.call("rbind",dmr_out)
 
 ```
 
+Performing same comparisons using RNA data
+```R
+
+#compare dmr sites with rna marker genes overlap
+library(Seurat)
+library(GenomicRanges)
+
+
+rna<-readRDS("/data/rmulqueen/projects/scalebio_dcis/rna/tenx_dcis.pf.rds")
+rna$celltype_group<-paste(rna$coarse_celltype,rna$Group,sep="_")
+rna<-JoinLayers(rna)
+input_folder=paste0(wd,"/","bigwig_output_dmr_celltype_group_500bp")
+output_directory=paste0(input_folder,"/","dmr_celltype_group")
+
+de_out<-lapply(row.names(comparisons), function(i) {
+  celltype <- unlist(lapply(strsplit(i,"_"),"[",1))[1]
+  print(paste("Running DE genes across cell types for:",i))
+  comparisons_output_directory<-paste0(output_directory,"/",celltype,"/",i)
+
+  #run paired comparisons that DMR underwent
+  cell_A<-row.names(rna@meta.data)[rna@meta.data$celltype_group %in% unlist(strsplit(comparisons[i,]$A,","))]
+  cell_B<-row.names(rna@meta.data)[rna@meta.data$celltype_group %in% unlist(strsplit(comparisons[i,]$B,","))]
+  if(length(cell_A)>50 & length(cell_B)>50){
+  print(table(rna@meta.data[cell_A,]$celltype_group))
+  print(table(rna@meta.data[cell_B,]$celltype_group))
+  rna_markers<-FindMarkers(rna@assays$RNA,cells.1=cell_A,cells.2=cell_B)
+  saveRDS(rna_markers,file=paste0(comparisons_output_directory,"/","04.1.",suffix,".",i,".de.RNAmarkers.rds"))
+  return(de_out)
+  }
+})
+
+#also output bed file of significant RNA for plotting
+
+```
+
 Plotting of DMR count per comparison
 
 ```R
+
+dmr_out<-do.call("rbind",lapply(list.files(path=output_directory,recursive=T,full.names=T,pattern="*.dmr.filt.rds"),readRDS))
 
 #color assignment is fluor as cancer associated cell type, rest muted versions
 celltype_col=c(
@@ -656,7 +687,7 @@ celltype_col=c(
 "lumhr"="#FF00CC",
 "cancer"="#00FF99")
 
-for(i in unique(dmr_out$celltype)){
+mclapply(unique(dmr_out$celltype),function(i){
   print(paste("Plotting...",i))
   celltype_to_plot=i
   comparison_order_for_plotting=c(
@@ -699,79 +730,100 @@ for(i in unique(dmr_out$celltype)){
   #run GSEA on cell type
   system(paste0("mkdir -p ",output_directory,"/gsea_data"))
   for(j in comparison_order_for_plotting){
-  gsea_across_sets(obj, 
-                  collapsed_dmrs=dmr_out %>% 
-                                filter(celltype==celltype_to_plot) %>% 
-                                filter(dmr_padj<0.05) %>% 
-                                filter(comparison_name == j),
-                  sample_name=j, 
-                  prefix=paste0(output_directory,"/gsea_data/","04.1.",suffix,".",celltype_to_plot))
+    gsea_across_sets(obj, 
+                    collapsed_dmrs=dmr_out %>% filter(comparison_name == j),
+                    sample_name=j, 
+                    prefix=paste0(output_directory,"/gsea_data/","04.1.",suffix,".",celltype_to_plot))
   }
-}
-
-
-
-  #run gsea enrichment on different sets
-  print(paste("Calculating TF Binding Enrichment Compared to LumHR"))
-  tft_plt<-gsea_enrichment_againstlumhr(species="human",
-              category="C3",
-              subcategory="TFT:GTRD",
-              out_setname="TFT",sample_name=sample_name,
-              dmrs=collapsed_dmrs,obj=obj,outdir=outdir)
-
-  print(paste("Calculating Position Enrichment Compared to LumHR"))
-  position_plt<-gsea_enrichment_againstlumhr(species="human",
-              category="C1",
-              subcategory=NULL,
-              out_setname="position",sample_name=sample_name,
-              dmrs=collapsed_dmrs,obj=obj,outdir=outdir)
-
-  print(paste("Calculating Hallmark Enrichment Compared to LumHR"))
-  hallmark_plt<-gsea_enrichment_againstlumhr(species="human",
-              category="H",
-              subcategory=NULL,
-              out_setname="hallmark",sample_name=sample_name,
-              dmrs=collapsed_dmrs,obj=obj,outdir=outdir)
-
-  print(paste("Calculating Cancer Cell Atlas Enrichment Compared to LumHR"))
-  hallmark_plt<-gsea_enrichment_againstlumhr(species="human",
-              category="C4",
-              subcategory="3CA",
-              out_setname="3CA",sample_name=sample_name,
-              dmrs=collapsed_dmrs,obj=obj,outdir=outdir)
-  plt<-patchwork::wrap_plots(list((tft_plt),(position_plt),(hallmark_plt)),ncol=4,axes="collect")
-
-  ggsave(plt,
-          file=paste0(sample_name,".clones_lumhrall.GSEA_enrichment.pdf"),
-          path=outdir,
-          width=40,height=length(unique(collapsed_dmrs$type))*5,limitsize = FALSE)
-  print(paste("Finished sample:",sample_name))
-}
 
   tft_gsea<-do.call("rbind",lapply(
     list.files(path=paste0(output_directory,"/gsea_data/"),pattern=paste0("04.1.",suffix,".",celltype_to_plot,".*","TFT.rds"),full.names=T),
     readRDS))
-  plot_gsea(gsea=hallmark_gsea,out_setname="TFT",prefix=paste0(output_directory,"/dmr_plots/","04.1.",suffix,".",celltype_to_plot,".","TFT"),dmr_hypo_count=5,dmr_hyper_count=5)
+  plot_gsea(gsea=tft_gsea,out_setname="TFT",prefix=paste0(output_directory,"/dmr_plots/","04.1.",suffix,".",celltype_to_plot))
 
   hallmark_gsea<-do.call("rbind",lapply(
     list.files(path=paste0(output_directory,"/gsea_data/"),pattern=paste0("04.1.",suffix,".",celltype_to_plot,".*","hallmark.rds"),full.names=T),
     readRDS))
-  plot_gsea(gsea=hallmark_gsea,out_setname="hallmark",prefix=paste0(output_directory,"/dmr_plots/","04.1.",suffix,".",celltype_to_plot,".","hallmark"),dmr_hypo_count=5,dmr_hyper_count=5)
+  plot_gsea(gsea=hallmark_gsea,out_setname="hallmark",prefix=paste0(output_directory,"/dmr_plots/","04.1.",suffix,".",celltype_to_plot))
 
   position_gsea<-do.call("rbind",lapply(
     list.files(path=paste0(output_directory,"/gsea_data/"),pattern=paste0("04.1.",suffix,".",celltype_to_plot,".*","position.rds"),full.names=T),
     readRDS))
-  plot_gsea(gsea=hallmark_gsea,out_setname="position",prefix=paste0(output_directory,"/dmr_plots/","04.1.",suffix,".",celltype_to_plot,".","position"),dmr_hypo_count=5,dmr_hyper_count=5)
+  plot_gsea(gsea=position_gsea,out_setname="position",prefix=paste0(output_directory,"/dmr_plots/","04.1.",suffix,".",celltype_to_plot))
 
   canceratlas_gsea<-do.call("rbind",lapply(
     list.files(path=paste0(output_directory,"/gsea_data/"),pattern=paste0("04.1.",suffix,".",celltype_to_plot,".*","3CA.rds"),full.names=T),
     readRDS))
-  plot_gsea(gsea=hallmark_gsea,out_setname="3CA",prefix=paste0(output_directory,"/dmr_plots/","04.1.",suffix,".",celltype_to_plot,".","3CA"),dmr_hypo_count=5,dmr_hyper_count=5)
-  }
+  plot_gsea(gsea=canceratlas_gsea,out_setname="3CA",prefix=paste0(output_directory,"/dmr_plots/","04.1.",suffix,".",celltype_to_plot))
+  },mc.cores=50)
 
 #calculate DMR proximity to DE genes (or overlap with DE genes)
 #DMR overlap with breast cancer gene list
 #GSEA enrichment
 #overlap with bulk methylation progression markers
 
+#Run chromvar on hypomethylated 500bp windows
+#with and without excluding CGI
 ```
+
+
+```R
+library(chromVAR)
+library(motifmatchr)
+library(Matrix)
+library(SummarizedExperiment)
+library(BiocParallel)
+set.seed(2017)
+library(JASPAR2024)
+library(TFBSTools)
+register(MulticoreParam(50, progressbar = TRUE))
+library(BSgenome.Hsapiens.UCSC.hg38)
+task_cpus=300
+
+input_folder=paste0(wd,"/","bigwig_output_dmr_celltype_group_500bp")
+suffix="dmr_celltype_group_500bp"
+output_directory=paste0(input_folder,"/","dmr_celltype_group")
+system(paste0("mkdir -p ",output_directory))
+
+celltype500bpwindows<-readRDS(file=paste0(input_folder,"/","03.1.VMR_umap.",suffix,".fine_cluster.500bp_windows.rds"))
+
+pct_mat<-celltype500bpwindows[["pct_matrix"]] 
+pct_mat<-pct_mat[!duplicated(paste(pct_mat$chr,pct_mat$start,pct_mat$end,sep="_")),]
+#set up binary counts matrix per window
+binary_met<-pct_mat[,4:ncol(pct_mat)]
+binary_met<-(binary_met>20)+0 #hypomethylated regions (<20% met) are 1, rest 0 or NA
+
+windows_passing_filter<-which(rowSums(is.na(binary_met),na.rm=T)>1) #require at least 1 groups to have a hypomethylated region
+binary_met<-binary_met[windows_passing_filter,]
+ranges<-GRanges(pct_mat[windows_passing_filter,1:3])
+
+binary_met[which(is.na(binary_met),arr.ind=T)]<-0 #set remaining NA to 0
+
+#set up hypomet matrix
+binary_met <- SummarizedExperiment(assays = list(counts = binary_met),rowRanges = sort(ranges))
+ranges<-sort(ranges)
+
+binary_met <- addGCBias(binary_met, genome = BSgenome.Hsapiens.UCSC.hg38)
+
+
+#compute deviations for peaks
+binary_met <- filterPeaks(binary_met,non_overlapping=FALSE)
+bg <- getBackgroundPeaks(object = binary_met)
+
+
+#set up motifs location calls across ranges
+motifs <- getMatrixSet(x = JASPAR2024()@db, opts = list(collection = "CORE", species = "Homo sapiens"))
+
+ranges_list<-split(binary_met@rowRanges, ntile(seq_along(binary_met@rowRanges),task_cpus))
+motif_ix <- mclapply(1:length(ranges_list),function(i){
+                        matchMotifs(motifs, ranges_list[[i]], genome = BSgenome.Hsapiens.UCSC.hg38)
+                        },mc.cores=task_cpus)
+motif_ix<-do.call("rbind",motif_ix)
+
+#run chromvar
+dev <- computeDeviations(object = binary_met, annotations = motif_ix, background_peaks = bg)
+variability <- computeVariability(dev)
+
+pdf("test.chromvar.variability.pdf")
+plotVariability(variability, use_plotly = FALSE) 
+dev.off()

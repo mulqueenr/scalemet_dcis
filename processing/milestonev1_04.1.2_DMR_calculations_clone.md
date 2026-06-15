@@ -198,7 +198,6 @@ generate_bigwig<-function(obj=immune,
   file_conn <- file(paste0(bigwig_output_dir,"/hg38/","trackDb.txt"), open = "a")
   for(i in trackhub_dat){writeLines(unlist(i), con = file_conn)}
   close(file_conn)
-
   return(obj)
 }
 
@@ -428,9 +427,7 @@ gsea_across_sets<-function(obj,
 
 plot_gsea<-function(gsea=hallmark_dmr,
                     out_setname="hallmark",
-                    prefix=prefix,
-                    dmr_hypo_count,
-                    dmr_hyper_count){
+                    prefix=prefix){
 
   gsea_nes <- gsea %>% tidyr::pivot_wider(names_from=test, id_cols=pathway, values_from=NES)  %>% as.data.frame()
   row.names(gsea_nes) <- gsea_nes$pathway
@@ -440,8 +437,8 @@ plot_gsea<-function(gsea=hallmark_dmr,
   row.names(gsea_pval) <- gsea_pval$pathway
   gsea_pval<-gsea_pval[,2:ncol(gsea_pval)]
   feature_to_keep<- gsea_pval %>% filter(if_any(everything(), ~ .x < 0.05, na.rm=T)) %>% row.names() #filter hallmark to just columns with signficance
+  
   if(length(feature_to_keep)>0){
-
   gsea_pval <- -log10(gsea_pval)
   col_fun = circlize::colorRamp2(c(-5, 0, 5), c("#b84d9c","white","#2c50a3"))
 
@@ -453,10 +450,7 @@ plot_gsea<-function(gsea=hallmark_dmr,
   max_size=quantile(unlist(gsea_pval),na.rm=T,probs=0.75)
   gsea_pval[which(gsea_pval>max_size,arr.ind=T)]<-max_size
 
-  column_ha = HeatmapAnnotation(
-    hyper_n = anno_barplot(dmr_hyper_count[colnames(gsea_nes)],gp = gpar(fill="black",col="black")),
-    hypo_n = anno_barplot(dmr_hypo_count[colnames(gsea_nes)],gp = gpar(fill="#FF00FF",col="#FF00FF")))
-
+  column_order=factor(colnames(gsea_nes), levels=comparison_order_for_plotting)
   if(out_setname=="position"){
   #for plotting position in order
   row.names(gsea_nes)<-gsub(row.names(gsea_nes),pattern="chr",replacement="")
@@ -469,9 +463,7 @@ plot_gsea<-function(gsea=hallmark_dmr,
   row.names(row_order)<-row.names(gsea_nes)
   row_order<-row_order %>% arrange(chr,arm,band) 
   gsea_nes<-gsea_nes[row.names(row_order),]
-
-  plt<-Heatmap(gsea_nes,
-      bottom_annotation=column_ha,
+  plt<-Heatmap(t(gsea_nes), #adding transpose for plotting, so column and row swapped
       col = col_fun,rect_gp = gpar(type = "none"),
       cell_fun = function(j, i, x, y, width, height, fill) {
           #draw a rectangle at all sites
@@ -481,11 +473,12 @@ plot_gsea<-function(gsea=hallmark_dmr,
             grid.circle(x = x, y = y, 
                   r = (abs(gsea_pval[i, j])/max_size)/2 * min(unit.c(width, height)), 
                   gp = gpar(fill = col_fun(gsea_nes[i, j]), col = NA))}},
-    row_order=1:nrow(gsea_nes),
-    cluster_rows=FALSE,cluster_columns=TRUE)
+    column_order=1:nrow(gsea_nes),
+    row_order=column_order)
+  
   } else {
-  plt<-Heatmap(gsea_nes,
-      bottom_annotation=column_ha,
+
+  plt<-Heatmap(t(gsea_nes), #adding transpose for plotting, so column and row swapped
       col = col_fun,rect_gp = gpar(type = "none"),
       cell_fun = function(j, i, x, y, width, height, fill) {
           #draw a rectangle at all sites
@@ -495,7 +488,8 @@ plot_gsea<-function(gsea=hallmark_dmr,
             grid.circle(x = x, y = y, 
                   r = (abs(gsea_pval[i, j])/max_size)/2 * min(unit.c(width, height)), 
                   gp = gpar(fill = col_fun(gsea_nes[i, j]), col = NA))}},
-    cluster_rows=TRUE,cluster_columns=TRUE)
+    cluster_columns=TRUE,
+    row_order=column_order)
   }
 
   pdf(paste0(prefix,".",out_setname,".NES.heatmap.pdf"),width=10,height=10)
@@ -520,7 +514,7 @@ obj<-readRDS(file=paste(project_data_directory,"03_fine_celltyping","03_scaledci
 dat<-subsetObject(obj,cells=row.names(obj@metadata[obj@metadata$celltype %in% c("cancer","lumhr"),]))
 dat<-subsetObject(dat,cells=row.names(dat@metadata[!(dat@metadata$cnv_clonename_500kb %in% c("NA")),]))
 
-clones_passing_filter<-table(dat@metadata$cnv_clonename)[table(dat@metadata$cnv_clonename)>50]
+clones_passing_filter<-table(dat@metadata$cnv_clonename_500kb)[table(dat@metadata$cnv_clonename_500kb)>50]
 
 dat<-subsetObject(dat,cells=row.names(dat@metadata[dat@metadata$cnv_clonename_500kb %in% names(clones_passing_filter),]))
 
@@ -535,8 +529,6 @@ dat<-generate_bigwig(obj=dat,
                         groupBy="cnv_clonename_500kb",
                         step=250,
                         outdir=getwd()) 
-
-####RUNNING    
 ```
 
 
@@ -554,7 +546,6 @@ dat<-subsetObject(dat,cells=row.names(dat@metadata[!(dat@metadata$cnv_clonename_
 
 dat@metadata[(dat@metadata$Group=="HBCA") & (dat@metadata$celltype=="lumhr"),]$cnv_clonename_500kb<-"HBCA_lumhr"
 clones_passing_filter<-table(dat@metadata$cnv_clonename_500kb)[table(dat@metadata$cnv_clonename_500kb)>50]
-clones_passing_filter<-clones_passing_filter[!endsWith(names(clones_passing_filter),suffix="_diploid")]
 dat<-subsetObject(dat,cells=row.names(dat@metadata[dat@metadata$cnv_clonename_500kb %in% names(clones_passing_filter),]))
 
 dat<-generate_bigwig(obj=dat,
@@ -570,35 +561,83 @@ dat<-generate_bigwig(obj=dat,
                         outdir=getwd())     
 ```
 
-## Now running groupwise comparisons across cell types
+## Per sample run DMR 
+1. One vs lumhr
+2. All (lumhr and cancer) vs lumhr, since there might be "cancer" non aneuploid in lumhr population
+3. All aneuploid vs lumhr
+4. One vs rest of clones
+5. Clone v clone
 
-First running on 500bp windows
+
 ```R
 
-input_folder=paste0(wd,"/","bigwig_output_dmr_celltype_group_500bp")
-suffix="dmr_celltype_group_500bp"
+input_folder=paste0(wd,"/","bigwig_output_dmr_clones_HBCALumHR_500bp")
+suffix="dmr_clones_HBCALumHR_500bp"
 
 output_directory=paste0(input_folder,"/","dmr_results")
 system(paste0("mkdir -p ",output_directory))
 
-celltype500bpwindows<-readRDS(file=paste0(input_folder,"/","03.1.VMR_umap.",suffix,".fine_cluster.500bp_windows.rds"))
+clone500kbwindows<-readRDS(file=paste0(input_folder,"/","03.1.VMR_umap.",suffix,".fine_cluster.500bp_windows.rds"))
 
-pct_mat<-celltype500bpwindows[["pct_matrix"]] 
-sum_mat<-celltype500bpwindows[["sum_matrix"]] 
-
-#calculate DMRs for group-wise comparisons across cell types
+pct_mat<-clone500kbwindows[["pct_matrix"]] 
+sum_mat<-clone500kbwindows[["sum_matrix"]] 
 
 
-#run t cell one vs rest
-tcell_comparisons<-colnames(pct_mat)[4:ncol(pct_mat)]
-tcell_comparisons<-tcell_comparisons[grepl(tcell_comparisons,pattern="tcell")]
-tcell_comparisons<-do.call("rbind",lapply(tcell_comparisons,function(i){
-  data.frame(
-  name=paste0(i,"_tcell_comparisons"),
-  A=i,
-  B=paste(tcell_comparisons[grep(tcell_comparisons,invert=T,pattern=i)],collapse=","))
-}))
+comparison_columns<-colnames(pct_mat)
+samples<-unique(unlist(lapply(strsplit(comparison_columns[4:length(comparison_columns)],"_"),"[",1)))
+samples<-samples[grep(samples,pattern="HBCA",invert=T)]
 
+
+comparison_generator<-function(i){
+    sample_comparisons <-colnames(pct_mat)[grep(colnames(pct_mat),pattern=i)]
+
+    #1. One vs lumhr
+    comparisons_one_v_lumhr <-do.call("rbind",lapply(sample_comparisons,function(j){
+      data.frame(
+        name=paste0(j,"_v_HBCAlumhr"),
+        A=j,
+        B="HBCA_lumhr")}))
+
+    #2. All vs lumhr
+    comparisons_all_v_lumhr <-data.frame(
+      name=paste0(i,"_allcancerlumhr_v_HBCAlumhr"),
+      A=paste(sample_comparisons,collapse=","),
+      B="HBCA_lumhr")
+
+    #3. All aneuploid vs lumhr
+    comparisons_aneuploid_v_lumhr <-data.frame(
+      name=paste0(i,"_allaneuploid_v_HBCAlumhr"),
+      A=paste(sample_comparisons[grep(sample_comparisons,invert=T,pattern="_diploid")],collapse=","),
+      B="HBCA_lumhr")
+
+    #4. One vs rest of clones
+    comparisons_one_v_rest <-do.call("rbind",lapply(sample_comparisons,function(j){
+      data.frame(
+        name=paste0(j,"_v_restofclones"),
+        A=j,
+        B=paste(sample_comparisons[grep(sample_comparisons,invert=T,pattern=j)],collapse=",")
+      )}))
+
+    #5. One vs one of clones
+    comparisons_one_v_one <-do.call("rbind",
+      lapply(sample_comparisons,function(j){
+        do.call("rbind",lapply(sample_comparisons,function(k){
+          if(j!=k){data.frame(name=paste0(j,"_v_",k),A=j,B=k)
+          }else{data.frame(name=NA,A=NA,B=NA)}}))}))
+
+    comparisons_sample <- do.call("rbind",list(comparisons_one_v_lumhr,
+                                            comparisons_all_v_lumhr,
+                                            comparisons_aneuploid_v_lumhr,
+                                            comparisons_one_v_rest,
+                                            comparisons_one_v_one))
+    return(comparisons_sample)
+}
+
+comparisons <- do.call("rbind",lapply(samples,comparison_generator))
+comparisons <- comparisons[complete.cases(comparisons),]
+row.names(comparisons)<-comparisons$name
+
+#calculate DMRs for group-wise comparisons across clones
 
 #run DMR analysis per row in comparisons
 dmr_out<-lapply(row.names(comparisons), function(i) {
@@ -630,5 +669,6 @@ dmr_out<-lapply(row.names(comparisons), function(i) {
 
 
 dmr_out<-do.call("rbind",dmr_out)
+
 
 ```

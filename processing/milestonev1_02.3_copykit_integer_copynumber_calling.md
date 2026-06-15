@@ -32,11 +32,17 @@ resolution="500kb"
 processing_folder="02_copykit_cnv_calling"
 wd=paste(sep="/",project_data_directory,processing_folder)
 setwd(wd)
+
+
+
 obj<-readRDS(file="02_scaledcis.cnv_clones.amethyst.rds")
 
 hg38_grangeslist[["hg38_500kb"]]<-readRDS(file=paste0("copykit.met_windows.",resolution,".diploidcorrected.ref.rds"))
 length(hg38_grangeslist[["hg38_500kb"]])
 #4107
+
+scCNA<-readRDS(file=paste0(project_data_directory,"02_copykit_cnv_calling","/","all_samples.aneuploid.preintegerprocessing.copykit.Rds"))
+
 
 
 #limit our cnv calling to those with less than 1.5SD in diploid
@@ -47,30 +53,30 @@ hg38_grangeslist[["hg38_500kb"]]<-hg38_grangeslist[["hg38_500kb"]][
 #3559
 
 
-copykit_output<-list.files(path=paste0(project_data_directory,"/",processing_folder),recursive=TRUE,full.names=TRUE,pattern="kb.rds")
+copykit_output<-list.files(path=paste0(project_data_directory,"/",processing_folder),recursive=TRUE,full.names=TRUE,pattern="500kb.rds")
 #remove diploid cell call rds used for bin correction
 copykit_output<-copykit_output[!grepl(copykit_output,pattern="diploid")]
 
 
 #merge all copykit and run at same time (to help with integer estimation)
-merged_copykit <- do.call("cbind",lapply(copykit_output_500kb,
+merged_copykit <- do.call("cbind",lapply(copykit_output,
     function(x){
         obj<-readRDS(x)
         obj@colData<-obj@colData[c("unique_reads","tss_enrich","mcg_pct","cg_cov","batch","plate_info",
                             "tgmt_well","i7_well",
-                            "i5_well","fine_celltype",
+                            "i5_well","coarse_celltype",
                             "sample","sample_name",
                             "reads_assigned_bins","overdispersion",
                             "breakpoint_count","subclones",
                             "superclones","ploidy",
-                            "clones_split","clonename",
-                            "celltype")]
+                            "clones_split","clonename")]
         obj@assays@data<-obj@assays@data[c("bincounts","smoothed_bincounts","ratios","ft","logr")]
     return(obj)}))
 
+#NOW KEEPING ALL CELLS
+    #filter to just aneuploid, or not
+    #merged_copykit<-merged_copykit[,!endsWith(colData(merged_copykit)$clonename,"_diploid")]
 
-#filter to just aneuploid, or not
-merged_copykit<-merged_copykit[,!endsWith(colData(merged_copykit)$clonename,"_diploid")]
 hg38_grangeslist[["hg38_500kb"]]<-merged_copykit@rowRanges
 
 ############ Segmentation ############
@@ -353,13 +359,13 @@ runSegmentation <- function(scCNA,
 
 }
 
-prefix="all_samples.aneuploid_only"
+prefix="all_samples.all_cells"
 output_directory=paste0(project_data_directory,"/",processing_folder)
 merged_copykit<-runSegmentation(merged_copykit,
     method = "CBS",
     undo.splits = "none",
     name = "segment_ratios")
-saveRDS(merged_copykit,file=paste0("all_samples.aneuploid.preintegerprocessing.copykit.Rds"))
+saveRDS(merged_copykit,file=paste0("02_all_samples.all_cells.preintegerprocessing.copykit.Rds"))
 
 scCNA<-merged_copykit
 scCNA <- calcConsensus(scCNA,
@@ -409,7 +415,7 @@ SummarizedExperiment::assay(scCNA, 'singlecell_integer_by_estimated_ratio_discre
 SummarizedExperiment::assay(scCNA, 'singlecell_integer_by_estimated_ratio_discrete')[which(SummarizedExperiment::assay(scCNA, 'singlecell_integer_by_estimated_ratio')>=6,arr.ind=T)]<-6
 table(t(SummarizedExperiment::assay(scCNA, "singlecell_integer_by_estimated_ratio_discrete")),useNA="ifany")
 
-saveRDS(scCNA,file=paste0("all_samples.aneuploid.preintegerprocessing.copykit.Rds"))
+saveRDS(scCNA,file=paste0("02_all_samples.all_cells.preintegerprocessing.copykit.Rds"))
 
 ############################################################
 ###############Estimating ploidy by scQuantum ##############
@@ -498,14 +504,16 @@ SummarizedExperiment::assay(scCNA, 'scquantum_consensus_integer_discrete') <- as
 SummarizedExperiment::assay(scCNA, 'scquantum_consensus_integer_discrete')[which(SummarizedExperiment::assay(scCNA, 'scquantum_consensus_integer_discrete')>=6,arr.ind=T)]<-6
 table(unlist(SummarizedExperiment::assay(scCNA, 'scquantum_consensus_integer_discrete')),useNA="ifany")
 
-saveRDS(scCNA,file=paste0("all_samples.aneuploid.preintegerprocessing.copykit.Rds"))
-scCNA<-readRDS(file=paste0("all_samples.aneuploid.preintegerprocessing.copykit.Rds"))
+saveRDS(scCNA,file=paste0("02_all_samples.all_cells.postinteger.copykit.Rds"))
+scCNA<-readRDS(file=paste0("02_all_samples.all_cells.postinteger.copykit.Rds"))
+
 
 #######################################
 ############# Plotting #############
 #######################################
 
 #read in cyto info
+scCNA<-readRDS(file=paste0("02_all_samples.all_cells.postinteger.copykit.Rds"))
 cyto=read.table(file="/data/rmulqueen/projects/scalebio_dcis/ref/cytoBand.txt",sep="\t")
 colnames(cyto)<-c("chr","start","end","band","stain")
 cyto$arm<-substring(cyto$band, 1, 1)
@@ -520,8 +528,7 @@ scCNA@rowRanges$arm <- cyto[cyto_overlap,]$arm
 
 arm_col=c("p"="grey","q"="darkgrey")
 band_col=c("acen"="#99746F","gneg"="white","gpos100"="black","gpos25"="lightgrey","gpos50"="grey","gpos75"="darkgrey","gvar"="#446879")
-dip_cov=colorRamp2(c(0.5,1,1.5), 
-                        c("white","grey","black"))
+dip_cov=colorRamp2(c(0.5,1,1.5), c("white","grey","black"))
 
 column_ha = HeatmapAnnotation(
     mappability=scCNA@rowRanges$diploid_cov,
@@ -549,6 +556,25 @@ subclone_col=setNames(nm=unique(as.character(scCNA@colData$subclones)),
 cancerclone_col=setNames(nm=unique(as.character(scCNA@colData$clonename)),
                         colorRampPalette(brewer.pal(8, "Pastel2"))(length(unique(as.character(scCNA@colData$clonename)))))
 
+celltype_col=c(
+    #orange and reds
+    "pericyte"="#F1D302",
+    "peri_VSMC"="#F1D302",#coarse calling of celltype
+    "fibroblast"="#780000",
+    "endothelial"="#F86624",
+    "adipocyte"="brown",
+
+    #blues
+    "myeloid"="#0B5563",
+    "bcell"="#98C1D9",
+    "tcell"="#43BCCD",
+
+    #purple and high contract green
+    "basal"="#f72585",
+    "lumsec"="#C490D1",
+    "lumhr"="#412854",
+    "cancer"="#99ffd3")
+
 group_col=c("DCIS"="#278192",
             "HBCA"="#20223E",
             "Synchronous"="#00B089",
@@ -574,93 +600,93 @@ ha = rowAnnotation(
         group=group_col,
         cancerclone=cancerclone_col))
 
-dend <- t(scCNA@assays@data$scquantum_consensus_integer_discrete) %>% 
-        dist(method="euclidean") %>% 
-        hclust(method="ward.D2") %>% 
-        as.dendrogram
-saveRDS(dend,file=paste0(output_directory,"/all_cells.integer.heatmap.segment_ratios.dendrogram.rds"))
+#dend <- t(scCNA@assays@data$scquantum_consensus_integer_discrete) %>% 
+#        dist(method="euclidean") %>% 
+#        hclust(method="ward.D2") %>% 
+#        as.dendrogram
+#saveRDS(dend,file=paste0(output_directory,"/02_all_samples.all_cells.dendrogram.rds"))
 
 #use shared clustering for both plots
 print("Plotting heatmap...")
 plt1<-Heatmap(t(SummarizedExperiment::assay(scCNA, "logr")),
             col=log_col,
             cluster_columns=FALSE,
-            cluster_rows=dend,
+            #cluster_rows=dend,
             show_row_names = FALSE, row_title_rot = 0,
             show_column_names = FALSE,
             cluster_row_slices = TRUE,
             top_annotation = column_ha, left_annotation = ha,
             name="logr",
-            #row_split=scCNA@colData$clonename,
+            row_split=scCNA@colData$clonename,
             column_split=scCNA@rowRanges@seqnames,
             border = FALSE)
 
 plt2<-Heatmap(t(SummarizedExperiment::assay(scCNA, "segment_ratios")),
             col=seg_ratio_col,
             cluster_columns=FALSE,
-            cluster_rows=dend,
+            #cluster_rows=dend,
             show_row_names = FALSE, row_title_rot = 0,
             show_column_names = FALSE,
             cluster_row_slices = TRUE,
             top_annotation = column_ha, left_annotation = ha,
             name="Segment Ratios",
-            #row_split=scCNA@colData$clonename,
+            row_split=scCNA@colData$clonename,
             column_split=scCNA@rowRanges@seqnames,
             border = FALSE)
 
 plt3<-Heatmap(t(SummarizedExperiment::assay(scCNA, "singlecell_integer_by_estimated_ratio_discrete")),
             col=int_col,
             cluster_columns=FALSE,
-            cluster_rows=dend,
+            #cluster_rows=dend,
             show_row_names = FALSE, row_title_rot = 0,
             show_column_names = FALSE,
             cluster_row_slices = TRUE,
             top_annotation = column_ha, left_annotation = ha,
             name="Single cell copy number",
-            #row_split=scCNA@colData$clonename,
+            row_split=scCNA@colData$clonename,
             column_split=scCNA@rowRanges@seqnames,
             border = FALSE)
 
 plt4<-Heatmap(t(SummarizedExperiment::assay(scCNA, "consensus_integer_by_estimated_ratio_discrete")),
             col=int_col,
             cluster_columns=FALSE,
-            cluster_rows=dend,
+            #cluster_rows=dend,
             show_row_names = FALSE, row_title_rot = 0,
             show_column_names = FALSE,
             cluster_row_slices = TRUE,
             top_annotation = column_ha, left_annotation = ha,
             name="Consensus copy number",
-            #row_split=scCNA@colData$clonename,
+            row_split=scCNA@colData$clonename,
             column_split=scCNA@rowRanges@seqnames,
             border = FALSE)
 
 plt5<-Heatmap(t(SummarizedExperiment::assay(scCNA, "scquantum_singlecell_integer_discrete")),
             col=int_col,
             cluster_columns=FALSE,
-            cluster_rows=dend,
+            #cluster_rows=dend,
             show_row_names = FALSE, row_title_rot = 0,
             show_column_names = FALSE,
             cluster_row_slices = TRUE,
             top_annotation = column_ha, left_annotation = ha,
             name="Single cell copy number",
-            #row_split=scCNA@colData$clonename,
+            row_split=scCNA@colData$clonename,
             column_split=scCNA@rowRanges@seqnames,
             border = FALSE)
 
 plt6<-Heatmap(t(SummarizedExperiment::assay(scCNA, "scquantum_consensus_integer_discrete")),
             col=int_col,
             cluster_columns=FALSE,
-            cluster_rows=dend,
+            #cluster_rows=dend,
             show_row_names = FALSE, row_title_rot = 0,
             show_column_names = FALSE,
             cluster_row_slices = TRUE,
             top_annotation = column_ha, left_annotation = ha,
             name="Consensus copy number",
-            #row_split=scCNA@colData$clonename,
+            row_split=scCNA@colData$clonename,
             column_split=scCNA@rowRanges@seqnames,
             border = FALSE)
 
-pdf_outname=paste0("all_cells.aneuploid.integer.heatmap.pdf")
+pdf_outname=paste0("02_all_samples.all_cells.heatmap.pdf")
 pdf(pdf_outname,width=40,height=20)
 print(plt1+plt2)
 print(plt3+plt4)
@@ -668,7 +694,7 @@ print(plt5+plt6)
 dev.off()
 
 
-pdf_outname=paste0(output_directory,"/","aneuploid.integer.percell.heatmap.pdf")
+pdf_outname=paste0(output_directory,"/","02_all_samples.all_cells.integer.heatmap.pdf")
 pdf(pdf_outname,width=18,height=15)
 plt5<-Heatmap(t(SummarizedExperiment::assay(scCNA, "scquantum_singlecell_integer_discrete")),
             col=int_col,
@@ -685,16 +711,341 @@ plt5<-Heatmap(t(SummarizedExperiment::assay(scCNA, "scquantum_singlecell_integer
 print(plt5)
 dev.off()
 
+```
+
+
+# Refine some CNV clones now that integer makes it a bit more obvious.
+
+```R
+
+
+#note ran ulimit -s unlimited to up my C stack amount prior to running
+scCNA<-readRDS(file="02_all_samples.all_cells.postinteger.copykit.Rds")
+
+set.seed(123)
+#read in cyto info
+cyto=read.table(file="/data/rmulqueen/projects/scalebio_dcis/ref/cytoBand.txt",sep="\t")
+colnames(cyto)<-c("chr","start","end","band","stain")
+cyto$arm<-substring(cyto$band, 1, 1)
+cyto<-cyto[!is.na(cyto$band),]
+cyto<-cyto[cyto$chr %in% c(paste0("chr",1:22),"chrX"),]
+table(cyto$stain) #set colors for these
+cyto_overlap<-GenomicRanges::findOverlaps(scCNA@rowRanges,
+                                            makeGRangesFromDataFrame(cyto,keep=TRUE),
+                                            select="first")
+scCNA@rowRanges$stain <- cyto[cyto_overlap,]$stain
+scCNA@rowRanges$arm <- cyto[cyto_overlap,]$arm
+
+
+#set colors that are data independent
+#color assignment is fluor as cancer associated cell type, rest muted versions
+celltype_col=c(
+    #orange and reds
+    "pericyte"="#F1D302",
+    "peri_VSMC"="#F1D302",#coarse calling of celltype
+    "fibroblast"="#780000",
+    "endothelial"="#F86624",
+    "adipocyte"="brown",
+    #blues
+    "myeloid"="#0B5563",
+    "bcell"="#98C1D9",
+    "tcell"="#43BCCD",
+
+    #purple and high contract green
+    "basal"="#f72585",
+    "lumsec"="#C490D1",
+    "lumhr"="#412854",
+    "cancer"="#99ffd3")
+
+arm_col=c("p"="grey","q"="darkgrey")
+band_col=c("acen"="#99746F","gneg"="white","gpos100"="black","gpos25"="lightgrey","gpos50"="grey","gpos75"="darkgrey","gvar"="#446879")
+ploidy_col=colorRamp2(c(1,2,4), c("blue","white","darkred"))
+dip_cov=colorRamp2(c(0.5,1,1.5), c("white","grey","black"))
+int_col=c("0"="#053061","1"="#4393c3","2"="#f7f7f7","3"="#f4a582","4"="#b2182b","5"="#67001f","6"="#3d0229")
+
+#make clones a named list to collapse overclustering or low cell counts/cluster
+assign_copykit_aneuploid_clonename_on_integer<-function(tmp=scCNA,recluster=TRUE,split_clonename=FALSE,add_k_superclones=10,sample_name="BCMDCIS124T",cancer_clones,split_on="superclones",resolution='500kb'){
+    tmp <- tmp[,colData(tmp)$sample_name %in% sample_name]
+    tmp@rowRanges<-sort(tmp@rowRanges)
+    #init metadata
+    tmp@colData$ploidy<-"NA"
+    tmp@colData$clonename<-"NA"
+    tmp@colData$clones_split<-"NA"
+
+    if(recluster){
+        segment_clustering<-tmp@assays@data$scquantum_singlecell_integer_discrete[!(unlist(as.list(tmp@rowRanges@seqnames))%in%"chrX"),] #exclude chrX
+        dend <- t(segment_clustering) %>% 
+                dist(method="euclidean") %>% 
+                hclust(method="ward.D2") %>% 
+                as.dendrogram
+        k_optimal=find_k(dend, krange = 2:10)
+
+        print(paste("optimal k value for cutting hclust:", k_optimal$k))
+        superclones=dendextend::cutree(dend,k=k_optimal$k+add_k_superclones)
+        subclones=dendextend::cutree(dend,k=k_optimal$k+5)
+        tmp@colData$integer_based_subclones<-subclones[row.names(tmp@colData)]
+        tmp@colData$integer_based_superclones<-superclones[row.names(tmp@colData)]
+        saveRDS(dend,file=paste0(project_data_directory,"/",processing_folder,"/",sample_name,"/copykit.",sample_name,".",resolution,".segment_ratios.dendrogram.rds"))
+    }
+
+    if(length(cancer_clones)>0){
+        if(split_on=="subclones"){
+        tmp@colData$clones_split<-"subclones"
+        tmp@colData[tmp@colData$subclones %in% cancer_clones,]$ploidy<-"aneuploid"
+        tmp@colData$clonename<-unlist(paste(sample_name,names(cancer_clones[match(tmp@colData$subclones,cancer_clones)]),sep="_"))
+        tmp@colData$clonename<-gsub("_NA", replacement = "_diploid", x = tmp@colData$clonename)
+        tmp@colData[tmp@colData$ploidy=="aneuploid",]$coarse_celltype<-"cancer"
+        }else if(split_on=="integer_based_subclones"){
+        tmp@colData$clones_split<-"integer_based_subclones"
+        tmp@colData[tmp@colData$subclones %in% cancer_clones,]$ploidy<-"aneuploid"
+        tmp@colData$clonename<-unlist(paste(sample_name,names(cancer_clones[match(tmp@colData$integer_based_subclones,cancer_clones)]),sep="_"))
+        tmp@colData$clonename<-gsub("_NA", replacement = "_diploid", x = tmp@colData$clonename)
+        tmp@colData[tmp@colData$ploidy=="aneuploid",]$coarse_celltype<-"cancer"
+        }else if(split_on=="integer_based_superclones"){
+        tmp@colData$clones_split<-"integer_based_superclones"
+        tmp@colData[tmp@colData$subclones %in% cancer_clones,]$ploidy<-"aneuploid"
+        tmp@colData$clonename<-unlist(paste(sample_name,names(cancer_clones[match(tmp@colData$integer_based_superclones,cancer_clones)]),sep="_"))
+        tmp@colData$clonename<-gsub("_NA", replacement = "_diploid", x = tmp@colData$clonename)
+        tmp@colData[tmp@colData$ploidy=="aneuploid",]$coarse_celltype<-"cancer"
+        }else{
+        tmp@colData$clones_split<-"superclones"
+        tmp@colData[tmp@colData$superclones %in% cancer_clones,]$ploidy<-"aneuploid"
+        tmp@colData$clonename<-unlist(paste(sample_name,names(cancer_clones[match(tmp@colData$superclones,cancer_clones)]),sep="_"))
+        tmp@colData$clonename<-gsub("_NA", replacement = "_diploid", x = tmp@colData$clonename)
+        tmp@colData[tmp@colData$ploidy=="aneuploid",]$coarse_celltype<-"cancer"
+        }} else {
+        tmp@colData$clones_split<-"all_diploid"
+        tmp@colData$clonename<-paste(sample_name,"diploid",sep="_")
+        }
+    #define colors based on data
+    #updated to be -4 to 4 instead of -2 to 2
+
+    percent_met_col=colorRamp2(c(min(tmp@colData$mcg_pct),mean(tmp@colData$mcg_pct),
+                            max(tmp@colData$mcg_pct)),
+                            c("#FF00FF","white","black"))
+    reads_col=colorRamp2(c(min(log10(tmp@colData$unique_reads)),
+                            max(log10(tmp@colData$unique_reads))),
+                            c("white","black"))
+        
+    superclone_col=setNames(nm=unique(as.character(tmp@colData$superclones)),
+                            colorRampPalette(brewer.pal(9, "Pastel1"))(length(unique(as.character(tmp@colData$superclones)))))
+    subclone_col=setNames(nm=unique(as.character(tmp@colData$subclones)),
+                            colorRampPalette(brewer.pal(9, "Spectral"))(length(unique(as.character(tmp@colData$subclones)))))
+    cancerclone_col=setNames(nm=unique(as.character(tmp@colData$clonename)),
+                            colorRampPalette(brewer.pal(8, "Pastel2"))(length(unique(as.character(tmp@colData$clonename)))))
+    integer_based_subclones_col=setNames(nm=unique(as.character(tmp@colData$integer_based_subclones)),
+                            colorRampPalette(brewer.pal(9, "Spectral"))(length(unique(as.character(tmp@colData$integer_based_subclones)))))
+    integer_based_superclones_col=setNames(nm=unique(as.character(tmp@colData$integer_based_superclones)),
+                            colorRampPalette(brewer.pal(9, "Spectral"))(length(unique(as.character(tmp@colData$integer_based_superclones)))))
+
+    #plot heatmap
+    ha = rowAnnotation(
+        reads=log10(tmp@colData$unique_reads),
+        cg_perc=tmp@colData$mcg_pct,
+        celltype=as.character(tmp@colData$coarse_celltype),
+        superclones=as.character(tmp@colData$superclones),
+        subclones=as.character(tmp@colData$subclones),
+        int_subclones=as.character(tmp@colData$integer_based_subclones),
+        int_superclones=as.character(tmp@colData$integer_based_superclones),
+        cancerclone=as.character(tmp@colData$clonename),
+        col= list(
+            celltype=celltype_col,
+            reads=reads_col,
+            cg_perc=percent_met_col,
+            superclones=superclone_col,
+            subclones=subclone_col,
+            int_superclones=integer_based_superclones_col,
+            int_subclones=integer_based_subclones_col,
+            cancerclone=cancerclone_col
+        ))
+
+    cyto_overlap<-GenomicRanges::findOverlaps(tmp@rowRanges,
+                                                makeGRangesFromDataFrame(cyto,keep=TRUE),
+                                                select="first")
+    tmp@rowRanges$stain <- cyto[cyto_overlap,]$stain
+    tmp@rowRanges$arm <- cyto[cyto_overlap,]$arm
+
+    column_ha = HeatmapAnnotation(
+        mappability=tmp@rowRanges$diploid_cov,
+        arm = tmp@rowRanges$arm,
+        band = tmp@rowRanges$stain,
+        col=list(mappability=dip_cov,arm=arm_col,band=band_col))
+
+    if(split_clonename){
+        plt5<-Heatmap(t(SummarizedExperiment::assay(tmp, "scquantum_singlecell_integer_discrete")),
+                    col=int_col,
+                    cluster_columns=FALSE,
+                    cluster_rows=TRUE,
+                    show_row_names = FALSE, row_title_rot = 0,
+                    show_column_names = FALSE,
+                    cluster_row_slices = TRUE,
+                    top_annotation = column_ha, left_annotation = ha,
+                    name="Single cell copy number",
+                    row_split=tmp@colData$clonename, #dont split on clonename, to improve assignment
+                    column_split=tmp@rowRanges@seqnames,
+                    border = FALSE)
+    } else {
+        plt5<-Heatmap(t(SummarizedExperiment::assay(tmp, "scquantum_singlecell_integer_discrete")),
+                    col=int_col,
+                    cluster_columns=FALSE,
+                    cluster_rows=TRUE,
+                    show_row_names = FALSE, row_title_rot = 0,
+                    show_column_names = FALSE,
+                    cluster_row_slices = TRUE,
+                    top_annotation = column_ha, left_annotation = ha,
+                    name="Single cell copy number",
+                    #row_split=tmp@colData$clonename, #dont split on clonename, to improve assignment
+                    column_split=tmp@rowRanges@seqnames,
+                    border = FALSE)
+    }
+    pdf(paste0(project_data_directory,"/",processing_folder,"/",sample_name,"/copykit.",sample_name,".",resolution,".cancerclone.integer_assignment.pdf"),width=20)
+    print(plt5)
+    dev.off()
+    saveRDS(tmp,file=paste0(project_data_directory,"/",processing_folder,"/",sample_name,"/copykit.",sample_name,".",resolution,".integer.assignment.rds"))
+}
+
+
+#reclustering on integer copies, excluding X chr
+#assigning final clones, some dont need adjustment
+
+res="500kb"
+assign_copykit_aneuploid_clonename_on_integer(tmp=scCNA,split_clonename=TRUE,resolution=res,sample_name="BCMDCIS05T",cancer_clones=c('c1'='14','c1'='15',"c3"='10',"c3"='4',"c3"='6','c3'='13','c2'='16','c2'='5'))
+assign_copykit_aneuploid_clonename_on_integer(tmp=scCNA,split_clonename=TRUE,resolution=res,sample_name='BCMDCIS07T',cancer_clones=c()) 
+assign_copykit_aneuploid_clonename_on_integer(tmp=scCNA,split_clonename=TRUE,resolution=res,sample_name='BCMDCIS124T',cancer_clones=c("c1"='3','c2'='4')) 
+assign_copykit_aneuploid_clonename_on_integer(tmp=scCNA,split_clonename=TRUE,resolution=res,sample_name='BCMDCIS32T',cancer_clones=c())
+assign_copykit_aneuploid_clonename_on_integer(tmp=scCNA,split_clonename=TRUE,resolution=res,sample_name='BCMDCIS102T_24hTis',split_on='integer_based_superclones',cancer_clones=c('c1'='8','c2'='4','c3'='2','c4'='7','c5'='6','c5'='10')) 
+assign_copykit_aneuploid_clonename_on_integer(tmp=scCNA,split_clonename=TRUE,resolution=res,sample_name='BCMDCIS22T',split_on='integer_based_subclones',cancer_clones=c("c1"='3','c2'='7','c2'='4','c3'='6','c3'='2')) 
+assign_copykit_aneuploid_clonename_on_integer(tmp=scCNA,split_clonename=TRUE,resolution=res,sample_name='BCMDCIS28T',split_on='integer_based_subclones',cancer_clones=c("c1"='3','c2'='2')) 
+assign_copykit_aneuploid_clonename_on_integer(tmp=scCNA,split_clonename=TRUE,resolution=res,sample_name='BCMDCIS35T',cancer_clones=c("c1"='1',"c1"='2',"c1"='3',"c1"='4',"c1"='6'))
+assign_copykit_aneuploid_clonename_on_integer(tmp=scCNA,split_clonename=TRUE,resolution=res,sample_name='BCMDCIS41T',cancer_clones=c('c1'='2','c2'='5','c3'='3','c3'='12','c3'='18','c4'='10','c4'='8','c4'='14','c5'='7','c5'='17','c6'='9','c6'='13','c6'='16'))
+assign_copykit_aneuploid_clonename_on_integer(tmp=scCNA,split_clonename=TRUE,resolution=res,sample_name='BCMDCIS49T',cancer_clones=c()) 
+assign_copykit_aneuploid_clonename_on_integer(tmp=scCNA,split_clonename=TRUE,resolution=res,sample_name='BCMDCIS52T',cancer_clones=c('c1'='6','c1'='2','c1'='1')) 
+assign_copykit_aneuploid_clonename_on_integer(tmp=scCNA,split_clonename=TRUE,resolution=res,sample_name='BCMDCIS65T',split_on='subclones',cancer_clones=c('c1'='6','c1'='5','c1'='7')) 
+assign_copykit_aneuploid_clonename_on_integer(tmp=scCNA,split_clonename=TRUE,resolution=res,sample_name='BCMDCIS66T',split_on='integer_based_subclones',cancer_clones=c('c1'='1','c2'='3','c3'='4','c3'='5','c3'='6','c3'='7','c3'='8','c3'='9'))
+assign_copykit_aneuploid_clonename_on_integer(tmp=scCNA,split_clonename=TRUE,resolution=res,sample_name='BCMDCIS70T',split_on='integer_based_subclones',cancer_clones=c('c1'='1','c1'='3','c2'='4','c2'='7','c2'='9','c2'='10','c2'='6','c2'='7','c3'='8'))
+assign_copykit_aneuploid_clonename_on_integer(tmp=scCNA,split_clonename=TRUE,resolution=res,sample_name='BCMDCIS74T',split_on='integer_based_subclones',cancer_clones=c('c1'='4','c1'='8','c2'='3','c3'='11','c3'='9','c4'='10','c5'='5','c5'='7','c6'='6'))
+assign_copykit_aneuploid_clonename_on_integer(tmp=scCNA,split_clonename=TRUE,resolution=res,split_on='integer_based_subclones',sample_name='BCMDCIS79T_24hTis_DCIS',cancer_clones=c('c1'='4','c2'='2','c3'='3','c4'='5','c5'='6','c5'='10','c5'='8','c5'='7','c5'='11','c5'='9','c5'='11'))
+assign_copykit_aneuploid_clonename_on_integer(tmp=scCNA,split_clonename=TRUE,resolution=res,sample_name='BCMDCIS80T_24hTis',cancer_clones=c('c1'='5','c2'='4','c2'='6'))
+assign_copykit_aneuploid_clonename_on_integer(tmp=scCNA,split_clonename=TRUE,resolution=res,sample_name='BCMDCIS82T_24hTis',cancer_clones=c('c1'='3','c1'='4')) 
+assign_copykit_aneuploid_clonename_on_integer(tmp=scCNA,split_clonename=TRUE,resolution=res,split_on='integer_based_subclones',sample_name='BCMDCIS92T_24hTis',cancer_clones=c('c1'='2','c1'='3','c2'='7','c3'='5','c4'='4','c4'='6'))
+assign_copykit_aneuploid_clonename_on_integer(tmp=scCNA,split_clonename=TRUE,resolution=res,sample_name='BCMDCIS94T_24hTis',split_on='integer_based_subclones',cancer_clones=c('c1'='2','c1'='3','c2'='4')) 
+assign_copykit_aneuploid_clonename_on_integer(tmp=scCNA,split_clonename=TRUE,resolution=res,split_on='integer_based_subclones',sample_name='BCMDCIS97T',cancer_clones=c('c1'='2','c2'='3','c3'='6','c3'='4','c4'='7','c4'='5'))
+assign_copykit_aneuploid_clonename_on_integer(tmp=scCNA,split_clonename=TRUE,resolution=res,sample_name='BCMDCIS99T',cancer_clones=c('c1'='5'))
+assign_copykit_aneuploid_clonename_on_integer(tmp=scCNA,split_clonename=TRUE,resolution=res,sample_name='BCMHBCA03R',cancer_clones=c('c1'='4')) 
+assign_copykit_aneuploid_clonename_on_integer(tmp=scCNA,split_clonename=TRUE,resolution=res,sample_name='BCMHBCA04R',cancer_clones=c())
+assign_copykit_aneuploid_clonename_on_integer(tmp=scCNA,split_clonename=TRUE,resolution=res,sample_name='BCMHBCA09R-3h',cancer_clones=c()) 
+assign_copykit_aneuploid_clonename_on_integer(tmp=scCNA,split_clonename=TRUE,resolution=res,sample_name='BCMHBCA12R-3h',cancer_clones=c()) 
+assign_copykit_aneuploid_clonename_on_integer(tmp=scCNA,split_clonename=TRUE,resolution=res,sample_name='BCMHBCA16R-3h',cancer_clones=c()) 
+assign_copykit_aneuploid_clonename_on_integer(tmp=scCNA,split_clonename=TRUE,resolution=res,sample_name='BCMHBCA17R-3h',cancer_clones=c()) 
+assign_copykit_aneuploid_clonename_on_integer(tmp=scCNA,split_clonename=TRUE,resolution=res,sample_name='BCMHBCA19R-4h',cancer_clones=c())
+assign_copykit_aneuploid_clonename_on_integer(tmp=scCNA,split_clonename=TRUE,resolution=res,sample_name='BCMHBCA22R-4h',cancer_clones=c()) 
+assign_copykit_aneuploid_clonename_on_integer(tmp=scCNA,split_clonename=TRUE,resolution=res,sample_name='BCMHBCA26L-24hTis-4h',cancer_clones=c()) 
+assign_copykit_aneuploid_clonename_on_integer(tmp=scCNA,split_clonename=TRUE,resolution=res,sample_name='BCMHBCA29L-2h',cancer_clones=c())
+assign_copykit_aneuploid_clonename_on_integer(tmp=scCNA,split_clonename=TRUE,resolution=res,sample_name='BCMHBCA38L-3h',cancer_clones=c()) 
+assign_copykit_aneuploid_clonename_on_integer(tmp=scCNA,split_clonename=TRUE,resolution=res,sample_name='BCMHBCA83L-3h',cancer_clones=c('c1'='6')) 
+assign_copykit_aneuploid_clonename_on_integer(tmp=scCNA,split_clonename=TRUE,resolution=res,sample_name='BCMHBCA85L-3h',cancer_clones=c()) 
+assign_copykit_aneuploid_clonename_on_integer(tmp=scCNA,split_clonename=TRUE,resolution=res,sample_name='ECIS25T',split_on="integer_based_subclones",cancer_clones=c('c1'='7','c2'='1','c3'='3','c4'='6','c4'='4','c4'='5')) 
+assign_copykit_aneuploid_clonename_on_integer(tmp=scCNA,split_clonename=TRUE,resolution=res,sample_name='ECIS36T',split_on="integer_based_subclones",cancer_clones=c('c1'='1','c2'='5','c2'='7','c2'='6','c3'='3','c3'='2') )
+assign_copykit_aneuploid_clonename_on_integer(tmp=scCNA,split_clonename=TRUE,resolution=res,sample_name='ECIS48T',cancer_clones=c()) 
+assign_copykit_aneuploid_clonename_on_integer(tmp=scCNA,split_clonename=TRUE,resolution=res,sample_name='ECIS57T',split_on="integer_based_subclones",cancer_clones=c('c1'='1','c1'='2','c1'='4','c1'='5','c1'='6','c1'='7')) 
+assign_copykit_aneuploid_clonename_on_integer(tmp=scCNA,split_clonename=TRUE,resolution=res,split_on="integer_based_subclones",sample_name='ECIS26T',cancer_clones=c('c1'='5','c1'='2','c2'='3','c2'='4','c2'='1','c2'='8','c2'='10','c2'='9','c2'='14','c2'='13','c2'='11','c3'='12','c3'='6','c3'='15'))
+
+```
+
+```R
+
+library(GenomicRanges)
+library(copykit)
+library(ComplexHeatmap)
+library(parallel)
+library(BiocParallel)
+set.seed(111)
+library(dplyr)
+library(data.table)
+library(scquantum)
+library(ggplot2)
+library(circlize)
+library(RColorBrewer)
+library(dendextend)
+library(amethyst)
+task_cpus=150
+seed=1234
+register(MulticoreParam(progressbar = T, workers = task_cpus), default = T)
+options(future.globals.maxSize= 80000*1024^2) #80gb limit for parallelizing
+
+
+project_data_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1"
+resolution="500kb"
+
+#read in object from directory
+processing_folder="02_copykit_cnv_calling"
+wd=paste(sep="/",project_data_directory,processing_folder)
+setwd(wd)
+obj<-readRDS(file="02_scaledcis.cnv_clones.amethyst.rds")
 
 #add scquantum assay to amethyst object
+
+scCNA<-readRDS(file="02_all_samples.all_cells.postinteger.copykit.Rds")
+scCNA_list<-list.files(wd,recursive=TRUE,pattern=".integer.assignment.rds")
+
+#read in all meta data from copykit, append to amethyst object
+read_meta_copykit<-function(x){
+    tmp<-readRDS(x)
+    meta<-as.data.frame(tmp@colData[c("sample","scquantum_ploidy_cloneconsensus","clonename","clones_split")])
+    return(meta)
+}
+
+cnv_meta_500kb<-do.call("rbind",lapply(scCNA_list,read_meta_copykit))
+cnv_meta_500kb %>% head()
+
 obj@genomeMatrices[['scquantum_cnv']]<-SummarizedExperiment::assay(scCNA, "scquantum_singlecell_integer_discrete")
 row.names(obj@genomeMatrices[['scquantum_cnv']])<-paste(as.character(seqnames(scCNA@rowRanges)),start(scCNA@rowRanges),end(scCNA@rowRanges),sep="_")
 
-obj@metadata$scquantum_ploidy<-NA
-obj@metadata[row.names(scCNA@colData),]$scquantum_ploidy<-scCNA@colData$scquantum_ploidy_cloneconsensus
+obj@metadata$cnv_scquantum_ploidy<-NA
+obj@metadata[row.names(cnv_meta_500kb),]$cnv_scquantum_ploidy<-cnv_meta_500kb$scquantum_ploidy_cloneconsensus
+
+obj@metadata$cnv_clones_split_500kb<-NA
+obj@metadata[row.names(cnv_meta_500kb),]$cnv_clones_split_500kb<-cnv_meta_500kb$clones_split
+
+obj@metadata$cnv_clonename<-NA
+obj@metadata[row.names(cnv_meta_500kb),]$cnv_clonename<-cnv_meta_500kb$clonename
+obj@metadata$cnv_clonename_500kb<-obj@metadata$cnv_clonename
+
+obj@metadata$cnv_ploidy_group_500kb<-"diploid"
+obj@metadata[which(!endsWith(obj@metadata$cnv_clonename,suffix="_diploid")),]$cnv_ploidy_group_500kb<-"aneuploid"
+
+
+obj@genomeMatrices$scquantum_cnv$metadata_gc_content<-scCNA@rowRanges$gc_content
+obj@genomeMatrices$scquantum_cnv$metadata_arm<-scCNA@rowRanges$arm
+obj@genomeMatrices$scquantum_cnv$metadata_diploid_cov<-scCNA@rowRanges$diploid_cov
+obj@genomeMatrices$scquantum_cnv$metadata_band<-scCNA@rowRanges$band
+obj@genomeMatrices$scquantum_cnv$metadata_stain<-scCNA@rowRanges$stain
+
+
 saveRDS(obj,file="02_scaledcis.cnv_clones.amethyst.rds")
 
 ```
+
+Generate methylation summary windows over CNV regions for correlations
+
+```R
+obj<-readRDS(file="02_scaledcis.cnv_clones.amethyst.rds")
+windows_bed<-data.frame(chr=unlist(lapply(strsplit(row.names(obj@genomeMatrices$scquantum_cnv),"_"),"[",1)),
+                start=as.numeric(unlist(lapply(strsplit(row.names(obj@genomeMatrices$scquantum_cnv),"_"),"[",2))),
+                end=as.numeric(unlist(lapply(strsplit(row.names(obj@genomeMatrices$scquantum_cnv),"_"),"[",3))))
+
+scquantum_cnv_met_percentage<-makeWindows(obj,
+            type = "CG", 
+            metric = "percent", 
+            bed = windows_bed,
+            threads = 300, 
+            index = "chr_cg", 
+            nmin = 1) 
+
+obj<-readRDS(file="02_scaledcis.cnv_clones.amethyst.rds")
+obj@genomeMatrices[["scquantum_cnv_met_percentage"]]<-scquantum_cnv_met_percentage
+saveRDS(obj,file="02_scaledcis.cnv_clones.amethyst.rds")
+
 
 
 Plot 1q, 16q SV clones
@@ -740,7 +1091,6 @@ sv_clones<-c("BCMDCIS74T_c3",
 "BCMDCIS97T_c4")
 
 scCNA_sv<-scCNA[,colData(scCNA)$clonename %in% sv_clones]
-
 
 #make column annotations
 ha = rowAnnotation(

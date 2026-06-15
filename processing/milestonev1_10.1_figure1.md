@@ -1,4 +1,6 @@
 
+# Plotting sample overview and cell typing (Figure 1)
+
 ```R
 library(amethyst)
 library(Seurat)
@@ -16,6 +18,8 @@ project_data_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_miles
 #read in object from directory
 processing_folder="10_fig_plots"
 wd=paste(sep="/",project_data_directory,processing_folder)
+outdir=paste0(wd,"/","figure_1")
+
 system(paste0("mkdir -p ",wd))
 setwd(wd)
 
@@ -83,18 +87,21 @@ group_col=c("DCIS"="#278192",
 
 #color assignment is fluor as cancer associated cell type, rest muted versions
 celltype_col=c(
-"pericyte"="#FF9900",
-"fibroblast"="#FF0000",
-"endothelial"="#FFFF66",
+#orange and reds
+"pericyte"="#F1D302",
+"fibroblast"="#780000",
+"endothelial"="#F86624",
 
-"myeloid"="#99FFFF",
-"bcell"="#0099CC",
-"tcell"="#99FF99",
+#blues
+"myeloid"="#0B5563",
+"bcell"="#98C1D9",
+"tcell"="#43BCCD",
 
-"basal"="#990099",
-"lumsec"="#CC0066",
-"lumhr"="#FF00CC",
-"cancer"="#00FF99")
+#purple and high contract green
+"basal"="#f72585",
+"lumsec"="#C490D1",
+"lumhr"="#412854",
+"cancer"="#99ffd3")
 
 #plot metadata
 ha = rowAnnotation(
@@ -147,26 +154,6 @@ rna_counts$Group<-group[rna_counts$sample]
 plt3<-ggplot(rna_counts,aes(x=sample,fill=Group,y=n))+geom_bar(stat="identity")+theme_minimal()+scale_x_discrete(limits=c(row_order))+scale_fill_manual(values=group_col)
 ggsave(plt3,file=paste0(outdir,"/","rna.assigned_celltype_by_sample.barplots.pdf"),width=50,limitsize=F)
 
-#rna cell types
-#matching celltype assignment to met level
-#perivascular   fibroblast  endothelial      unknown     monocyte   macrophage 
-#          34           40           38           29           28           41 
-#       bcell   tcell_treg    tcell_cd4    tcell_cd8        basal       lumsec 
-#          32           35           41           31           40           39 
-#       lumhr       cancer 
-#          41           27 
-
-#note that this is based on cluster proximity, so where we think lower resolution methylation data will group cells together
-rna@meta.data[rna@meta.data$fine_celltype %in% c("bcell","bcell_stress","plasma"),]$coarse_celltype<-"bcell"
-rna@meta.data[rna@meta.data$fine_celltype %in% c("endo_artery","endo_capillary","endo_lymphatic","endo_TEC","endo_unknown","endo_vein"),]$coarse_celltype<-"endothelial"
-rna@meta.data[rna@meta.data$fine_celltype %in% c("fibro_CAF","fibro_major","fibro_matrix","fibro_prematrix","fibro_SFRP4"),]$coarse_celltype<-"fibroblast"
-rna@meta.data[rna@meta.data$fine_celltype %in% c("fibro_CAF","fibro_major","fibro_matrix","fibro_prematrix","fibro_SFRP4"),]$coarse_celltype<-"fibroblast"
-
-rna@meta.data[rna@meta.data$fine_celltype %in% c("myeloid_3","myeloid_cycling","myeloid_DC","myeloid_macro","myeloid_mast","myeloid_neutrophil","myeloid_TAM","myeloid_mono"),]$coarse_celltype<-"myeloid"
-rna@meta.data[rna@meta.data$fine_celltype %in% c("peri","periVSMC_unknown","VSMC"),]$coarse_celltype<-"pericyte"
-rna@meta.data[rna@meta.data$fine_celltype %in% c("tcell_cd4","tcell_cd8","tcell_gdT","tcell_nk","tcell_interferon","tcell_treg"),]$coarse_celltype<-"tcell"
-
-
 rna_cell<-rna@meta.data %>% as.data.frame() %>% filter(coarse_celltype %in% names(celltype_col)) %>% dplyr::count(sample,coarse_celltype, .drop=FALSE)
 rna_cell$Group<-group[rna_cell$sample]
 rna_cell$coarse_celltype<-factor(rna_cell$coarse_celltype,levels=names(celltype_col))
@@ -176,8 +163,8 @@ plt<-patchwork::wrap_plots(plt1,plt2,plt3,plt4,ncol=1,guides='collect')
 ggsave(plt,file=paste0(outdir,"/","scaledcis_and_rna.assigned_celltype_barplots.pdf"),width=50,limitsize=F)
 
 rna<-subset(rna,coarse_celltype %in% names(celltype_col))
-Idents(rna)<-factor(rna$coarse_celltype,levels=c("pericyte","fibroblast","endothelial","tcell","bcell","myeloid","basal","lumsec","lumhr","cancer"))
-genes<-c("RGS5","COL1A1","PECAM1","PTPRC","CD8A","CD8B","CD19","AIF1","KRT17","KRT15","ANKRD30A")
+Idents(rna)<-factor(rna$coarse_celltype,levels=c("pericyte","fibroblast","endothelial","myeloid","bcell","tcell","basal","lumsec","lumhr","cancer"))
+genes<-c("MCAM","COL1A1","PECAM1","PTPRC","AIF1","MS4A1","CD3D","KRT17","KRT15","ANKRD30A")
 plt<-DotPlot(rna,features=factor(genes,levels=rev(genes)),cols=c("lightgrey","#e57528"))
 ggsave(plt,file=paste0(outdir,"/","rna.gene_dotplot.pdf"),width=10,limitsize=F)
 
@@ -209,15 +196,19 @@ ggsave(rna_group_plt,file=paste0(outdir,"/","scaledcis.rna.group.umap.pdf"))
 library(amethyst)
 library(ggplot2)
 library(patchwork)
-
+processing_folder="10_fig_plots"
+wd=paste(sep="/",project_data_directory,processing_folder)
+outdir=paste0(wd,"/","figure_1")
 #plot all methylation cells
 met_celltype_plt<-ggplot(data=obj@metadata,aes(x=final_celltype_UMAP_X,y=final_celltype_UMAP_Y,color=celltype,fill=celltype))+geom_point(size=2,color="black",fill="black")+geom_point(size=1,alpha=0.5)+scale_color_manual(values=celltype_col)+scale_fill_manual(values=celltype_col)+theme_void()
 ggsave(met_celltype_plt,file=paste0(outdir,"/","scaledcis.methylation.celltype.umap.pdf"))
 
 met_group_plt<-ggplot(data=obj@metadata,aes(x=final_celltype_UMAP_X,y=final_celltype_UMAP_Y,color=Group,fill=Group))+geom_point(size=2,color="black",fill="black")+geom_point(size=1,alpha=0.5)+scale_color_manual(values=group_col)+scale_fill_manual(values=group_col)+theme_void()
 ggsave(met_group_plt,file=paste0(outdir,"/","scaledcis.methylation.group.umap.pdf"))
-
-percent_met_col<-colorRampPalette(c(min(obj@metadata$mcg_pct,na.rm=T),max(obj@metadata$mcg_pct,na.rm=T)),c("grey","#FF00FF"))
+    
+percent_met_col=colorRamp2(c(min(meta$mcg_pct),mean(meta$mcg_pct),
+                            max(meta$mcg_pct)),
+                            c("#FF00FF","white","black"))
 
 met_percmet_plot<-ggplot(data=obj@metadata,aes(x=final_celltype_UMAP_X,y=final_celltype_UMAP_Y,color=mcg_pct))+geom_point(size=2,color="black",fill="black")+geom_point(size=1,alpha=0.5)+scale_colour_gradient2(high="black",mid="white",low="#FF00FF",midpoint=75)+theme_void()
 

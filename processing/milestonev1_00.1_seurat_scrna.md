@@ -684,4 +684,19 @@ saveRDS(obj,"tenx_dcis.pf.rds")
 
 table(rna$fine_celltype,rna$Group)
 #confirms strong enrichment for CAFs TECs and TAMs in IDC/DCIS
+
+
+
+#assign coarser cell types to match methylation resolution
+rna<-readRDS("tenx_dcis.pf.rds")
+rna@meta.data[rna@meta.data$fine_celltype %in% c("bcell","bcell_stress","plasma"),]$coarse_celltype<-"bcell"
+rna@meta.data[rna@meta.data$fine_celltype %in% c("endo_artery","endo_capillary","endo_lymphatic","endo_TEC","endo_unknown","endo_vein"),]$coarse_celltype<-"endothelial"
+rna@meta.data[rna@meta.data$fine_celltype %in% c("fibro_CAF","fibro_major","fibro_matrix","fibro_prematrix","fibro_SFRP4"),]$coarse_celltype<-"fibroblast"
+rna@meta.data[rna@meta.data$fine_celltype %in% c("fibro_CAF","fibro_major","fibro_matrix","fibro_prematrix","fibro_SFRP4"),]$coarse_celltype<-"fibroblast"
+
+rna@meta.data[rna@meta.data$fine_celltype %in% c("myeloid_3","myeloid_cycling","myeloid_DC","myeloid_macro","myeloid_mast","myeloid_neutrophil","myeloid_TAM","myeloid_mono"),]$coarse_celltype<-"myeloid"
+rna@meta.data[rna@meta.data$fine_celltype %in% c("peri","periVSMC_unknown","VSMC"),]$coarse_celltype<-"pericyte"
+rna@meta.data[rna@meta.data$fine_celltype %in% c("tcell_cd4","tcell_cd8","tcell_gdT","tcell_nk","tcell_interferon","tcell_treg"),]$coarse_celltype<-"tcell"
+saveRDS(rna,"tenx_dcis.pf.rds")
+
 ```
