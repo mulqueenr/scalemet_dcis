@@ -3,6 +3,8 @@ Running differential methylation across cell types (one v all strategy)
 
 Running DMR comparisons across different sets.
 
+Because power is different (due to different cell counts per group) should limit to FC with sufficient power.
+
 Celltype comparisons
 1. Cell type vs rest (all cells)
 2. Cell type vs rest (HBCA only)
@@ -20,6 +22,7 @@ Group comparisons
 
 Then split in different ways to calculate DMR
 
+So the idea is to run these comparisons first on RNA then recapitulate on methylation.
 
 ```R
 
@@ -532,6 +535,13 @@ dat<-generate_bigwig(obj=dat,
 
 First running on 500bp windows
 ```R
+
+
+obj<-readRDS(file=paste(project_data_directory,"03_fine_celltyping","03_scaledcis.final_celltypes.amethyst.rds",sep="/"))
+dat<-amethyst::subsetObject(obj,cells=row.names(obj@metadata[!(obj@metadata$celltype %in% c("stromal_unknown")) & !is.na(obj@metadata$celltype),]))
+
+dat@metadata$celltype_group<-paste(dat@metadata$celltype,dat@metadata$Group,sep="_")
+
 input_folder=paste0(wd,"/","bigwig_output_dmr_celltype_group_500bp")
 suffix="dmr_celltype_group_500bp"
 
@@ -578,9 +588,11 @@ dmr_out<-mclapply(row.names(comparisons), function(i) {
   celltype <- unlist(lapply(strsplit(i,"_"),"[",1))[1]
   print(paste("Running DMRs across cell types for:",i))
   comparisons_output_directory<-paste0(output_directory,"/",celltype,"/",i)
+  dmr_bed_output_directory<-paste0(output_directory,"/",celltype,"/dmr_bed")
+
   system(paste0("mkdir -p ",paste0(output_directory,"/",celltype)))
   system(paste0("mkdir -p ",comparisons_output_directory))
-
+  system(paste0("mkdir -p ",dmr_bed_output_directory))
   dmrs <- testDMR(sum_mat, # Sum of c and t observations in each genomic window per group
           comparisons=comparisons[i,],
           nminTotal = 3, # Min number observations across all groups to include the region in calculations
@@ -613,16 +625,11 @@ dmr_out<-mclapply(row.names(comparisons), function(i) {
   saveRDS(dmrs,paste0(comparisons_output_directory,"/","04.1.",suffix,".",i,".dmr.filt.rds"))
 
   #output DMRs as bed files
-  write.table(
-    dmrs %>% filter(direction=="hypo") %>% select(chr,dmr_start,dmr_end) %>% as.data.frame(),
-    col.names=F,row.names=F, sep="\t", quote=F,
-    file=paste0(comparisons_output_directory,"/","04.1.",suffix,".",i,".dmr.filt.hypo.bed"))
+  hypo_dmrs<-dmrs %>% filter(direction=="hypo") %>% select(chr,dmr_start,dmr_end) %>% as.data.frame() %>% dplyr::rename(dmr_start=start,dmr_end=end) %>% GRanges()
+  export(hypo_dmrs, con = paste0(dmr_bed_output_directory,"/","04.1.",suffix,".",i,".dmr.filt.hypo.bed"), format = "bed")
 
-  #output DMRs as bed files
-  write.table(
-    dmrs %>% filter(direction=="hyper") %>% select(chr,dmr_start,dmr_end) %>% as.data.frame(),
-    col.names=F,row.names=F, sep="\t", quote=F,
-    file=paste0(comparisons_output_directory,"/","04.1.",suffix,".",i,".dmr.filt.hyper.bed"))
+  hypo_dmrs<-dmrs %>% filter(direction=="hyper") %>% select(chr,dmr_start,dmr_end) %>% as.data.frame() %>% dplyr::rename(dmr_start=start,dmr_end=end) %>% GRanges()
+  export(hyper_dmrs, con = paste0(dmr_bed_output_directory,"/","04.1.",suffix,".",i,".dmr.filt.hyper.bed"), format = "bed")
 
   return(dmrs)
   },mc.cores=100)
@@ -647,7 +654,7 @@ rna<-JoinLayers(rna)
 input_folder=paste0(wd,"/","bigwig_output_dmr_celltype_group_500bp")
 output_directory=paste0(input_folder,"/","dmr_celltype_group")
 
-de_out<-lapply(row.names(comparisons), function(i) {
+de_out <- lapply(row.names(comparisons), function(i) {
   celltype <- unlist(lapply(strsplit(i,"_"),"[",1))[1]
   print(paste("Running DE genes across cell types for:",i))
   comparisons_output_directory<-paste0(output_directory,"/",celltype,"/",i)
@@ -656,14 +663,20 @@ de_out<-lapply(row.names(comparisons), function(i) {
   cell_A<-row.names(rna@meta.data)[rna@meta.data$celltype_group %in% unlist(strsplit(comparisons[i,]$A,","))]
   cell_B<-row.names(rna@meta.data)[rna@meta.data$celltype_group %in% unlist(strsplit(comparisons[i,]$B,","))]
   if(length(cell_A)>50 & length(cell_B)>50){
-  print(table(rna@meta.data[cell_A,]$celltype_group))
-  print(table(rna@meta.data[cell_B,]$celltype_group))
-  rna_markers<-FindMarkers(rna@assays$RNA,cells.1=cell_A,cells.2=cell_B)
-  saveRDS(rna_markers,file=paste0(comparisons_output_directory,"/","04.1.",suffix,".",i,".de.RNAmarkers.rds"))
-  return(de_out)
+    print(table(rna@meta.data[cell_A,]$celltype_group))
+    print(table(rna@meta.data[cell_B,]$celltype_group))
+    rna_markers<-FindMarkers(rna@assays$RNA,cells.1=cell_A,cells.2=cell_B,only.pos=TRUE)
+    rna_markers$comparison_name<-comparisons[i,]$name
+    rna_markers$celltype<-celltype
+    rna_markers$groupA<-comparisons[i,]$A
+    rna_markers$groupB<-comparisons[i,]$B
+    rna_markers$gene<-row.names(rna_markers)
+    saveRDS(rna_markers,file=paste0(comparisons_output_directory,"/","04.1.",suffix,".",i,".de.RNAmarkers.rds"))
+    return(rna_markers)
   }
 })
 
+de_out<-do.call("rbind",de_out)
 #also output bed file of significant RNA for plotting
 
 ```
@@ -673,6 +686,7 @@ Plotting of DMR count per comparison
 ```R
 
 dmr_out<-do.call("rbind",lapply(list.files(path=output_directory,recursive=T,full.names=T,pattern="*.dmr.filt.rds"),readRDS))
+de_out<-do.call("rbind",lapply(list.files(path=output_directory,recursive=T,full.names=T,pattern="*.de.RNAmarkers.rds"),readRDS))
 
 #color assignment is fluor as cancer associated cell type, rest muted versions
 celltype_col=c(
@@ -687,7 +701,7 @@ celltype_col=c(
 "lumhr"="#FF00CC",
 "cancer"="#00FF99")
 
-mclapply(unique(dmr_out$celltype),function(i){
+plot_list<-mclapply(c("basal","fibroblast","endothelial","tcell","myeloid"),function(i){
   print(paste("Plotting...",i))
   celltype_to_plot=i
   comparison_order_for_plotting=c(
@@ -709,53 +723,144 @@ mclapply(unique(dmr_out$celltype),function(i){
             filter(dmr_padj<0.05) %>% 
             filter(comparison_name %in% comparison_order_for_plotting) %>% 
             group_by(comparison_name,direction,.drop=FALSE) %>% 
-            summarize(count=n(),dmr_kbp=sum(dmr_length)/1000) 
+            summarize(count=n(),dmr_kbp=sum(dmr_length)/1000)
 
-  test_dat$comparison_name <- factor(test_dat$comparison_name ,levels=rev(comparison_order_for_plotting))
-  #plot count and size of DMRs
-  plt1<-ggplot(test_dat %>% filter(direction=="hyper"),aes(x=comparison_name,y=count,fill=I(unname(celltype_col[celltype_to_plot]))))+
+  test_dat_rna<-de_out %>% 
+            filter(celltype==celltype_to_plot) %>% 
+            filter(p_val_adj<0.05) %>% filter(avg_log2FC>0) %>%
+            filter(comparison_name %in% comparison_order_for_plotting) %>% 
+            group_by(comparison_name,.drop=FALSE) %>% 
+            summarize(de_count=n())
+
+
+  #mutate to one data frame
+  test_dat$comparison_name<-factor(test_dat$comparison_name,levels=comparison_order_for_plotting)
+  test_dat$direction<-factor(test_dat$direction,levels=c("hyper","hypo"))
+  test_dat_rna$comparison_name<-factor(test_dat_rna$comparison_name,levels=comparison_order_for_plotting)
+
+  test_dat_rna<-tidyr::complete(test_dat_rna,comparison_name,fill = list(de_count = 0))
+  #test_dat<-tidyr::complete(test_dat,comparison_name,direction,fill = list(dmr_kbp = 0,count=0))
+
+  plot_dat<-data.frame(comparison_name=comparison_order_for_plotting,
+  hypo_dmr_count=test_dat %>% filter(direction=="hypo") %>% arrange(comparison_name) %>% pull(count),
+  hypo_dmr_length=test_dat %>% filter(direction=="hypo") %>% arrange(comparison_name) %>% pull(dmr_kbp),
+  hyper_dmr_count=test_dat %>% filter(direction=="hyper") %>% arrange(comparison_name) %>% pull(count),
+  hyper_dmr_length=test_dat %>% filter(direction=="hyper") %>% arrange(comparison_name) %>% pull(dmr_kbp),
+  de_count=test_dat_rna %>% arrange(comparison_name) %>% pull(de_count))
+  
+  plot_dat$comparison_name <- factor(plot_dat$comparison_name ,levels=rev(comparison_order_for_plotting))
+
+  #plot count and size of DMRs and DE
+  #if comparison_name is 0 make sure it is still plotted
+
+  plt1<-ggplot(plot_dat ,aes(x=comparison_name,y=hyper_dmr_count,fill=I(unname(celltype_col[celltype_to_plot]))))+
         geom_bar(stat="identity") + 
-        geom_text(aes(label=paste0(dmr_kbp,"kbp")), vjust=0,color="yellow") +
+        geom_text(aes(label=paste0(hyper_dmr_length,"kbp")), vjust=0,color="yellow") +
         theme_minimal() + 
-        coord_flip() 
+        coord_flip()
 
-  plt2<-ggplot(test_dat %>% filter(direction=="hypo"),aes(x=comparison_name,y=count,color=I(unname(celltype_col[celltype_to_plot]))))+
+  plt2<-ggplot(plot_dat,aes(x=comparison_name,y=hypo_dmr_count,color=I(unname(celltype_col[celltype_to_plot]))))+
         geom_bar(stat="identity",fill="white") + 
-        geom_text(aes(label=paste0(dmr_kbp,"kbp")), vjust=0.1,color="red") +
+        geom_text(aes(label=paste0(hypo_dmr_length,"kbp")), vjust=0.1,color="red") +
+        theme_minimal() + 
+        coord_flip()
+
+  plt3<-ggplot(plot_dat,aes(x=comparison_name,y=de_count,color=I(unname(celltype_col[celltype_to_plot]))))+
+        geom_bar(stat="identity") + 
+        geom_text(aes(label=de_count), vjust=0.1,color="red") +
         theme_minimal() + 
         coord_flip()
   system(paste0("mkdir -p ",paste0(output_directory,"/","dmr_plots/")))
-  ggsave(plt1|plt2,file=paste0(output_directory,"/","dmr_plots/","04.1.",suffix,".",celltype_to_plot,".dmr.counts.pdf"),height=20,width=20,units="in")
 
+  #calculate average distance from DMR site to DE gene
+  
+  gene_locations<-obj@ref %>% filter(type=="gene") %>% filter(!duplicated(gene_name))
+
+  met_overlap<-do.call("rbind",lapply(comparison_order_for_plotting,function(j){
+    print(paste("Overlapping...",j))
+
+    met_markers_hypo<-dmr_out %>% 
+              filter(celltype==celltype_to_plot) %>% 
+              filter(dmr_padj<0.05) %>% 
+              filter(direction=="hypo") %>%
+              filter(comparison_name == j) %>% GRanges()
+
+    met_markers_hyper<-dmr_out %>% 
+              filter(celltype==celltype_to_plot) %>% 
+              filter(dmr_padj<0.05) %>% 
+              filter(direction=="hyper") %>%
+              filter(comparison_name == j) %>% GRanges()
+
+    rna_markers<- de_out %>% 
+              filter(celltype==celltype_to_plot) %>% 
+              filter(p_val_adj<0.05) %>% filter(avg_log2FC>0) %>%
+              filter(comparison_name == j) %>% mutate(gene_name=gene)
+    
+    rna_markers<-left_join(rna_markers, gene_locations, by = "gene_name") %>% filter(!is.na(seqid)) %>% GRanges()
+
+    #count DMR distance to each gene marker
+    met_distance_hypo<-distanceToNearest(met_markers_hypo,rna_markers)
+    met_distance_hyper<-distanceToNearest(met_markers_hyper,rna_markers)
+
+    summary_frame<-data.frame(
+        celltype=celltype_to_plot,
+        comparison=j,
+        hypo_dmr_count=length(met_markers_hypo),
+        hyper_dmr_count=length(met_markers_hyper),
+        de_count=length(rna_markers),
+        hypo_less_than_5kbp_from_marker_gene=met_distance_hypo %>% as.data.frame() %>% filter(distance<5000) %>% pull(subjectHits) %>% unique() %>% length(),
+        hypo_overlapping_marker_gene=met_distance_hypo %>% as.data.frame() %>% filter(distance==0) %>% pull(subjectHits) %>% unique() %>% length(),
+        hyper_less_than_5kbp_from_marker_gene=met_distance_hyper %>% as.data.frame() %>% filter(distance<5000) %>% pull(subjectHits) %>% unique() %>% length(),
+        hyper_overlapping_marker_gene=met_distance_hyper %>% as.data.frame() %>% filter(distance==0) %>% pull(subjectHits) %>% unique() %>% length())
+    return(summary_frame)}))
+
+  met_overlap$comparison<-factor(met_overlap$comparison,levels=rev(comparison_order_for_plotting))
+  met_overlap$unexplained_by_met<-met_overlap$de_count-(met_overlap$hypo_less_than_5kbp_from_marker_gene+met_overlap$hyper_less_than_5kbp_from_marker_gene)
+  
+  met_overlap <- met_overlap %>% 
+                  select(comparison,hypo_less_than_5kbp_from_marker_gene,hyper_less_than_5kbp_from_marker_gene,unexplained_by_met) %>%
+                  tidyr::pivot_longer(cols=c(hypo_less_than_5kbp_from_marker_gene, hyper_less_than_5kbp_from_marker_gene,unexplained_by_met),names_to="group",values_to="count")
+  met_overlap$group<-factor(met_overlap$group,levels=c("hypo_less_than_5kbp_from_marker_gene","hyper_less_than_5kbp_from_marker_gene","unexplained_by_met"))
+  plt<-ggplot(met_overlap,aes(x=comparison,y=count,fill=group))+
+  geom_bar(position="stack", stat="identity")+
+  theme_minimal()+
+  coord_flip() 
+  
+  plot<-plt1|plt2|plt
+  return(plot)
   #run GSEA on cell type
-  system(paste0("mkdir -p ",output_directory,"/gsea_data"))
-  for(j in comparison_order_for_plotting){
-    gsea_across_sets(obj, 
-                    collapsed_dmrs=dmr_out %>% filter(comparison_name == j),
-                    sample_name=j, 
-                    prefix=paste0(output_directory,"/gsea_data/","04.1.",suffix,".",celltype_to_plot))
-  }
+  #system(paste0("mkdir -p ",output_directory,"/gsea_data"))
+  #for(j in comparison_order_for_plotting){
+  #  gsea_across_sets(obj, 
+  #                  collapsed_dmrs=dmr_out %>% filter(comparison_name == j),
+  #                  sample_name=j, 
+  #                  prefix=paste0(output_directory,"/gsea_data/","04.1.",suffix,".",celltype_to_plot))
+  #}
 
-  tft_gsea<-do.call("rbind",lapply(
-    list.files(path=paste0(output_directory,"/gsea_data/"),pattern=paste0("04.1.",suffix,".",celltype_to_plot,".*","TFT.rds"),full.names=T),
-    readRDS))
-  plot_gsea(gsea=tft_gsea,out_setname="TFT",prefix=paste0(output_directory,"/dmr_plots/","04.1.",suffix,".",celltype_to_plot))
+  #tft_gsea<-do.call("rbind",lapply(
+  #  list.files(path=paste0(output_directory,"/gsea_data/"),pattern=paste0("04.1.",suffix,".",celltype_to_plot,".*","TFT.rds"),full.names=T),
+  #  readRDS))
+  #plot_gsea(gsea=tft_gsea,out_setname="TFT",prefix=paste0(output_directory,"/dmr_plots/","04.1.",suffix,".",celltype_to_plot))
 
-  hallmark_gsea<-do.call("rbind",lapply(
-    list.files(path=paste0(output_directory,"/gsea_data/"),pattern=paste0("04.1.",suffix,".",celltype_to_plot,".*","hallmark.rds"),full.names=T),
-    readRDS))
-  plot_gsea(gsea=hallmark_gsea,out_setname="hallmark",prefix=paste0(output_directory,"/dmr_plots/","04.1.",suffix,".",celltype_to_plot))
+  #hallmark_gsea<-do.call("rbind",lapply(
+  #  list.files(path=paste0(output_directory,"/gsea_data/"),pattern=paste0("04.1.",suffix,".",celltype_to_plot,".*","hallmark.rds"),full.names=T),
+  #  readRDS))
+  #plot_gsea(gsea=hallmark_gsea,out_setname="hallmark",prefix=paste0(output_directory,"/dmr_plots/","04.1.",suffix,".",celltype_to_plot))
 
-  position_gsea<-do.call("rbind",lapply(
-    list.files(path=paste0(output_directory,"/gsea_data/"),pattern=paste0("04.1.",suffix,".",celltype_to_plot,".*","position.rds"),full.names=T),
-    readRDS))
-  plot_gsea(gsea=position_gsea,out_setname="position",prefix=paste0(output_directory,"/dmr_plots/","04.1.",suffix,".",celltype_to_plot))
+  #position_gsea<-do.call("rbind",lapply(
+  #  list.files(path=paste0(output_directory,"/gsea_data/"),pattern=paste0("04.1.",suffix,".",celltype_to_plot,".*","position.rds"),full.names=T),
+  #  readRDS))
+  #plot_gsea(gsea=position_gsea,out_setname="position",prefix=paste0(output_directory,"/dmr_plots/","04.1.",suffix,".",celltype_to_plot))
 
-  canceratlas_gsea<-do.call("rbind",lapply(
-    list.files(path=paste0(output_directory,"/gsea_data/"),pattern=paste0("04.1.",suffix,".",celltype_to_plot,".*","3CA.rds"),full.names=T),
-    readRDS))
-  plot_gsea(gsea=canceratlas_gsea,out_setname="3CA",prefix=paste0(output_directory,"/dmr_plots/","04.1.",suffix,".",celltype_to_plot))
+  #canceratlas_gsea<-do.call("rbind",lapply(
+  #  list.files(path=paste0(output_directory,"/gsea_data/"),pattern=paste0("04.1.",suffix,".",celltype_to_plot,".*","3CA.rds"),full.names=T),
+  #  readRDS))
+  #plot_gsea(gsea=canceratlas_gsea,out_setname="3CA",prefix=paste0(output_directory,"/dmr_plots/","04.1.",suffix,".",celltype_to_plot))
   },mc.cores=50)
+
+
+plt<-wrap_plots(plot_list,ncol=1) + plot_layout(axes = "collect")
+  ggsave(plt,file=paste0(output_directory,"/","dmr_plots/","04.1.",suffix,".allcells.dmr.counts.pdf"),height=20,width=20,units="in")
 
 #calculate DMR proximity to DE genes (or overlap with DE genes)
 #DMR overlap with breast cancer gene list
@@ -766,11 +871,85 @@ mclapply(unique(dmr_out$celltype),function(i){
 #with and without excluding CGI
 ```
 
+Overlap previous markers of progression with DMRs
+
+```R
+library(stringr)
+library(tidyr)
+library(stringr)
+library(ComplexHeatmap)
+library(readxl)
+
+input_folder=paste0(wd,"/","bigwig_output_dmr_celltype_group_500bp")
+output_directory=paste0(input_folder,"/","dmr_celltype_group")
+
+dmr_out<-do.call("rbind",lapply(list.files(path=output_directory,recursive=T,full.names=T,pattern="*.dmr.filt.rds"),readRDS))
+cg_v1<-read.csv(file="/data/rmulqueen/projects/scalebio_dcis/ref/infinium-methylationepic-v-1-0-b5-manifest-file.csv",skip=7,sep=",")
+
+fleischer_2014<-c("cg05809947",
+"cg12219311",
+"cg26466505",
+"cg20691428",
+"cg20869305",
+"cg22174844",
+"cg26225829",
+"cg04947065",
+"cg16575694",
+"cg16559598",
+"cg08729004",
+"cg13635578",
+"cg13744452",
+"cg04817034",
+"cg07130508",
+"cg00226265",
+"cg13749939",
+"cg25817165")
+
+genes<-cg_v1 %>% filter(IlmnID %in% fleischer_2014) %>% pull("GencodeBasicV12_NAME")
+cg_loci<-cg_v1 %>% filter(IlmnID %in% fleischer_2014) %>% select(CHR_hg38,Start_hg38,End_hg38,IlmnID) %>% mutate(chr=CHR_hg38,start=Start_hg38,end=End_hg38) %>% GRanges()
+
+dmr_overlap<-findOverlaps(dmr_out %>% GRanges(),cg_loci)
+
+dmr_out_filtered<-dmr_out[dmr_overlap@from,]
+dmr_out_filtered$fleischer_2014_cgprobe<-cg_loci[dmr_overlap@to,]$IlmnID
+
+dmr_fleischer_2014_probe_overlap<-table(dmr_out_filtered$fleischer_2014_cgprobe,dmr_out_filtered$celltype) %>% as.data.frame()
+dmr_fleischer_2014_probe_overlap$Freq<-as.integer(as.logical(dmr_fleischer_2014_probe_overlap$Freq>0))
+dmr_fleischer_2014_probe_overlap<-tidyr::pivot_wider(dmr_fleischer_2014_probe_overlap,names_from=Var1,values_from=Freq)%>% as.data.frame()
+row.names(dmr_fleischer_2014_probe_overlap)<-dmr_fleischer_2014_probe_overlap[,1]
+dmr_fleischer_2014_probe_overlap<-dmr_fleischer_2014_probe_overlap[,2:ncol(dmr_fleischer_2014_probe_overlap)]
+
+plt<-Heatmap(dmr_fleischer_2014_probe_overlap)
+pdf(file="test_dmr_fleischer_2014_probe_overlap.pdf")
+print(plt)
+dev.off()
+
+#now johnson 2015
+johnson_2015<-read_excel("/data/rmulqueen/projects/scalebio_dcis/ref/13148_2015_94_MOESM4_ESM.xls",skip=1,sheet=1)
+cg_v1<-read.csv(file="/data/rmulqueen/projects/scalebio_dcis/ref/infinium-methylationepic-v-1-0-b5-manifest-file.csv",skip=7,sep=",")
+cg_loci<-cg_v1 %>% filter(IlmnID %in% johnson_2015$`Illumina CG ID`) %>% select(CHR_hg38,Start_hg38,End_hg38,IlmnID) %>% mutate(chr=CHR_hg38,start=Start_hg38,end=End_hg38) %>% GRanges()
+
+dmr_overlap<-findOverlaps(dmr_out %>% GRanges(),cg_loci)
+
+dmr_out_filtered<-dmr_out[dmr_overlap@from,]
+dmr_out_filtered$johnson_2015_cgprobe<-cg_loci[dmr_overlap@to,]$IlmnID
+
+dmr_johnson_2015_probe_overlap<-table(dmr_out_filtered$johnson_2015_cgprobe,dmr_out_filtered$celltype) %>% as.data.frame()
+dmr_johnson_2015_probe_overlap$Freq<-as.integer(as.logical(dmr_johnson_2015_probe_overlap$Freq>0))
+dmr_johnson_2015_probe_overlap<-tidyr::pivot_wider(dmr_johnson_2015_probe_overlap,names_from=Var1,values_from=Freq) %>% as.data.frame()
+row.names(dmr_johnson_2015_probe_overlap)<-dmr_johnson_2015_probe_overlap[,1]
+dmr_johnson_2015_probe_overlap<-dmr_johnson_2015_probe_overlap[,2:ncol(dmr_johnson_2015_probe_overlap)]
+plt<-Heatmap(dmr_johnson_2015_probe_overlap,cluster_rows=T,cluster_columns=T)
+pdf(file="test_dmr_johnson_2015_probe_overlap.pdf")
+print(plt)
+dev.off()
+```
+
 
 ```R
 library(chromVAR)
 library(motifmatchr)
-library(Matrix)
+library(Matrix)q
 library(SummarizedExperiment)
 library(BiocParallel)
 set.seed(2017)
@@ -827,3 +1006,53 @@ variability <- computeVariability(dev)
 pdf("test.chromvar.variability.pdf")
 plotVariability(variability, use_plotly = FALSE) 
 dev.off()
+
+
+
+```
+BCMDCIS RNA difference
+
+```r
+rna@meta.data[rna@meta.data$celltype %in% c("lumhr_HBCA"),]$rna_clonename<-"lumhr_HBCA"
+Idents(rna)<-rna$rna_clonename
+
+marker_plotter<-function(ident.1="lumhr_HBCA",ident.2="BCMDCIS41T_c1"){
+  markers<-FindMarkers(rna,ident.1=ident.1,ident.2=ident.2)
+
+  # Define significance thresholds
+  log2FC_threshold <- 1
+  pval_threshold <- 0.05
+
+  # Categorize genes into Significant vs Not Significant
+  de_markers <- markers %>%
+    mutate(Gene = rownames(markers)) %>%
+    mutate(Significance = case_when(
+      avg_log2FC > log2FC_threshold & p_val_adj < pval_threshold ~ "Up-regulated",
+      avg_log2FC < -log2FC_threshold & p_val_adj < pval_threshold ~ "Down-regulated",
+      TRUE ~ "Not Significant"
+    ))
+
+  # Generate the Volcano Plot
+  plt<-ggplot(de_markers, aes(x = avg_log2FC, y = -log10(p_val_adj), color = Significance)) +
+    geom_point(alpha = 0.6, size = 1.5) +
+    scale_color_manual(values = c("Up-regulated" = "ident.color1", 
+                                  "Down-regulated" = "blue", 
+                                  "Not Significant" = "grey")) +
+    theme_minimal() +
+    geom_vline(xintercept = c(-1, 1), linetype = "dashed", color = "black") +
+    geom_hline(yintercept = -log10(0.05), linetype = "dashed", color = "black") +
+    labs(title = "Volcano Plot: Condition A vs Condition B",
+        x = "Average Log2 Fold Change",
+        y = "-Log10 Adjusted P-value")
+  return(plt)
+}
+
+plt1<-marker_plotter(ident.1="lumhr_HBCA",ident.2="BCMDCIS41T_c3")
+
+plt2<-marker_plotter(ident.1="BCMDCIS41T_c3",ident.2="BCMDCIS41T_c2")
+
+plt3<-marker_plotter(ident.1="BCMDCIS41T_c2",ident.2="BCMDCIS41T_c1")
+
+ggsave(wrap_plots(plt1,plt2,plt3,ncol=3),file="test.rna_dcis41t_volcano.pdf",width=30)
+
+```

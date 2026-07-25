@@ -694,9 +694,56 @@ rna@meta.data[rna@meta.data$fine_celltype %in% c("endo_artery","endo_capillary",
 rna@meta.data[rna@meta.data$fine_celltype %in% c("fibro_CAF","fibro_major","fibro_matrix","fibro_prematrix","fibro_SFRP4"),]$coarse_celltype<-"fibroblast"
 rna@meta.data[rna@meta.data$fine_celltype %in% c("fibro_CAF","fibro_major","fibro_matrix","fibro_prematrix","fibro_SFRP4"),]$coarse_celltype<-"fibroblast"
 
+rna@meta.data[rna@meta.data$fine_celltype %in% c("suspected_doublet"),]$coarse_celltype<-"suspected_doublet"
+
 rna@meta.data[rna@meta.data$fine_celltype %in% c("myeloid_3","myeloid_cycling","myeloid_DC","myeloid_macro","myeloid_mast","myeloid_neutrophil","myeloid_TAM","myeloid_mono"),]$coarse_celltype<-"myeloid"
 rna@meta.data[rna@meta.data$fine_celltype %in% c("peri","periVSMC_unknown","VSMC"),]$coarse_celltype<-"pericyte"
 rna@meta.data[rna@meta.data$fine_celltype %in% c("tcell_cd4","tcell_cd8","tcell_gdT","tcell_nk","tcell_interferon","tcell_treg"),]$coarse_celltype<-"tcell"
 saveRDS(rna,"tenx_dcis.pf.rds")
+
+update_group<-c('BCMDCIS05T'='DCIS',
+'BCMDCIS07T'='DCIS',
+'BCMDCIS41T'='DCIS',
+'BCMDCIS66T'='DCIS',
+'BCMDCIS82T_24hTis'='DCIS',
+'BCMDCIS99T'='DCIS',
+'ECIS25T'='DCIS',
+'ECIS26T'='DCIS',
+'ECIS36T'='DCIS',
+'BCMHBCA03R'='HBCA',
+'BCMHBCA04R'='HBCA',
+'BCMHBCA09R-3h'='HBCA',
+'BCMHBCA12R-3h'='HBCA',
+'BCMHBCA16R-3h'='HBCA',
+'BCMHBCA17R-3h'='HBCA',
+'BCMHBCA19R-4h'='HBCA',
+'BCMHBCA22R-4h'='HBCA',
+'BCMHBCA26L-24hTis-4h'='HBCA',
+'BCMHBCA29L-2h'='HBCA',
+'BCMHBCA38L-3h'='HBCA',
+'BCMHBCA83L-3h'='HBCA',
+'BCMHBCA85L-3h'='HBCA',
+'BCMDCIS102T_24hTis'='IDC',
+'BCMDCIS124T'='IDC',
+'BCMDCIS22T'='IDC',
+'BCMDCIS28T'='IDC',
+'BCMDCIS49T'='IDC',
+'BCMDCIS52T'='IDC',
+'BCMDCIS65T'='IDC',
+'BCMDCIS70T'='IDC',
+'BCMDCIS74T'='IDC',
+'BCMDCIS79T_24hTis_IDC'='IDC',
+'BCMDCIS94T_24hTis'='IDC',
+'BCMDCIS97T'='IDC',
+'ECIS57T'='IDC',
+'BCMDCIS32T'='Synchronous',
+'BCMDCIS35T'='Synchronous',
+'BCMDCIS79T_24hTis_DCIS'='Synchronous',
+'BCMDCIS80T_24hTis'='Synchronous',
+'BCMDCIS92T_24hTis'='Synchronous',
+'ECIS48T'='Synchronous')
+
+rna@meta.data$Group<-update_group[rna@meta.data$Sample]
+saveRDS(rna,"/data/rmulqueen/projects/scalebio_dcis/rna/tenx_dcis.pf.rds")
 
 ```

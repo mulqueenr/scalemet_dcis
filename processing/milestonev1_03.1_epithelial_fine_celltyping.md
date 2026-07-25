@@ -15,80 +15,35 @@ library(Seurat)
 library(GenomicRanges)
 
 rna<-readRDS("/data/rmulqueen/projects/scalebio_dcis/rna/tenx_dcis.pf.rds")
-update_group<-c('BCMDCIS05T'='DCIS',
-'BCMDCIS07T'='DCIS',
-'BCMDCIS41T'='DCIS',
-'BCMDCIS66T'='DCIS',
-'BCMDCIS82T_24hTis'='DCIS',
-'BCMDCIS99T'='DCIS',
-'ECIS25T'='DCIS',
-'ECIS26T'='DCIS',
-'ECIS36T'='DCIS',
-'BCMHBCA03R'='HBCA',
-'BCMHBCA04R'='HBCA',
-'BCMHBCA09R-3h'='HBCA',
-'BCMHBCA12R-3h'='HBCA',
-'BCMHBCA16R-3h'='HBCA',
-'BCMHBCA17R-3h'='HBCA',
-'BCMHBCA19R-4h'='HBCA',
-'BCMHBCA22R-4h'='HBCA',
-'BCMHBCA26L-24hTis-4h'='HBCA',
-'BCMHBCA29L-2h'='HBCA',
-'BCMHBCA38L-3h'='HBCA',
-'BCMHBCA83L-3h'='HBCA',
-'BCMHBCA85L-3h'='HBCA',
-'BCMDCIS102T_24hTis'='IDC',
-'BCMDCIS124T'='IDC',
-'BCMDCIS22T'='IDC',
-'BCMDCIS28T'='IDC',
-'BCMDCIS49T'='IDC',
-'BCMDCIS52T'='IDC',
-'BCMDCIS65T'='IDC',
-'BCMDCIS70T'='IDC',
-'BCMDCIS74T'='IDC',
-'BCMDCIS79T_24hTis_IDC'='IDC',
-'BCMDCIS94T_24hTis'='IDC',
-'BCMDCIS97T'='IDC',
-'ECIS57T'='IDC',
-'BCMDCIS32T'='Synchronous',
-'BCMDCIS35T'='Synchronous',
-'BCMDCIS79T_24hTis_DCIS'='Synchronous',
-'BCMDCIS80T_24hTis'='Synchronous',
-'BCMDCIS92T_24hTis'='Synchronous',
-'ECIS48T'='Synchronous')
-saveRDS(rna,"/data/rmulqueen/projects/scalebio_dcis/rna/tenx_dcis.pf.rds")
-
 #just run on all cell types
-table(rna$fine_celltype)
-rna$celltype<-NA
-rna$celltype<-rna$fine_celltype
-Idents(rna)<-rna$celltype
+Idents(rna)<-rna$coarse_celltype
 table(Idents(rna))
+rna<-subset(rna,coarse_celltype %in% c("lumsec","lumhr","cancer","basal"))
+
 rna <- NormalizeData(rna, normalization.method = "LogNormalize", scale.factor = 10000)
 rna <- ScaleData(rna)
 rna <- JoinLayers(rna)
 
-#treg vs cd4
-Idents(rna)<-rna$fine_celltype
-rna_markers<-FindMarkers(rna,assay="RNA",ident.1="tcell_nk",ident.2=NULL,only.pos=TRUE)
-rna_markers %>% mutate(gene=row.names(rna_markers)) %>% filter(p_val_adj<0.05) %>% filter(avg_log2FC>2) %>% head(n=20) %>% select(gene)
+res=0.2
+dims=1:50
+#umap here is just for visualization, not used for redefining cell types
+rna <- FindVariableFeatures(rna, selection.method = "vst", nfeatures = 5000)
+rna <- RunPCA(rna, features = VariableFeatures(object = rna))
+rna <- FindNeighbors(rna, dims = dims)
+rna <- RunUMAP(rna, dims = dims)
+
+rna@meta.data$fine_cluster_UMAP_X<-rna@reductions$umap@cell.embeddings[,1]
+rna@meta.data$fine_cluster_UMAP_Y<-rna@reductions$umap@cell.embeddings[,2]
+saveRDS(rna,file="03_rna.fine_celltyping.epithelial.rds")
 
 Idents(rna)<-rna$fine_celltype
+rna_fine_markers<-FindAllMarkers(rna,assay="RNA",only.pos=TRUE)
+rna_markers<-rna$coarse_celltype
+rna_fine_markers<-FindAllMarkers(rna,assay="RNA",only.pos=TRUE)
 
-#example comparisons for methylome checking
-rna_markers<-FindMarkers(rna,assay="RNA",ident.1="plasma",ident.2="bcell",only.pos=TRUE)
-rna_markers %>% mutate(gene=row.names(rna_markers)) %>% filter(p_val_adj<0.05) %>% filter(avg_log2FC>2) %>% head(n=20) %>% select(gene)
-
-rna_markers<-FindAllMarkers(rna,assay="RNA",only.pos=TRUE)
-saveRDS(rna_markers,file="/data/rmulqueen/projects/scalebio_dcis/rna/tenx_dcis.rna_markers.rds")
-
-#then tackle myeloid
-rna_markers<-readRDS(file="/data/rmulqueen/projects/scalebio_dcis/rna/tenx_dcis.rna_markers.rds")
-rna_markers %>% filter(p_val_adj<0.05) %>% filter(avg_log2FC>1) %>% head(n=20) %>% select(gene)
-
-rna_markers %>% filter(p_val_adj<0.05) %>% filter(avg_log2FC>1) %>% filter(cluster=="tcell_cd4") %>% head(n=20) %>% select(gene)
 
 ```
+
 
 
 # Read in methylation data and additional libraries
@@ -116,6 +71,8 @@ library(matrixStats)
 library(sparseMatrixStats)
 library(irlba)
 library(rtracklayer)
+library(cowplot)
+library(patchwork)
 
 project_data_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1"
 
@@ -125,7 +82,6 @@ processing_folder="03_fine_celltyping"
 wd=paste(sep="/",project_data_directory,processing_folder)
 system(paste0("mkdir -p ",wd))
 setwd(wd)
-obj<-readRDS(file=paste(project_data_directory,"02_copykit_cnv_calling","02_scaledcis.cnv_clones.amethyst.rds",sep="/"))
 ```
 
 Functions
@@ -298,6 +254,297 @@ generate_bigwig<-function(obj=immune,
   return(obj)
 }
 
+cell_subtyping_clustering<-function(suffix="stromal",
+                                    outdir="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/03_fine_celltyping/",
+                                    init_npc=50,
+                                    pc_var_explained=50,
+                                    reduction_name="irlba_immune",
+                                    leiden_cluster_resolution=5e-5,
+                                    pheno_k=200,
+                                    min_dist=1e-6,
+                                    var_features_count=20000,
+                                    n_neighbors=5){
+  
+  plot_dir=paste0(outdir,"/","plot_",suffix)
+  system(paste0("mkdir -p ",plot_dir))
+
+  print(paste0("Saving RNA umap to ",plot_dir))
+
+  for(i in c("coarse_celltype","fine_celltype","Group")){
+      plt_dim<-DimPlot(rna,group.by=i,label=TRUE,raster=FALSE)
+      ggsave(plt_dim,file=paste0(plot_dir,"/","tenx_dcis.pf.final.",suffix,".",i,".umap.pdf"),width=10)
+      }
+
+  print(paste0("Saving RNA Markers to ",plot_dir))
+  Idents(rna)<-rna$coarse_celltype
+  rna_markers<-FindAllMarkers(rna,assay="RNA",only.pos=TRUE)
+  saveRDS(rna_markers,file=paste0(plot_dir,"/tenx_dcis.rna_markers.",suffix,".rds"))
+
+  print(paste0("Saving plots to ",plot_dir))
+
+  print("Calculating PCA...")
+
+  #filter features to top variance
+  feature_variance<-apply(t(obj@genomeMatrices[["vmr_matrix_cg_residuals"]]), 2, var, na.rm=T)
+
+  top_var_features<-feature_variance %>% as.data.frame() %>% setNames("var") %>% filter(is.finite(var))%>% slice_max(var, n=var_features_count)
+
+  var_plt<-ggplot()+geom_violin(aes(x=1,y=feature_variance))+theme_minimal()+geom_hline(yintercept=min(top_var_features$var),color="red")+ggtitle("VMR Feature Variance")
+  ggsave(var_plt,file=paste0(plot_dir,"/vmr.feature_variance.",suffix,".pdf"))
+
+  pca<- t(obj@genomeMatrices[["vmr_matrix_cg_residuals"]][row.names(top_var_features),]) %>% 
+      scale(center = T, scale = F) %>% 
+      prcomp_iterative(n = init_npc)  # this is number of initial run principle components (init_npc in args) to get a sense of variance explained
+
+  # Compute variance explained
+  variance_explained <- pca$sdev^2
+  total_variance <- sum(variance_explained)
+  percent_variance <- (variance_explained / total_variance) * 100
+  
+  #cut off pca at 90% variance explained
+  pca_to_use<-min(which(cumsum(percent_variance)>pc_var_explained))
+
+  pca_plt<-ggplot()+geom_point(aes(x=1:length(percent_variance),y=percent_variance)) + geom_vline(xintercept=pca_to_use,color="red")+theme_minimal() + ggtitle("PCA elbow with 75% variance explained")
+  ggsave(pca_plt,file=paste0(plot_dir,"/pca_variance_explained.",suffix,".pdf"))
+  print(paste("PCs to explain",as.character(pc_var_explained),"%", "of captured variance:",as.character(pca_to_use)))
+
+  pca_dims <- pca$x[,1:pca_to_use] %>% 
+    magrittr::set_rownames(colnames(obj@genomeMatrices[["vmr_matrix_cg_residuals"]]))
+
+
+  print("Running UMAP...")
+  umap_obj <- uwot::umap(X=as.matrix(pca_dims), 
+                          metric="cosine", 
+                          min_dist=min_dist, 
+                          n_neighbors=n_neighbors, 
+                          seed=2, 
+                          ret_nn=T)
+
+  umap_tbl <- umap_obj$embedding %>% as.data.frame() %>% 
+    mutate(cell=row.names(umap_obj$embedding)) %>%
+    magrittr::set_colnames(c("UMAP1", "UMAP2","cell")) 
+
+  # get the edges of the neighbor graph from the UMAP object
+  neighbor_graph_edges <- 
+    tibble(from = rep(1:nrow(umap_obj$nn$cosine$idx), times=ncol(umap_obj$nn$cosine$idx)),
+          to = as.vector(umap_obj$nn$cosine$idx),
+          weight = as.vector(umap_obj$nn$cosine$dist)) %>%
+    filter(from != to) %>%
+    mutate(from = colnames(obj@genomeMatrices[["vmr_matrix_cg_residuals"]])[from],
+          to = colnames(obj@genomeMatrices[["vmr_matrix_cg_residuals"]])[to])
+
+  # run Leiden clustering
+  print("Leiden clustering...")
+  clust_obj <- neighbor_graph_edges %>%
+    igraph::graph_from_data_frame(directed=F) %>% 
+    igraph::cluster_leiden(resolution_parameter = leiden_cluster_resolution) 
+  table(clust_obj$membership)
+
+  # put the clustering results into a data frame (tibble) for plotting
+  clust_tbl <- tibble(
+    leiden_cluster = as.character(clust_obj$membership),
+    cell= clust_obj$names) %>% 
+    full_join(umap_tbl, by="cell")
+
+    print("Adding PCA to reduction slot...")
+    obj@reductions[[reduction_name]]<-pca_dims
+
+    print("Adding clusters to metadata...")
+    fine_cluster_leidenclus<-setNames(nm=clust_tbl$cell,clust_tbl$leiden_cluster)
+    fine_cluster_UMAP1<-setNames(nm=clust_tbl$cell,clust_tbl$UMAP1)
+    fine_cluster_UMAP2<-setNames(nm=clust_tbl$cell,clust_tbl$UMAP2)
+
+    obj@metadata$fine_cluster_UMAP_X<-NA
+    obj@metadata$fine_cluster_UMAP_Y<-NA
+    obj@metadata$fine_cluster_leidenclus<-NA
+
+    obj@metadata$fine_cluster_UMAP_X<-fine_cluster_UMAP1[row.names(obj@metadata)]
+    obj@metadata$fine_cluster_UMAP_Y<-fine_cluster_UMAP2[row.names(obj@metadata)]
+    obj@metadata$fine_cluster_leidenclus<-paste0(suffix,"_",fine_cluster_leidenclus[row.names(obj@metadata)])
+
+    #cluster on umap as well
+    umap_clus<-obj@metadata %>% 
+      select(c("fine_cluster_UMAP_X","fine_cluster_UMAP_Y")) %>% 
+      magrittr::set_rownames(row.names(obj@metadata))
+
+    umap_clus<-Rphenograph::Rphenograph(umap_clus,k=pheno_k)
+
+    obj@metadata$fine_cluster_phenograph<-paste0(suffix,"_",as.character(unlist(as.list(igraph::membership(umap_clus[[2]])))))
+    print("Plotting...")
+    
+
+    print("Plotting...")
+    lapply(c("fine_cluster_leidenclus","fine_cluster_phenograph","Sample","mcg_pct","unique_reads","Group"), 
+      function(groupby){
+        if(groupby %in% colnames(obj@metadata)){
+          plt_clus<-obj@metadata %>% 
+            ggplot(aes(x = fine_cluster_UMAP_X, y = fine_cluster_UMAP_Y, color = obj@metadata[[groupby]])) +
+              geom_point() +
+              coord_fixed()
+            ggsave(plt_clus,file=paste0(plot_dir,"/","03.1.VMR_umap.",suffix,".",as.character(pca_to_use),".",as.character(min_dist),".","clus.",as.character(groupby),".pdf"),width=20,height=20)
+          }
+      })
+    return(obj)
+}
+
+plot_umap_panels_met<-function(x=epithelial,outname="epithelial"){
+  #plot celltype
+  plt_celltype<-x@metadata %>% 
+      ggplot(aes(x = fine_cluster_UMAP_X, y = fine_cluster_UMAP_Y, color = celltype)) +
+      geom_point() +
+      coord_fixed() + 
+      theme_minimal() + xlab("UMAP X") + ylab("UMAP Y")+ ggtitle("cell type")+
+      theme(axis.line.x = element_line(color = "black"), axis.line.y = element_line(color = "black"))+
+      scale_color_manual(values=celltype_col)
+  plt_celltype_legend <- get_legend(plt_celltype)
+  plt_celltype_umap<-plt_celltype+ theme(legend.position='none')
+
+  #plot group
+  plt_group<-x@metadata %>% 
+      ggplot(aes(x = fine_cluster_UMAP_X, y = fine_cluster_UMAP_Y, color = Group)) +
+      geom_point() +
+      coord_fixed() + 
+      theme_minimal() + xlab("UMAP X") + ylab("UMAP Y")+ ggtitle("read counts")+
+      theme(axis.line.x = element_line(color = "black"), axis.line.y = element_line(color = "black"))+
+      scale_color_manual(values=group_col)
+  plt_group_legend <- get_legend(plt_group)
+  plt_group_umap<-plt_group+ theme(legend.position='none')
+
+
+  #plot Sample
+  plt_sample<-x@metadata %>% 
+      ggplot(aes(x = fine_cluster_UMAP_X, y = fine_cluster_UMAP_Y, color = Sample)) +
+      geom_point() +
+      coord_fixed() + 
+      theme_minimal() + xlab("UMAP X") + ylab("UMAP Y")+ ggtitle("percent methylation")+
+      theme(axis.line.x = element_line(color = "black"), axis.line.y = element_line(color = "black")) +
+      scale_color_manual(values=sample_col)
+  plt_sample_legend <- get_legend(plt_sample)
+  plt_sample_umap<-plt_sample+ theme(legend.position='none')
+
+  #plot %met
+  plt_cgperc<-x@metadata %>% 
+      ggplot(aes(x = fine_cluster_UMAP_X, y = fine_cluster_UMAP_Y, color = mcg_pct)) +
+      geom_point() +
+      coord_fixed() + 
+      theme_minimal() + xlab("UMAP X") + ylab("UMAP Y")+ ggtitle("diagnostic group")+
+      theme(axis.line.x = element_line(color = "black"), axis.line.y = element_line(color = "black")) +
+      scale_color_gradient2(low="#ff70ff",mid="#CCCCCC",high="#000000",midpoint=median(x@metadata$mcg_pct))
+  plt_cgperc_legend <- get_legend(plt_cgperc)
+  plt_cgperc_umap<-plt_cgperc+ theme(legend.position='none')
+
+
+  #plot %met
+  plt_read<-x@metadata %>% 
+      ggplot(aes(x = fine_cluster_UMAP_X, y = fine_cluster_UMAP_Y, color = log10(unique_reads))) +
+      geom_point() +
+      coord_fixed() + 
+      theme_minimal() + xlab("UMAP X") + ylab("UMAP Y")+ ggtitle("sample")+
+      theme(axis.line.x = element_line(color = "black"), axis.line.y = element_line(color = "black")) +
+      scale_color_gradient2(low="#cccccc",mid="#CCCCFF",high="#000066",midpoint=median(log10(x@metadata$unique_reads)))
+  plt_read_legend <- get_legend(plt_read)
+  plt_read_umap<-plt_read+ theme(legend.position='none')
+
+  #plot ploidy
+  plt_ploidy<-x@metadata %>% 
+      ggplot(aes(x = fine_cluster_UMAP_X, y = fine_cluster_UMAP_Y, color = cnv_ploidy_500kb)) +
+      geom_point() +
+      coord_fixed() + 
+      theme_minimal() + xlab("UMAP X") + ylab("UMAP Y")+ ggtitle("cnv based ploidy")+
+      theme(axis.line.x = element_line(color = "black"), axis.line.y = element_line(color = "black")) +
+      scale_color_manual(values=ploidy_col)
+  plt_ploidy_legend <- get_legend(plt_ploidy)
+  plt_ploidy_umap<-plt_ploidy+ theme(legend.position='none')
+
+  layout<-"
+  AABDF
+  AACEG"
+
+  umap_plts<-plt_celltype_umap+plt_read_umap+plt_cgperc_umap+plt_group_umap+plt_sample_umap+plt_ploidy_umap+ggplot() + plot_layout(design = layout)+theme(plot.margin = margin(l = 3, r = 3))
+  legends_plts<-plot_grid(plt_celltype_legend, plt_read_legend, plt_cgperc_legend, plt_group_legend,plt_sample_legend,plt_ploidy_legend, nrow = 1, align = "h")
+
+  ggsave(umap_plts,
+        file=paste0("03.1.",outname,".celltype.met.umap.pdf"),
+        width=60,
+        height=40,
+        limitsize=FALSE)
+
+  ggsave(legends_plts,
+          file=paste0("03.1.",outname,".celltype.umap.met.legends.pdf"),
+          width=60,
+          height=10,
+          limitsize=FALSE)
+}
+
+
+
+plot_umap_panels_rna<-function(x=rna,outname="epithelial"){
+  #plot celltype
+  plt_celltype<-x@meta.data %>% 
+      ggplot(aes(x = fine_cluster_UMAP_X, y = fine_cluster_UMAP_Y, color = coarse_celltype)) +
+      geom_point() +
+      coord_fixed() + 
+      theme_minimal() + xlab("UMAP X") + ylab("UMAP Y")+ ggtitle("cell type")+
+      theme(axis.line.x = element_line(color = "black"), axis.line.y = element_line(color = "black"))+
+      scale_color_manual(values=celltype_col)
+  plt_celltype_legend <- get_legend(plt_celltype)
+  plt_celltype_umap<-plt_celltype+ theme(legend.position='none')
+
+  #plot group
+  plt_group<-x@meta.data %>% 
+      ggplot(aes(x = fine_cluster_UMAP_X, y = fine_cluster_UMAP_Y, color = Group)) +
+      geom_point() +
+      coord_fixed() + 
+      theme_minimal() + xlab("UMAP X") + ylab("UMAP Y")+ ggtitle("read counts")+
+      theme(axis.line.x = element_line(color = "black"), axis.line.y = element_line(color = "black"))+
+      scale_color_manual(values=group_col)
+  plt_group_legend <- get_legend(plt_group)
+  plt_group_umap<-plt_group+ theme(legend.position='none')
+
+
+  #plot Sample
+  plt_sample<-x@meta.data %>% 
+      ggplot(aes(x = fine_cluster_UMAP_X, y = fine_cluster_UMAP_Y, color = sample)) +
+      geom_point() +
+      coord_fixed() + 
+      theme_minimal() + xlab("UMAP X") + ylab("UMAP Y")+ ggtitle("percent methylation")+
+      theme(axis.line.x = element_line(color = "black"), axis.line.y = element_line(color = "black")) +
+      scale_color_manual(values=sample_col)
+  plt_sample_legend <- get_legend(plt_sample)
+  plt_sample_umap<-plt_sample+ theme(legend.position='none')
+
+  #plot ploidy
+  plt_ploidy<-x@meta.data %>% 
+      ggplot(aes(x = fine_cluster_UMAP_X, y = fine_cluster_UMAP_Y, color = rna_ploidy)) +
+      geom_point() +
+      coord_fixed() + 
+      theme_minimal() + xlab("UMAP X") + ylab("UMAP Y")+ ggtitle("cnv based ploidy")+
+      theme(axis.line.x = element_line(color = "black"), axis.line.y = element_line(color = "black")) +
+      scale_color_manual(values=ploidy_col)
+  plt_ploidy_legend <- get_legend(plt_ploidy)
+  plt_ploidy_umap<-plt_ploidy+ theme(legend.position='none')
+
+  layout<-"
+  AABD
+  AACE"
+
+  umap_plts<-plt_celltype_umap+plt_group_umap+plt_sample_umap+plt_ploidy_umap+ggplot() + plot_layout(design = layout)+theme(plot.margin = margin(l = 3, r = 3))
+  legends_plts<-plot_grid(plt_celltype_legend, plt_group_legend,plt_sample_legend,plt_ploidy_legend, nrow = 1, align = "h")
+
+  ggsave(umap_plts,
+        file=paste0("03.1.",outname,".celltype.rna.umap.pdf"),
+        width=60,
+        height=40,
+        limitsize=FALSE)
+
+  ggsave(legends_plts,
+          file=paste0("03.1.",outname,".celltype.rna.umap.legends.pdf"),
+          width=60,
+          height=10,
+          limitsize=FALSE)
+}
+
+
 ```
 
 
@@ -310,112 +557,76 @@ obj<-readRDS(file=paste(project_data_directory,"02_copykit_cnv_calling","02_scal
 obj<-subsetObject(obj,cells=row.names(obj@metadata[obj@metadata$celltype_lineage %in% c("epithelial"),]))
 dim(obj@metadata)
 
-suffix="epithelial"
-outdir="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/03_fine_celltyping/"
-npc=25
-reduction_name="irlba_epithelial"
-leiden_cluster_resolution=0.5e-5
-pheno_k=200
-min_dist=1e-6
-n_neighbors=5
+#run once with 50 npcs
+#cut back based on pca variance explained in second run
+epithelial<-cell_subtyping_clustering(suffix="epithelial",
+                                    outdir="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/03_fine_celltyping/",
+                                    init_npc=50,
+                                    pc_var_explained=90,
+                                    reduction_name="irlba_epithelial",
+                                    leiden_cluster_resolution=1e-5,
+                                    pheno_k=200,
+                                    min_dist=1e-6,
+                                    var_features_count=25000,
+                                    n_neighbors=10)
 
-plot_dir=paste0(outdir,"/","plot_",suffix)
-system(paste0("mkdir -p ",plot_dir))
-
-print(paste0("Saving plots to ",plot_dir))
-print("Calculating PCA...")
-
-pca <- t(obj@genomeMatrices[["vmr_matrix_cg_residuals"]]) %>%
-    scale(center = T, scale = F) %>%
-    prcomp_iterative(n = npc)  # this is number of principle components (npc in args)
-
-pca_dims <- pca$x %>% 
-  magrittr::set_rownames(colnames(obj@genomeMatrices[["vmr_matrix_cg_residuals"]]))
-
-print("Running UMAP...")
-umap_obj <- uwot::umap(X=as.matrix(pca_dims), 
-                        metric="cosine", 
-                        min_dist=min_dist, 
-                        n_neighbors=n_neighbors, 
-                        seed=2, 
-                        ret_nn=T)
-
-umap_tbl <- umap_obj$embedding %>% as.data.frame() %>% 
-  mutate(cell=row.names(umap_obj$embedding)) %>%
-  magrittr::set_colnames(c("UMAP1", "UMAP2","cell")) 
-
-# get the edges of the neighbor graph from the UMAP object
-neighbor_graph_edges <- 
-  tibble(from = rep(1:nrow(umap_obj$nn$cosine$idx), times=ncol(umap_obj$nn$cosine$idx)),
-        to = as.vector(umap_obj$nn$cosine$idx),
-        weight = as.vector(umap_obj$nn$cosine$dist)) %>%
-  filter(from != to) %>%
-  mutate(from = colnames(obj@genomeMatrices[["vmr_matrix_cg_residuals"]])[from],
-        to = colnames(obj@genomeMatrices[["vmr_matrix_cg_residuals"]])[to])
-
-# run Leiden clustering
-print("Leiden clustering...")
-clust_obj <- neighbor_graph_edges %>%
-  igraph::graph_from_data_frame(directed=F) %>% 
-  igraph::cluster_leiden(resolution_parameter = leiden_cluster_resolution) 
-table(clust_obj$membership)
-
-# put the clustering results into a data frame (tibble) for plotting
-clust_tbl <- tibble(
-  leiden_cluster = as.character(clust_obj$membership),
-  cell= clust_obj$names) %>% 
-  full_join(umap_tbl, by="cell")
-
-  print("Adding PCA to reduction slot...")
-  obj@reductions[[reduction_name]]<-pca_dims
-
-  print("Adding clusters to metadata...")
-  fine_cluster_leidenclus<-setNames(nm=clust_tbl$cell,clust_tbl$leiden_cluster)
-  fine_cluster_UMAP1<-setNames(nm=clust_tbl$cell,clust_tbl$UMAP1)
-  fine_cluster_UMAP2<-setNames(nm=clust_tbl$cell,clust_tbl$UMAP2)
-
-  obj@metadata$fine_cluster_UMAP_X<-NA
-  obj@metadata$fine_cluster_UMAP_Y<-NA
-  obj@metadata$fine_cluster_leidenclus<-NA
-
-  obj@metadata$fine_cluster_UMAP_X<-fine_cluster_UMAP1[row.names(obj@metadata)]
-  obj@metadata$fine_cluster_UMAP_Y<-fine_cluster_UMAP2[row.names(obj@metadata)]
-  obj@metadata$fine_cluster_leidenclus<-paste0(suffix,"_",fine_cluster_leidenclus[row.names(obj@metadata)])
-
-  #cluster on umap as well
-  umap_clus<-obj@metadata %>% 
-    select(c("fine_cluster_UMAP_X","fine_cluster_UMAP_Y")) %>% 
-    magrittr::set_rownames(row.names(obj@metadata))
-
-  umap_clus<-Rphenograph::Rphenograph(umap_clus,k=pheno_k)
-
-  obj@metadata$fine_cluster_phenograph<-paste0(suffix,"_",as.character(unlist(as.list(igraph::membership(umap_clus[[2]])))))
-
-  print("Plotting...")
-  lapply(c("fine_cluster_leidenclus","fine_cluster_phenograph","Sample","mcg_pct","unique_reads","Group"), 
-    function(groupby){
-      if(groupby %in% colnames(obj@metadata)){
-        plt_clus<-obj@metadata %>% 
-          ggplot(aes(x = fine_cluster_UMAP_X, y = fine_cluster_UMAP_Y, color = obj@metadata[[groupby]])) +
-            geom_point() +
-            coord_fixed()
-          ggsave(plt_clus,file=paste0(plot_dir,"/","03.1.VMR_umap.",suffix,".",as.character(npc),".",as.character(min_dist),".","clus.",as.character(groupby),".pdf"),width=20,height=20)
-        }
-    })
-
-
-epithelial<-generate_bigwig(obj=obj,
+epithelial<-generate_bigwig(obj=epithelial,
                         suffix="epithelial",
-                        groupBy="fine_cluster_leidenclus",
+                        groupBy="fine_cluster_phenograph",
                         outdir=getwd())
+#assign cell types via IGV tracks
+
+celltype_assignment=c(
+  'epithelial_11'='lumsec',
+  'epithelial_8'='lumsec',
+  'epithelial_9'='lumsec',
+  'epithelial_6'='lumsec',
+  'epithelial_18'='lumsec',
+  'epithelial_14'='lumsec',
+
+  'epithelial_13'='basal',
+  'epithelial_2'='basal',
+  'epithelial_7'='basal',
+  
+    'epithelial_3'='lumhr',
+    'epithelial_4'='lumhr',
+    'epithelial_17'='lumhr',
+    'epithelial_10'='lumhr',
+    'epithelial_5'='lumhr',
+    'epithelial_15'='lumhr',
+    'epithelial_1'='lumhr',
+
+    'epithelial_12'='lumhr',
+    'epithelial_16'='lumhr',
+    'epithelial_19'='lumhr',
+    'epithelial_20'='lumhr',
+    'epithelial_21'='lumhr',
+    'epithelial_22'='lumhr',
+    'epithelial_23'='lumhr',
+    'epithelial_24'='lumhr',
+    'epithelial_25'='lumhr',
+    'epithelial_26'='lumhr',
+    'epithelial_27'='lumhr',
+    'epithelial_28'='lumhr',
+    'epithelial_29'='lumhr',
+    'epithelial_30'='lumhr')
+
+
+
+#get clusters with cancer clones assigned, assign the whole cluster as cancer
+epithelial@metadata$celltype<-"NA"
+epithelial@metadata$celltype<-celltype_assignment[epithelial@metadata$fine_cluster_phenograph]
+
+ plt_celltype<-epithelial@metadata %>% 
+    ggplot(aes(x = fine_cluster_UMAP_X, y = fine_cluster_UMAP_Y, color = celltype)) +
+    geom_point() +
+    coord_fixed()
+  ggsave(plt_celltype,file="03.1.epithelial.celltype.umap.pdf",width=20,height=20)
 
 saveRDS(epithelial,file="03_scaledcis.fine_celltyping.epithelial.rds")
 
-
-
-
 #now assign cancer to cells in the same cluster and CNV called cancer cells
-hm<-table(epithelial@metadata$cnv_ploidy_500kb,epithelial@metadata$fine_cluster_leidenclus)
+hm<-table(epithelial@metadata$cnv_ploidy_500kb,epithelial@metadata$fine_cluster_phenograph)
 hm_count<-as.data.frame(hm) #convert it back into a data frame, now with the counts
 hm_scale<-as.data.frame(scale(hm,center=F))
 colnames(hm_count)<-c("group","cluster","count")
@@ -426,48 +637,42 @@ plt<-ggplot(hm_count, aes(x=group, y=cluster, fill=scaled,label=count)) +
   theme(axis.text.x = element_text(angle = 90))
 ggsave(plt,file="03_scaledcis.fine_celltyping.epithelial.cancer_cluster.heatmap.pdf")
 
-
-
 #assign celltype as cancer to those with >90% aneuploid cells within cluster
 #this is to pick up any cells with NA calls for aneuploidy
-celltype_assignment=c(
-  'epithelial_4'='lumsec',
-  'epithelial_1'='lumsec',
-  'epithelial_8'='basal',
-
-  'epithelial_6'='cancer',
-  'epithelial_10'='cancer',
-  'epithelial_11'='cancer',
-  'epithelial_9'='cancer',
-  'epithelial_13'='cancer',
-  'epithelial_3'='cancer',
-  'epithelial_14'='cancer',
-  'epithelial_12'='cancer',
-
-  'epithelial_7'='lumhr',
-  'epithelial_2'='lumhr',
-  'epithelial_5'='lumhr')
+cancer_assignment<-c("epithelial_30","epithelial_29","epithelial_27","epithelial_26","epithelial_25","epithelial_24","epithelial_23","epithelial_22","epithelial_21","epithelial_19","epithelial_16","epithelial_12","epithelial_1")
 
 
 #get clusters with cancer clones assigned, assign the whole cluster as cancer
 epithelial@metadata$celltype<-"NA"
-epithelial@metadata$celltype<-celltype_assignment[epithelial@metadata$fine_cluster_leidenclus]
-epithelial@metadata[epithelial@metadata$cnv_ploidy_500kb=="aneuploid",]$celltype<-"cancer"
+epithelial@metadata$celltype<-celltype_assignment[epithelial@metadata$fine_cluster_phenograph]
+epithelial@metadata[epithelial@metadata$fine_cluster_phenograph %in% cancer_assignment,]$celltype<-"cancer"
 #and assign any aneuploidy cells as cancer
-
-
- plt_celltype<-epithelial@metadata %>% 
-    ggplot(aes(x = fine_cluster_UMAP_X, y = fine_cluster_UMAP_Y, color = celltype)) +
-    geom_point() +
-    coord_fixed()
-  ggsave(plt_celltype,file="03.1.epithelial.celltype.umap.pdf",width=20,height=20)
+epithelial@metadata[epithelial@metadata$cnv_ploidy_500kb=="aneuploid",]$celltype<-"cancer"
 
 saveRDS(epithelial,file="03_scaledcis.fine_celltyping.epithelial.rds")
 
+###Generate UMAP plots for supp figure###
+#met plots
+
+#colors taken from manuscript_colors.md in ref folder
+#source(manuscript_colors.r)
+plot_umap_panels_met(x=epithelial,outname="epithelial")
+plot_umap_panels_rna(x=rna,outname="epithelial")
 
 
 
-#assign cell types via IGV tracks
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 ```

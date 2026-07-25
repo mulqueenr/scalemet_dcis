@@ -22,6 +22,8 @@ wd=paste(sep="/",project_data_directory,processing_folder)
 outdir=paste0(wd,"/","figure_3")
 
 system(paste0("mkdir -p ",wd))
+system(paste0("mkdir -p ",outdir))
+
 setwd(wd)
 
 obj<-readRDS(file=paste(project_data_directory,"03_fine_celltyping","03_scaledcis.final_celltypes.amethyst.rds",sep="/"))
@@ -148,8 +150,103 @@ pdf_outname=paste0(outdir,"aneuploid.integer.heatmap.pdf")
 pdf(pdf_outname,width=40,height=20)
 print(plt1)
 dev.off()
+```
+
 
 #ploidy by met (order clones by ploidy)
+
+```R
+library(parallel)
+cnv_met<-obj@genomeMatrices$scquantum_cnv_met_percentage
+
+cnv_int<-obj@genomeMatrices$scquantum_cnv
+cnv_int<-cnv_int[grep(colnames(cnv_int),invert=T,pattern="metadata_")]
+
+common_cells<-intersect(colnames(cnv_met),colnames(cnv_int))
+common_windows<-intersect(row.names(cnv_met),row.names(cnv_int))
+
+aneuploid_cells<-common_cells[common_cells %in% row.names(obj@metadata)[obj@metadata$cnv_ploidy_group_500kb=="aneuploid"]]
+cnv_met<-cnv_met[common_windows,aneuploid_cells]
+cnv_int<-cnv_int[common_windows,aneuploid_cells]
+
+lumhr_cells<-common_cells[common_cells %in% row.names(obj@metadata)[obj@metadata$celltype %in% c("lumhr") & obj@metadata$Group %in% c("HBCA")]]
+
+#subtract mean lumhr signal from all cnv_met windows to remove cell type effects
+cnv_met_lumhr <-obj@genomeMatrices$scquantum_cnv_met_percentage[common_windows,lumhr_cells]
+lumhr_win_means<-rowMeans(cnv_met_lumhr,na.rm=T)
+
+cnv_met_diff<-base::sweep(cnv_met, MARGIN = 2, lumhr_win_means, "-")
+
+var<-do.call("rbind",mclapply(row.names(cnv_int),function(i){
+    winvar<-var(x=unlist(cnv_int[i,]),na.rm=TRUE)
+    wincor<-cor(x=unlist(cnv_int[i,]),y=unlist(cnv_met_diff[i,]),method="pearson",use="pairwise.complete.obs")
+    mean_int<-mean(x=unlist(cnv_int[i,]),na.rm=TRUE)
+    dat<-data.frame(var=winvar,cor=wincor,mean_int=mean_int,method="pearson",window=i)
+    return(dat)
+},mc.cores=100))
+
+plt<-ggplot(var,aes(x=cor,y=var,size=var))+geom_point(alpha=0.1)+theme_minimal()
+ggsave(plt,file="test.var_win.pdf")
+```
+
+```R
+
+#estimate ploidy per cell
+
+cnv_int<-obj@genomeMatrices$scquantum_cnv
+cnv_int<-cnv_int[grep(colnames(cnv_int),invert=T,pattern="metadata_")]
+
+cell_ploidy<-colMeans(cnv_int,na.rm=T)
+obj@metadata$cnv_scquantum_mean_bin_ploidy<-NA
+obj@metadata[names(cell_ploidy),]$cnv_scquantum_mean_bin_ploidy<-cell_ploidy
+
+met_by_ploidy<-obj@metadata %>% 
+summarize(ploidy=mean(cnv_scquantum_mean_bin_ploidy),met=mean(mcg_pct))
+
+plt<-ggplot(obj@metadata,aes(x=cnv_scquantum_mean_bin_ploidy,y=mcg_pct))+geom_point()+theme_minimal()
+ggsave(plt,file="test.met_ploidy.pdf")
+
+
+#sort by mean ploidy per group
+ploidy<-obj@metadata %>% 
+    filter(celltype %in% c("cancer")) %>% 
+    group_by(cnv_clonename_500kb) %>% 
+    summarize(ploidy=mean(cnv_scquantum_mean_bin_ploidy)) %>%
+    arrange(by=ploidy)
+
+cnv_meta<-obj@metadata %>% filter(celltype %in% c("cancer")) %>% filter(!is.na(cnv_clonename_500kb))
+cnv_meta$cnv_clonename_500kb<-factor(cnv_meta$cnv_clonename_500kb,levels=ploidy$cnv_clonename_500kb)
+
+plt<-ggplot(cnv_meta,
+            aes(x=cnv_clonename_500kb,y=mcg_pct,col=cnv_scquantum_mean_bin_ploidy))+
+            geom_boxplot()+geom_jitter()+
+            theme_minimal()+theme(axis.text.x = element_text(angle = 90, vjust = 1, hjust = 1))
+
+
+ggsave(plt,file=paste0(outdir,"/","global_met_per_clone_ploidy.pdf"),width=20)
+
+#correlate met windows to overall ploidy
+cell_ploidy<-setNames(nm=row.names(cnv_meta),cnv_meta$cnv_scquantum_mean_bin_ploidy)
+
+cnv_met<-cnv_met[,colnames(cnv_met) %in% names(cell_ploidy)]
+
+window_cor_to_global_met <- do.call("rbind",mclapply(row.names(cnv_met),
+    function(i) {
+        row_cor<-cor(unlist(cnv_met[i,]),
+        cell_ploidy[colnames(cnv_met)],
+        method="spearman",
+        use="pairwise.complete.obs")
+        data.frame(win=i,cor=row_cor,met=mean(unlist(cnv_met[i,]),na.rm=T))
+        }, mc.cores=100))
+
+plt<-ggplot(window_cor_to_global_met,
+            aes(x=met,y=cor,col=met))+
+            geom_point()+
+            theme_minimal() 
+
+ggsave(plt,file=paste0(outdir,"/","ploidy_to_window_met_cor.pdf"),width=20)
+
+window_cor_to_global_met %>% arrange(cor) %>% head() #tail()
 #wgd vs not : running (use DMR groups)
-#met window by cnv : running
+
 

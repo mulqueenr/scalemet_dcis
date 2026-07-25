@@ -577,6 +577,7 @@ suffix="dmr_clones_HBCALumHR_500bp"
 output_directory=paste0(input_folder,"/","dmr_results")
 system(paste0("mkdir -p ",output_directory))
 
+bigwig_output_dir=input_folder
 clone500kbwindows<-readRDS(file=paste0(input_folder,"/","03.1.VMR_umap.",suffix,".fine_cluster.500bp_windows.rds"))
 
 pct_mat<-clone500kbwindows[["pct_matrix"]] 
@@ -638,7 +639,6 @@ comparisons <- comparisons[complete.cases(comparisons),]
 row.names(comparisons)<-comparisons$name
 
 #calculate DMRs for group-wise comparisons across clones
-
 #run DMR analysis per row in comparisons
 dmr_out<-lapply(row.names(comparisons), function(i) {
   print(paste("Running DMRs across cell types for:",i))
@@ -670,5 +670,253 @@ dmr_out<-lapply(row.names(comparisons), function(i) {
 
 dmr_out<-do.call("rbind",dmr_out)
 
+
+```
+
+DMR of clone groups
+1. WGD vs not
+2. Low met vs not (see fig3)
+3. der(1,16) clones
+
+```R
+#1. WGD vs not
+
+wgd_clones <- c("BCMDCIS124T_c2",
+                "BCMDCIS124T_c1",
+                "BCMDCIS80T_24hTis_c1",
+                "BCMDCIS52T_c1",
+                "ECIS25T_c1",
+                "ECIS25T_c4",
+                "ECIS25T_c2",
+                "ECIS25T_c3",
+                "BCMDCIS80T_24hTis_c2",
+                "ECIS57T_c1")
+wgd_clones<-unique(dat@metadata$cnv_clonename_500kb)[unique(dat@metadata$cnv_clonename_500kb) %in% wgd_clones]
+
+nonwgd_clones<-unique(dat@metadata$cnv_clonename_500kb)[!(unique(dat@metadata$cnv_clonename_500kb) %in% wgd_clones)]
+nonwgd_clones<-nonwgd_clones[!endsWith(nonwgd_clones,suffix="_diploid")]
+nonwgd_clones<-nonwgd_clones[nonwgd_clones!="HBCA_lumr"]
+
+comparisons_wgd <- data.frame(
+  name="wgd_v_not",
+  A=paste(wgd_clones,collapse=","),
+  B=paste(nonwgd_clones,collapse=",")
+)
+
+#2. Low met vs not (see fig3)
+#clones with <50% median met
+lowmet_clones <- c("BCMDCIS102T_24hTis_c3",
+                "BCMDCIS102T_24hTis_c2",
+                "BCMDCIS70T_c2",
+                "BCMDCIS97T_c1",
+                "BCMDCIS102T_24hTis_c1",
+                "BCMDCIS102T_24hTis_c5",
+                "BCMDCIS102T_24hTis_c4",
+                "ECIS57T_c1")
+
+lowmet_clones<-unique(dat@metadata$cnv_clonename_500kb)[unique(dat@metadata$cnv_clonename_500kb) %in% lowmet_clones]
+
+highmet_clones<-unique(dat@metadata$cnv_clonename_500kb)[!(unique(dat@metadata$cnv_clonename_500kb) %in% lowmet_clones)]
+highmet_clones<-highmet_clones[!endsWith(highmet_clones,suffix="_diploid")]
+highmet_clones<-highmet_clones[highmet_clones!="HBCA_lumr"]
+
+comparisons_lowmet <- data.frame(
+  name="lowmet_v_highmet",
+  A=paste(lowmet_clones,collapse=","),
+  B=paste(highmet_clones,collapse=",")
+)
+
+```
+
+```R
+#3. der(1,16) clones
+
+
+
+#diploid cells with clones that lead to the t(1,16) genotype
+chr1q_2n_16p_2n_16q_2n=c(
+  "BCMDCIS102T_24hTis_diploid",
+  "BCMDCIS28T_diploid",
+  "BCMDCIS35T_diploid",
+  "BCMDCIS41T_diploid",
+  "BCMDCIS66T_diploid",
+  "BCMDCIS70T_diploid",
+  "BCMDCIS74T_diploid",
+  "BCMDCIS74T_diploid",
+  "BCMDCIS79T_24hTis_DCIS_diploid",
+  "BCMDCIS92T_24hTis_diploid",
+  "BCMDCIS94T_24hTis_diploid",
+  "BCMDCIS97T_diploid",
+  "BCMHBCA03R_diploid",
+  "BCMHBCA83L−3h_diploid",
+  "ECIS26T_diploid",
+  "ECIS36T_diploid")
+  
+chr1q_2n_16p_2n_16q_1n=c("BCMDCIS74T_c2",
+                        "BCMDCIS41T_c1",
+                        "BCMDCIS28T_c1",
+                        "BCMHBCA83L−3h_c1")
+
+chr1q_2n_16p_3n_16q_1n=c("BCMDCIS66T_c2")
+
+chr1q_3n_16p_2n_16q_2n=c("BCMDCIS102T_24hTis_c1",
+                        "BCMDCIS102T_24hTis_c5",
+                        "BCMDCIS102T_24hTis_c2",
+                        "BCMDCIS102T_24hTis_c3",
+                        "BCMDCIS92T_24hTis_c2",
+                        "BCMHBCA03R_c1")
+
+chr1q_3n_16p_3n_16q_2n=c("BCMDCIS74T_c5")
+
+chr1q_3n_16p_2n_16q_1n=c("BCMDCIS70T_c2",
+                        "BCMDCIS65T_c1",
+                        "BCMDCIS102T_24hTis_c4",
+                        "BCMDCIS70T_c1",
+                        "BCMDCIS35T_c1",
+                        "ECIS26T_c1",
+                        "BCMDCIS74T_c1",
+                        "BCMDCIS94T_24hTis_c1",
+                        "BCMDCIS79T_24hTis_DCIS_c1",
+                        "BCMDCIS94T_24hTis_c2",
+                        "ECIS26T_c2ECIS26T_c3",
+                        "BCMDCIS97T_c2",
+                        "ECIS36T_c2",
+                        "ECIS36T_c3")
+
+chr1q_3n_16p_3n_16q_1n=c("BCMDCIS74T_c3","BCMDCIS74T_c4")
+
+chr1q_4n_16p_2n_16q_1n=c("BCMDCIS41T_c4","BCMDCIS41T_c3")
+
+chr1q_4n_16p_3n_16q_1n=c("BCMDCIS41T_c5",
+                          "BCMDCIS41T_c6",
+                          "BCMDCIS70T_c3",
+                          "BCMDCIS28T_c2",
+                          "BCMDCIS79T_24hTis_DCIS_c2",
+                          "BCMDCIS92T_24hTis_c3",
+                          "BCMDCIS97T_c3",
+                          "BCMDCIS97T_c4",
+                          "BCMDCIS79T_24hTis_DCIS_c5",
+                          "BCMDCIS92T_24hTis_c4")
+
+
+obj<-readRDS(file=paste(project_data_directory,"03_fine_celltyping","03_scaledcis.final_celltypes.amethyst.rds",sep="/"))
+dat<-subsetObject(obj,cells=row.names(obj@metadata[obj@metadata$celltype %in% c("cancer","lumhr"),]))
+dat<-subsetObject(dat,cells=row.names(dat@metadata[!(dat@metadata$cnv_clonename_500kb %in% c("NA")),]))
+
+dat@metadata$cnv_comparison_set<-NA
+dat@metadata[(dat@metadata$Group=="HBCA") & (dat@metadata$celltype=="lumhr"),]$cnv_comparison_set<-"HBCA_lumhr"
+dat@metadata[dat@metadata$cnv_clonename_500kb %in% chr1q_2n_16p_2n_16q_2n,]$cnv_comparison_set<-"chr1q_2n_16p_2n_16q_2n"
+dat@metadata[dat@metadata$cnv_clonename_500kb %in% chr1q_2n_16p_2n_16q_1n,]$cnv_comparison_set<-"chr1q_2n_16p_2n_16q_1n"
+dat@metadata[dat@metadata$cnv_clonename_500kb %in% chr1q_2n_16p_3n_16q_1n,]$cnv_comparison_set<-"chr1q_2n_16p_3n_16q_1n"
+dat@metadata[dat@metadata$cnv_clonename_500kb %in% chr1q_3n_16p_2n_16q_2n,]$cnv_comparison_set<-"chr1q_3n_16p_2n_16q_2n"
+dat@metadata[dat@metadata$cnv_clonename_500kb %in% chr1q_3n_16p_3n_16q_2n,]$cnv_comparison_set<-"chr1q_3n_16p_3n_16q_2n"
+dat@metadata[dat@metadata$cnv_clonename_500kb %in% chr1q_3n_16p_2n_16q_1n,]$cnv_comparison_set<-"chr1q_3n_16p_2n_16q_1n"
+dat@metadata[dat@metadata$cnv_clonename_500kb %in% chr1q_3n_16p_3n_16q_1n,]$cnv_comparison_set<-"chr1q_3n_16p_3n_16q_1n"
+dat@metadata[dat@metadata$cnv_clonename_500kb %in% chr1q_4n_16p_2n_16q_1n,]$cnv_comparison_set<-"chr1q_4n_16p_2n_16q_1n"
+dat@metadata[dat@metadata$cnv_clonename_500kb %in% chr1q_4n_16p_3n_16q_1n,]$cnv_comparison_set<-"chr1q_4n_16p_3n_16q_1n"
+dat<-subsetObject(dat,cells=row.names(dat@metadata[!is.na(dat@metadata$cnv_comparison_set),]))
+
+table(dat@metadata$cnv_comparison_set)
+dat<-generate_bigwig(obj=dat,
+                        suffix="dmr_clones_der_1_16",
+                        groupBy="cnv_comparison_set",
+                        step=500,
+                        outdir=getwd())
+
+#major steps
+comparisons_der1_16 <-do.call("rbind",list(
+#t(1;16) maybe?
+data.frame(
+  name="chr1q_2n_16p_2n_16q_2n_v_hbca_lumhr",
+  A="chr1q_2n_16p_2n_16q_2n",
+  B="HBCA_lumhr"),
+
+#del(16q)
+data.frame(
+  name="chr1q_2n_16p_2n_16q_1n_v_chr1q_2n_16p_2n_16q_2n",
+  A="chr1q_2n_16p_2n_16q_1n",
+  B="chr1q_2n_16p_2n_16q_2n"),
+
+#der(1;16)(q10;p10)
+data.frame(
+  name="chr1q_3n_16p_2n_16q_1n_v_chr1q_2n_16p_2n_16q_2n",
+  A="chr1q_3n_16p_2n_16q_1n",
+  B="chr1q_2n_16p_2n_16q_2n"),
+  
+#der(1;16)(q10;p10)x2
+data.frame(
+  name="chr1q_4n_16p_3n_16q_1n_v_chr1q_3n_16p_2n_16q_1n",
+  A="chr1q_4n_16p_3n_16q_1n",
+  B="chr1q_3n_16p_2n_16q_1n")
+  ))
+
+row.names(comparisons_der1_16)<-comparisons_der1_16$name
+
+
+comparisons<-comparisons_der1_16
+
+
+
+input_folder=paste0(wd,"/","bigwig_output_dmr_clones_der_1_16")
+suffix="dmr_clones_der_1_16"
+bigwig_output_dir=input_folder
+
+clone500kbwindows<-readRDS(file=paste0(input_folder,"/","03.1.VMR_umap.",suffix,".fine_cluster.500bp_windows.rds"))
+
+pct_mat<-clone500kbwindows[["pct_matrix"]] 
+sum_mat<-clone500kbwindows[["sum_matrix"]] 
+
+#calculate DMRs for group-wise comparisons across clones
+#run DMR analysis per row in comparisons
+dmr_out<-lapply(row.names(comparisons), function(i) {
+  print(paste("Running DMRs across cell types for:",i))
+  dmrs <- testDMR(sum_mat, # Sum of c and t observations in each genomic window per group
+          comparisons=comparisons[i,],
+          nminTotal = 3, # Min number observations across all groups to include the region in calculations
+          nminGroup = 3) # Min number observations across either members or nonmembers to include the region
+  dmrs$type <- i
+  saveRDS(dmrs,paste0(bigwig_output_dir,"/","03.1.VMR_umap.",suffix,".",i,".dmr.rds"))
+  print(paste("Filtering DMRs across clones for:",i))
+  dmrs <- filterDMR(dmrs, 
+              method = "bonferroni", # c("holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "fdr")
+              filter = TRUE, # If TRUE, removes insignificant results
+              pThreshold = 0.05 # Maxmimum adjusted p value to allow if filter = TRUE
+              ) # Minimum absolute value of the log2FC to allow if filter = TRUE
+  dmrs$type <- i
+  saveRDS(dmrs,paste0(bigwig_output_dir,"/","03.1.VMR_umap.",suffix,".",i,".dmr.filt.rds"))
+  collapsed_dmrs <- collapseDMR(obj, 
+                          dmrs, 
+                          maxDist = 2000, # Max allowable overlap between DMRs to be considered adjacent
+                          minLength = 500, # Min length of collapsed DMR window to include in the output
+                          reduce = T, # Reduce results to unique observations (recommended)
+                          annotate = T) # Add column with overlapping gene names
+  collapsed_dmrs$type <- i
+  saveRDS(collapsed_dmrs,paste0(bigwig_output_dir,"/","03.1.VMR_umap.",suffix,".",i,".dmr.collapse.rds"))
+  return(collapsed_dmrs)
+  })
+
+
+dmr_out<-do.call("rbind",dmr_out)
+
+
+test_dat<-dmr_out %>% 
+          filter(dmr_padj<0.05) %>% 
+          group_by(type,direction,.drop=FALSE) %>% 
+          summarize(count=n(),dmr_kbp=sum(dmr_length)/1000)
+
+
+  plt1<-ggplot(test_dat[test_dat$direction=="hyper",] ,aes(x=type,y=count))+
+        geom_bar(stat="identity") + 
+        geom_text(aes(label=paste0(dmr_kbp,"kbp")), vjust=0,color="yellow") +
+        theme_minimal() + 
+        coord_flip() 
+
+  plt2<-ggplot(test_dat[test_dat$direction=="hypo",],aes(x=type,y=count))+
+        geom_bar(stat="identity") + 
+        geom_text(aes(label=paste0(dmr_kbp,"kbp")), vjust=0.1,color="red") +
+        theme_minimal() + 
+        coord_flip()
+        
+ggsave(plt1|plt2,file="der1_16_test.pdf",height=20,width=20)
 
 ```
