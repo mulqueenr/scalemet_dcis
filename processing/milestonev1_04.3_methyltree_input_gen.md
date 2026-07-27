@@ -245,6 +245,23 @@ for(i in sample_names_priority){
 #run 79T together since from same sample
 methyltree_output(obj=obj,sample_name=c('BCMDCIS79T_24hTis_DCIS','BCMDCIS79T_24hTis_IDC'),threads=1) 
 
+#now running lower priority samples
+#segfault of 66T for some reason
+sample_names<-unique(obj@metadata$Sample)
+sample_names_lowpriority<-sample_names[!(sample_names %in% sample_names_priority) & !(sample_names %in% c('BCMDCIS79T_24hTis_DCIS','BCMDCIS79T_24hTis_IDC')) & !is.na(sample_names)]
+
+
+for(i in sample_names_lowpriority){
+    print(strrep("-", 30))
+    print(paste("Running ",i))
+    print(strrep("-", 30))
+
+    methyltree_output(obj=obj,sample_name=c(i),threads=1) 
+    print(strrep("-", 30))
+    print(paste("Done with ",i))
+    print(strrep("-", 30))
+}
+
 #prioritizing samples with >= 100 cancer cells for riley. but going to run all samples to help with celltyping lineage distinctions
 
 

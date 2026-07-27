@@ -8,7 +8,7 @@
 # Prepare RNA marker genes per cell type
 
 From processing/milestonev1_00.2_seurat_scrna_copykat.md seurat object.
-Preprocess RNA with just cell types of interest isolated.
+```R
 
 ```R
 library(Seurat)
@@ -19,7 +19,7 @@ rna<-readRDS("/data/rmulqueen/projects/scalebio_dcis/rna/tenx_dcis.pf.rds")
 #just run on all cell types
 Idents(rna)<-rna$coarse_celltype
 table(Idents(rna))
-rna<-subset(rna,coarse_celltype %in% c("myeloid","bcell","tcell"))
+rna<-subset(rna,coarse_celltype %in% c("fibroblast","endothelial","pericyte"))
 
 rna <- NormalizeData(rna, normalization.method = "LogNormalize", scale.factor = 10000)
 rna <- ScaleData(rna)
@@ -34,36 +34,19 @@ rna <- FindNeighbors(rna, dims = dims)
 rna <- RunUMAP(rna, dims = dims)
 
 
-
 rna@meta.data$fine_cluster_UMAP_X<-rna@reductions$umap@cell.embeddings[,1]
 rna@meta.data$fine_cluster_UMAP_Y<-rna@reductions$umap@cell.embeddings[,2]
-saveRDS(rna,file="03_rna.fine_celltyping.immune.rds")
+saveRDS(rna,file="03_rna.fine_celltyping.stromal.rds")
+
 
 Idents(rna)<-rna$fine_celltype
 rna_fine_markers<-FindAllMarkers(rna,assay="RNA",only.pos=TRUE)
 rna_markers<-rna$coarse_celltype
 rna_fine_markers<-FindAllMarkers(rna,assay="RNA",only.pos=TRUE)
 
+
 rna_fine_markers %>% mutate(gene=row.names(rna_fine_markers)) %>% filter(cluster=="myeloid_macro") %>% filter(p_val_adj<0.05) %>% filter(avg_log2FC>2) %>% head(n=20) %>% select(gene)
 
-
-#treg vs cd4
-Idents(rna)<-rna$fine_celltype
-rna_markers<-FindMarkers(rna,assay="RNA",ident.1="tcell_nk",ident.2=NULL,only.pos=TRUE)
-rna_markers %>% mutate(gene=row.names(rna_markers)) %>% filter(p_val_adj<0.05) %>% filter(avg_log2FC>2) %>% head(n=20) %>% select(gene)
-
-Idents(rna)<-rna$fine_celltype
-
-#example comparisons for methylome checking
-rna_markers<-FindMarkers(rna,assay="RNA",ident.1="plasma",ident.2="bcell",only.pos=TRUE)
-rna_markers %>% mutate(gene=row.names(rna_markers)) %>% filter(p_val_adj<0.05) %>% filter(avg_log2FC>2) %>% head(n=20) %>% select(gene)
-
-#then tackle myeloid
-rna_markers<-readRDS(file="/data/rmulqueen/projects/scalebio_dcis/rna/tenx_dcis.rna_markers.rds")
-rna_markers %>% filter(p_val_adj<0.05) %>% filter(avg_log2FC>1) %>% head(n=20) %>% select(gene)
-
-
-rna_markers %>% filter(p_val_adj<0.05) %>% filter(avg_log2FC>1) %>% filter(cluster=="tcell_cd4") %>% head(n=20) %>% select(gene)
 
 ```
 
@@ -95,6 +78,7 @@ library(irlba)
 library(rtracklayer)
 library(cowplot)
 library(patchwork)
+
 project_data_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1"
 
 #read in object from directory
@@ -275,7 +259,7 @@ generate_bigwig<-function(obj=immune,
   return(obj)
 }
 
-cell_subtyping_clustering<-function(suffix="immune",
+cell_subtyping_clustering<-function(suffix="stromal",
                                     outdir="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/03_fine_celltyping/",
                                     init_npc=50,
                                     pc_var_explained=50,
@@ -331,6 +315,7 @@ cell_subtyping_clustering<-function(suffix="immune",
 
   pca_dims <- pca$x[,1:pca_to_use] %>% 
     magrittr::set_rownames(colnames(obj@genomeMatrices[["vmr_matrix_cg_residuals"]]))
+
 
   print("Running UMAP...")
   umap_obj <- uwot::umap(X=as.matrix(pca_dims), 
@@ -571,64 +556,110 @@ plot_umap_panels_rna<-function(x=rna,outname="epithelial"){
 obj<-readRDS(file=paste(project_data_directory,"02_copykit_cnv_calling","02_scaledcis.cnv_clones.amethyst.rds",sep="/"))
 
 #filter to immune cells by fine_celltype defined lineages
-obj<-subsetObject(obj,cells=row.names(obj@metadata[obj@metadata$celltype_lineage %in% c("immune"),]))
+obj<-subsetObject(obj,cells=row.names(obj@metadata[obj@metadata$celltype_lineage %in% c("stromal"),]))
 dim(obj@metadata)
 
-#run once with 50 npcs, select number of PCS for % variance explained
-immune<-cell_subtyping_clustering(suffix="immune",
+#run once with 50 npcs
+#cut back based on pca variance explained in second run
+stromal<-cell_subtyping_clustering(suffix="stromal",
                                     outdir="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/03_fine_celltyping/",
                                     init_npc=50,
                                     pc_var_explained=70,
-                                    reduction_name="irlba_immune",
+                                    reduction_name="irlba_stromal",
                                     leiden_cluster_resolution=5e-5,
                                     pheno_k=200,
                                     min_dist=1e-6,
                                     var_features_count=25000,
                                     n_neighbors=10)
 
-immune<-generate_bigwig(obj=immune,
-                        suffix="immune",
+stromal<-generate_bigwig(obj=stromal,
+                        suffix="stromal",
                         groupBy="fine_cluster_phenograph",
                         outdir=getwd())
 
-#check immune clusters in igv using rna marker set
-rna_markers %>% filter(p_val_adj<0.05) %>% filter(avg_log2FC>1) %>% group_by(cluster) %>% slice_max(avg_log2FC,n=10) %>% select(cluster,gene)
-
 celltype_assignment=c(
-  'immune_12'='myeloid',
-  'immune_11'='myeloid',
-  'immune_3'='myeloid',
-  'immune_16'='myeloid',
-  'immune_13'='myeloid',
-  'immune_10'='myeloid',
+  'stromal_1'='endothelial',
+  'stromal_9'='endothelial',
+  'stromal_5'='endothelial',
 
-  'immune_4'='bcell',
-  'immune_7'='bcell',
+  'stromal_3'='pericyte',
+  'stromal_10'='pericyte',
 
-  'immune_2'='tcell',
-  'immune_1'='tcell',
-  'immune_8'='tcell',
-  'immune_5'='tcell',
-  'immune_15'='tcell',
-  'immune_17'='tcell',
-  'immune_14'='tcell',
-  'immune_6'='tcell',
-  'immune_9'='tcell'
-  )
+  'stromal_2'='fibroblast',
+  'stromal_6'='fibroblast',
+  'stromal_11'='fibroblast',
+  'stromal_7'='fibroblast',
+  'stromal_8'='fibroblast',
+  'stromal_4'='fibroblast',
 
-
+  'stromal_12'='stromal_immune_contaminant')
 
 #get clusters with cancer clones assigned, assign the whole cluster as cancer
-immune@metadata$celltype<-"NA"
-immune@metadata$celltype<-celltype_assignment[immune@metadata$fine_cluster_phenograph]
+stromal@metadata$celltype<-"NA"
+stromal@metadata$celltype<-celltype_assignment[stromal@metadata$fine_cluster_phenograph]
 
- plt_celltype<-immune@metadata %>% 
+saveRDS(stromal,file="03_scaledcis.fine_celltyping.stromal.rds")
+
+stromal<-readRDS(file="03_scaledcis.fine_celltyping.stromal.rds")
+
+#run again without immune contaminant
+obj<-subsetObject(stromal,cells=row.names(stromal@metadata[!(stromal@metadata$celltype %in% c("stromal_immune_contaminant")),]))
+table(obj@metadata$celltype)
+
+#run once with 50 npcs
+#cut back based on pca variance explained in second run
+stromal<-cell_subtyping_clustering(suffix="stromal_filtered",
+                                    outdir="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/03_fine_celltyping/",
+                                    init_npc=50,
+                                    pc_var_explained=70,
+                                    reduction_name="irlba_stromal",
+                                    leiden_cluster_resolution=5e-5,
+                                    pheno_k=200,
+                                    min_dist=1e-6,
+                                    var_features_count=25000,
+                                    n_neighbors=10)
+
+stromal<-generate_bigwig(obj=stromal,
+                        suffix="stromal",
+                        groupBy="fine_cluster_phenograph",
+                        outdir=getwd())
+
+
+celltype_assignment=c(
+  'stromal_filtered_11'='endothelial',
+  'stromal_filtered_6'='endothelial',
+  'stromal_filtered_1'='endothelial',
+
+  'stromal_filtered_12'='pericyte',
+  'stromal_filtered_3'='pericyte',
+
+  'stromal_filtered_4'='fibroblast',
+  'stromal_filtered_2'='fibroblast',
+  'stromal_filtered_10'='fibroblast',
+  'stromal_filtered_9'='fibroblast',
+  'stromal_filtered_7'='fibroblast',
+  'stromal_filtered_8'='fibroblast',
+  'stromal_filtered_5'='fibroblast')
+
+#get clusters with cancer clones assigned, assign the whole cluster as cancer
+stromal@metadata$celltype<-"NA"
+stromal@metadata$celltype<-celltype_assignment[stromal@metadata$fine_cluster_phenograph]
+
+
+ plt_celltype<-stromal@metadata %>% 
     ggplot(aes(x = fine_cluster_UMAP_X, y = fine_cluster_UMAP_Y, color = celltype)) +
     geom_point() +
     coord_fixed()
-  ggsave(plt_celltype,file="03.1.immune.celltype.umap.pdf",width=20,height=20)
+  ggsave(plt_celltype,file="03.1.stromal.celltype.umap.pdf",width=20,height=20)
 
-saveRDS(immune,file="03_scaledcis.fine_celltyping.immune.rds")
+saveRDS(stromal,file="03_scaledcis.fine_celltyping.stromal.rds")
 
-plot_umap_panels_met(x=immune,outname="immune")
-plot_umap_panels_rna(x=rna,outname="immune")
+
+plot_umap_panels_met(x=stromal,outname="stromal")
+plot_umap_panels_rna(x=rna,outname="stromal")
+
+#now merge by celltype into bigwig tracks
+
+gene_list_for_plotting<-
+c()
+```

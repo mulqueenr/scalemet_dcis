@@ -63,61 +63,59 @@ ploidy_col=c("diploid"="#CCCCCC",
 
 #coverage_col=scale_color_gradient2(low="#CCCCFF",mid="#3333FF",high="#000066",midpoint=median(log10(epithelial@metadata$unique_reads)))
 
-set_pokemon<-list("HBCA"="lapras",
-                "DCIS"="abra",
-                "Synchronous"="ditto",
-                "IDC"="cloyster")
 
-sample_col<-unlist(lapply(1:length(set_pokemon),function(x){
-    samples<-unique(obj@metadata[obj@metadata$Group==names(set_pokemon)[x],]$Sample)
-    cols <- colorRampPalette(palettetown::pokepal(pokemon = set_pokemon[[x]]))
-    sample_col<-setNames(nm=samples,cols(length(samples)))
-    return(sample_col)
-    }))
+#Sample colors, too many to make sense of, so using random assignment from high contrast interpolation of Rcolorbrewer
+cols <- brewer.pal(n = 12, name = "Paired")
+col_func<-colorRampPalette(cols)
+sample_col <- col_func(length(unique(obj@metadata$Sample))) 
+set.seed(123)
+sample_col<-setNames(nm=unique(obj@metadata$Sample),sample(sample_col))
 
-for(i in 1:length(sample_colors)){
-    print(paste0("'",names(sample_colors)[i],"'='",sample_colors[[i]],"'"))
+
+
+for(i in 1:length(sample_col)){
+    print(paste0("'",names(sample_col)[i],"'='",sample_col[[i]],"',"))
 }
 
 sample_col=c(
-'BCMHBCA03R'='#C0E0E8',
-'BCMHBCA04R'='#91C5CD',
-'BCMHBCA09R-3h'='#527A82',
-'BCMHBCA12R-3h'='#436F8B',
-'BCMHBCA16R-3h'='#87ADCD',
-'BCMHBCA17R-3h'='#D1DEEC',
-'BCMHBCA19R-4h'='#1060B0',
-'BCMHBCA22R-4h'='#B6DEEB',
-'BCMHBCA26L-24hTis-4h'='#58789D',
-'BCMHBCA29L-2h'='#2F5BAF',
-'BCMHBCA38L-3h'='#6F60A5',
-'BCMHBCA83L-3h'='#C62616',
-'BCMHBCA85L-3h'='#E84838',
-'BCMDCIS05T'='#88C0C8',
-'BCMDCIS07T'='#87B3D0',
-'BCMDCIS41T'='#385860',
-'BCMDCIS66T'='#7898B4',
-'BCMDCIS82T_24hTis'='#4880F0',
-'BCMDCIS99T'='#83ABD3',
-'ECIS25T'='#C02010',
-'ECIS26T'='#D3847C',
-'ECIS36T'='#F89888',
-'BCMDCIS32T'='#68B0E0',
-'BCMDCIS35T'='#4C6960',
-'BCMDCIS79T_24hTis_DCIS'='#4B5074',
-'BCMDCIS80T_24hTis'='#896E39',
-'BCMDCIS92T_24hTis'='#8E8C96',
-'ECIS48T'='#D0D0D0',
-'BCMDCIS102T_24hTis'='#785080',
-'BCMDCIS124T'='#986AA5',
-'BCMDCIS22T'='#885A95',
-'BCMDCIS28T'='#482050',
-'BCMDCIS49T'='#A77FB5',
-'BCMDCIS52T'='#A58AB0',
-'BCMDCIS65T'='#404040',
-'BCMDCIS70T'='#757575',
-'BCMDCIS74T'='#B2B2B2',
-'BCMDCIS79T_24hTis_IDC'='#F8F8F8',
-'BCMDCIS94T_24hTis'='#D2D2D2',
-'BCMDCIS97T'='#A0A0A0',
-'ECIS57T'='#606060')
+'BCMDCIS05T'='#B294C7',
+'BCMDCIS07T'='#DD9A88',
+'BCMDCIS102T_24hTis'='#A69C6A',
+'BCMDCIS124T'='#5B9EC9',
+'BCMDCIS22T'='#F0EB99',
+'BCMDCIS28T'='#DBB466',
+'BCMDCIS32T'='#FE982C',
+'BCMDCIS35T'='#FE870D',
+'BCMDCIS41T'='#F78620',
+'BCMDCIS49T'='#9774B6',
+'BCMDCIS52T'='#2D82AF',
+'BCMDCIS65T'='#E42022',
+'BCMDCIS66T'='#7D54A5',
+'BCMDCIS70T'='#9E8099',
+'BCMDCIS74T'='#E8945A',
+'BCMDCIS79T_24hTis_DCIS'='#98D277',
+'BCMDCIS79T_24hTis_IDC'='#F1E185',
+'BCMDCIS80T_24hTis'='#A6D78D',
+'BCMDCIS82T_24hTis'='#7EBA98',
+'BCMDCIS92T_24hTis'='#75C15D',
+'BCMDCIS94T_24hTis'='#754B99',
+'BCMDCIS97T'='#CBB0D0',
+'BCMDCIS99T'='#3687BC',
+'BCMHBCA03R'='#C7B699',
+'BCMHBCA04R'='#F16667',
+'BCMHBCA09R-3h'='#52AF43',
+'BCMHBCA12R-3h'='#FDBB69',
+'BCMHBCA16R-3h'='#B15928',
+'BCMHBCA17R-3h'='#389F2E',
+'BCMHBCA19R-4h'='#F7995C',
+'BCMHBCA22R-4h'='#C68647',
+'BCMHBCA26L-24hTis-4h'='#F06C45',
+'BCMHBCA29L-2h'='#6F9E4C',
+'BCMHBCA38L-3h'='#80B6D6',
+'BCMHBCA83L-3h'='#F88A89',
+'BCMHBCA85L-3h'='#D9A295',
+'ECIS25T'='#E83F2E',
+'ECIS26T'='#A6CEE3',
+'ECIS36T'='#569EA4',
+'ECIS48T'='#EA4344',
+'ECIS57T'='#FDAA4A')
