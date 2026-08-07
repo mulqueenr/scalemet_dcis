@@ -36,7 +36,7 @@ i7_whitelist=list(set([x.split("+")[0] for x in df_idx_whitelist.index]))
 i5_whitelist=list(set([x.split("+")[1] for x in df_idx_whitelist.index]))
 tn5_whitelist=list(set([x.split("+")[2] for x in df_idx_whitelist.index]))
 
-#possible telomere motifs (all aleast a repeat of 2 motifs)
+#possible telomere motifs (all atleast a repeat of 2 motifs)
 telo_fwd="GGGATTGGGATT"
 telo_rev="GGGATTGGGATT"
 telo_fwdcomp="CCCTAACCCTAA"

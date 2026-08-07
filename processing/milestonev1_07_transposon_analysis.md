@@ -37,79 +37,167 @@ wget https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/rmsk.txt.gz
 # Reading in amethyst object and summarizing methylation over different annotations.
 
 ```R
-library(copykit)
 library(GenomicRanges)
 library(amethyst)
 library(rtracklayer)
+library(rhdf5)
+library(parallel)
 library(ComplexHeatmap)
 library(circlize)
+library(tidyr)
+
 #set environment and read in data
 set.seed(111)
 options(future.globals.maxSize= 200000*1024^2) #80gb limit for parallelizing
-task_cpus=300
+
 project_data_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1"
-merged_dat_folder="merged_data"
-wd=paste(sep="/",project_data_directory,merged_dat_folder)
 
-repeat_dir=paste(sep="/",project_data_directory,"repeat_analysis")
-system(paste("mkdir -p",repeat_dir))
-
+#read in object from directory
+task_cpus=300
+processing_folder="04_repeat_analysis"
+wd=paste(sep="/",project_data_directory,processing_folder)
+system(paste0("mkdir -p ",wd))
 setwd(wd)
-obj<-readRDS(file="06_scaledcis.celltype.amethyst.rds")
+
+
+obj<-readRDS(file=paste(project_data_directory,"03_fine_celltyping","03_scaledcis.final_celltypes.amethyst.rds",sep="/"))
 
 repeats<-read.table("/data/rmulqueen/projects/scalebio_dcis/ref/rmsk.txt.gz")
+repeats<-repeats[,c("V6","V7","V8","V10","V11","V12","V13")]
+colnames(repeats)<-c("chr","start","end","strand","name","class","family")
+repeats<-repeats[complete.cases(repeats),]
+repeats$class_family<-paste(repeats$class,repeats$family)
+repeats_fam<-GRanges(repeats) %>% split(~class_family,drop=TRUE)
+length(repeats_fam)
+#72 cases
 
-repeats<-repeats[,c("V6","V7","V8","V10","V11","V12")]
-colnames(repeats)<-c("chr","start","end","strand","name","type")
+#loop through all repeat element types (72 class_family) and summarize methylation over annotations
+for(annot_index in 1:length(repeats_fam)){
+    annot_name=mcols(repeats_fam[[annot_index]])$class_family[1]
+    annot_name=gsub(annot_name,pattern=" ",repl="_")
+    annot<-repeats_fam[[annot_index]]
+    out<-mclapply(row.names(obj@metadata),function(cellid){
+        print(paste("Calculating repeat type",annot_name,"for cellid",cellid))
+        h5_path<-obj@metadata[cellid,]$h5_path
+        cell_dat <- do.call("rbind",h5read(h5_path ,"/CG",cell_name))
+        cell_dat$start<-cell_dat$pos
+        cell_dat$end<-cell_dat$pos+1
+        cell_dat<-GRanges(cell_dat)
+        overlaps<-suppressWarnings(GenomicRanges::findOverlaps(query=annot,subject=cell_dat))
+        out<-c(cellid=cellid,annotation=annot_name,colSums(as.matrix(mcols(cell_dat[overlaps@to,])[c("t","c")])))
+        return(out)},
+        mc.cores=200)
+    out<-as.data.frame(do.call("rbind",out))
+    saveRDS(out,
+        file=paste0("04_repeat_analysis.",annot_name,".repeat_windows.rds"))
+}
 
-repeats<-GRanges(repeats) %>% split(~type)
+#after this runs, read in all rds files and summarize methylation percentage over repeat annotations for all cells
+repeat_files<-list.files(pattern=".*.repeat_windows.rds")
+repeat_elements<-do.call("rbind",lapply(repeat_files,function(x){
+    in_dat<-readRDS(x)
+}))
 
-#make windows over copykit ranges
-#actually i think i can just slice the smoothed 500bp windows I already have, per clone or per celltype
-#get 500kb windows ranges
-clone500bpwindows<-readRDS(file=paste0(project_data_directory,"/DMR_analysis/","cnv_clones_alllumhr/","dmr_analysis.cnv_clones_alllumhr.500bp_windows.rds"))
-met <- GRanges(clone500bpwindows[["pct_matrix"]])
+repeat_elements$c <- as.numeric(repeat_elements$c)
+repeat_elements$t <- as.numeric(repeat_elements$t)
 
+repeat_elements<-repeat_elements[complete.cases(repeat_elements),]
+repeat_elements<-repeat_elements[which((repeat_elements$t+repeat_elements$c)>100),] #require 100 measurements
+repeat_elements$methylation<-repeat_elements$c/(repeat_elements$c+repeat_elements$t)
+repeat_mat <- repeat_elements %>% 
+            pivot_wider(id_cols=cellid,names_from=annotation, values_from=methylation,values_fill=NA)
 
-#calculate global methylation per clone
-clone_met<-colMeans(as.data.frame(mcols(met)),na.rm=T)
+saveRDS(as.data.frame(repeat_mat),file="04_repetitive_elements_methylation.rds")
 
-#overlap with repeats
-#mean percentage per track of overlap per type
-#overlap with haplo and triplo tracks
+repeat_mat<-as.data.frame(repeat_mat)
+row.names(repeat_mat)<-repeat_mat$cellid
 
-#get percent methylation, per repeat region, per clone
-
-repeat_methylation_perc<-lapply(1:length(repeats),function(x){
-    overlaps<-findOverlaps(met,repeats[[x]])
-    return(colMeans(as.data.frame(mcols(met[overlaps@from,])),na.rm=T))
-})
-
-repeat_methylation_perc<-do.call("cbind",repeat_methylation_perc)
-colnames(repeat_methylation_perc)<-names(repeats)
-repeat_methylation_perc<-as.data.frame(repeat_methylation_perc)
-
-#add group metadata per sample
-repeat_methylation_perc$Sample<-unlist(gsub(gsub(row.names(repeat_methylation_perc),pattern="_diploid",replacement=""),pattern="_c[0-9]",replacement=""))
-repeat_methylation_perc$Sample<-gsub(repeat_methylation_perc$Sample,pattern="[.]",replacement="-")
-group_meta<-unique(data.frame(Sample=obj@metadata$Sample,Group=obj@metadata$Group))
-row.names(group_meta)<-group_meta$Sample
-repeat_methylation_perc$Group<-group_meta[repeat_methylation_perc$Sample,]$Group
-
-repeat_methylation_perc$Group<-factor(repeat_methylation_perc$Group,levels=c("NA","HBCA","DCIS","Synchronous","IDC"))
-
-#https://emilhvitfeldt.github.io/r-color-palettes/discrete/NatParksPalettes/Acadia/
-met_col=colorRamp2(breaks=seq(from = 50, to = 100, length.out = 9),colors=rev(c("#212E52FF", "#444E7EFF", "#8087AAFF", "#B7ABBCFF", "#F9ECE8FF", "#FCC893FF", "#FEB424FF", "#FD8700FF", "#D8511DFF")))
-column_ha = HeatmapAnnotation(global_met = clone_met,col=list(global_met=met_col))
+library(dplyr)
+retro_dat<-left_join(obj@metadata,repeat_mat)
 
 
-pdf(paste0(repeat_dir,"/","repeat_per_clone_methylation.pdf"),width=20)
-Heatmap(t(repeat_methylation_perc[,c("LINE","SINE","Retroposon")]),
-        column_split=repeat_methylation_perc$Group,
-         bottom_annotation = column_ha, col=met_col,
-        cluster_column_slices=FALSE)
+repeat_elements_by_celltype_group<-retro_dat %>% 
+    group_by(celltype_group) %>% 
+    mutate(across(DNA_DNA:Unknown,as.numeric)) %>% 
+    summarize(across(DNA_DNA:Unknown,mean,na.rm=T))
 
+library(ComplexHeatmap)
+
+repeat_elements_by_celltype_group <- as.data.frame(repeat_elements_by_celltype_group)
+row.names(repeat_elements_by_celltype_group) <- repeat_elements_by_celltype_group$celltype_group
+repeat_elements_by_celltype_group<-repeat_elements_by_celltype_group[,2:ncol(repeat_elements_by_celltype_group)]
+
+repeat_elements_by_celltype_group<-repeat_elements_by_celltype_group %>% mutate(across(everything(), as.numeric))
+
+
+#set colors
+celltype_col=c(
+    "pericyte"="#FF6600",
+    "fibroblast"="#FF0066",
+    "endothelial"="#FFCC00",
+    "unknown"="#666666",
+
+    "myeloid"="#00FFFF",
+    "bcell"="#0099FF",
+    "tcell"="#0033FF",
+
+    "basal"="#6600FF",
+    "lumsec"="#CC00FF",
+    "lumhr"="#FF00CC",
+    "cancer"="#00FF99")
+
+cellgroups<-expand.grid(c("HBCA","DCIS","Synchronous","IDC"),names(celltype_col))
+cellgroups<-paste(cellgroups$Var2,cellgroups$Var1,sep="_")
+cellgroups<-cellgroups[which(cellgroups %in% row.names(repeat_elements_by_celltype_group))]
+repeat_elements_by_celltype_group<-t(repeat_elements_by_celltype_group)
+repeat_elements_by_celltype_group<-repeat_elements_by_celltype_group[,cellgroups]
+
+plt<-Heatmap(t(scale(t(repeat_elements_by_celltype_group))),
+    column_order=1:ncol(repeat_elements_by_celltype_group),
+    cluster_column_slices=FALSE,cluster_columns=FALSE,
+    column_split=factor(unlist(lapply(strsplit(cellgroups,"_"),"[",1)),levels=names(celltype_col)))
+
+pdf("04_repeat_methylation.scaled.pdf",width=10,height=20)
+print(plt)
 dev.off()
 
 
-#next up is to segment cnv elements so i can overlap with bed discretely for enrichment
+library(circlize)
+met_col=colorRamp2(c(min(unlist(repeat_elements_by_celltype_group),na.rm=T),
+                    median(unlist(repeat_elements_by_celltype_group),na.rm=T),
+                    max(unlist(repeat_elements_by_celltype_group),na.rm=T)),
+    c("#ff70ff","#CCCCCC","#000000"))
+
+plt<-Heatmap(repeat_elements_by_celltype_group,
+    column_order=1:ncol(repeat_elements_by_celltype_group),
+    col=met_col,
+    cluster_column_slices=FALSE,cluster_columns=FALSE,
+    column_split=factor(unlist(lapply(strsplit(cellgroups,"_"),"[",1)),levels=names(celltype_col)))
+
+pdf("04_repeat_methylation.pdf",width=10,height=20)
+print(plt)
+dev.off()
+
+#run some statistical tests
+repeat_mat<-readRDS(file="04_repetitive_elements_methylation.rds")
+retro_dat<-left_join(obj@metadata,repeat_mat,by="cellid")
+
+repeat_elements_by_celltype_group <-retro_dat %>% 
+    filter(celltype_group %in% c("lumhr_HBCA","cancer_DCIS","cancer_Synchronous","cancer_IDC")) %>% 
+    mutate(across(DNA_DNA:Unknown,as.numeric))
+repeat_elements_by_celltype_group$celltype_group<-factor(repeat_elements_by_celltype_group$celltype_group,
+levels=c("lumhr_HBCA","cancer_DCIS","cancer_Synchronous","cancer_IDC"))
+
+plt_list<-lapply(c("LINE","LINE_L1","Retroposon","SINE","Satellite_telo"),function(x){
+    plt<-ggplot(repeat_elements_by_celltype_group,
+                aes(x=celltype_group,y=repeat_elements_by_celltype_group[,x],color=Group))+
+        geom_jitter(size=0.5)+
+        geom_violin(fill=NA,color="black")+ylim(c(0,1))+ylab(x)+
+        scale_color_manual(values=group_col)
+    return(plt)
+})
+
+library(patchwork)
+library(presto)
+library(Matrix)
+ggsave(wrap_plots(plt_list,ncol=1),file="04_repeat_methylation.multiple_elements.lumhrHBCA_v_cancerIDC.pdf",height=10)

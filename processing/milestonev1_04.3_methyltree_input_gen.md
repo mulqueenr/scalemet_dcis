@@ -17,7 +17,7 @@ project_data_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_miles
 
 #read in object from directory
 task_cpus=300
-processing_folder="04_collapsed_bam_and_dmr"
+processing_folder="04_methyltree_input"
 wd=paste(sep="/",project_data_directory,processing_folder)
 system(paste0("mkdir -p ",wd))
 setwd(wd)

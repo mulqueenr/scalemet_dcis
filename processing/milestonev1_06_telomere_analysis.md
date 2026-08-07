@@ -2,10 +2,6 @@ count telomere motifs using fuzzy matching on fastq per cell
 perform normalization with nico
 get telomere estimate sizes
 ```bash
-singularity shell \
-    --bind /data/rmulqueen/projects/scalebio_dcis \
-    --bind ~/tools/ \
-~/singularity/amethyst.sif
 
 cd /data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/fastq
 for plate in $(find -maxdepth 1 -type d -name "*plate*" | cut -c 3-);

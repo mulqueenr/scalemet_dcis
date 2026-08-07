@@ -7,6 +7,8 @@ library(ComplexHeatmap)
 library(dendextend)
 library(RColorBrewer)
 library(GenomicRanges)
+library(stringr)
+
 setwd("/data/rmulqueen/projects/scalebio_dcis/rna")
 obj<-readRDS("tenx_dcis.pf.rds")
 output_dir="/data/rmulqueen/projects/scalebio_dcis/rna"
@@ -75,18 +77,6 @@ copykat_per_sample<-function(obj,sample_name="BCMDCIS41T",winsize=25,cores=100){
     #names(superclone_col[is.na(names(superclone_col))])<-"Not.Assigned"
     #names(subclone_col[is.na(names(subclone_col))])<-"Not.Assigned"
 
-    celltype_col=c(
-    'perivasc'='#c1d552',
-    'fibro'='#7f1911',
-    'endo'='#f0b243',#'lymphatic'='#f0b243',
-    'vascular'='#d0bd4a',
-    'tcell'='#2e3fa3',
-    'bcell'='#00adea',
-    'myeloid'="#55157a",
-    'plasma'='#006455',
-    'basal'='#7200cc',
-    'lumsec'='#af00af',
-    'lumhr'='#d8007c')
 
     #plot heatmap
     ha = rowAnnotation(
@@ -173,7 +163,8 @@ copykat_per_sample(obj=obj,sample_name=c('BCMDCIS65T'),winsize=winsize) #supercl
 copykat_per_sample(obj=obj,sample_name=c('BCMDCIS66T'),winsize=winsize) #superclone 6=c3 9=c3 1=c2 7=c2
 copykat_per_sample(obj=obj,sample_name=c('BCMDCIS70T'),winsize=winsize) #2=c1 3=c2
 copykat_per_sample(obj=obj,sample_name=c('BCMDCIS74T'),winsize=winsize) #8=c4 10=c5 5=c3
-copykat_per_sample(obj=obj,sample_name=c('BCMDCIS79T_24hTis_DCIS','BCMDCIS79T_24hTis_IDC'),winsize=winsize) #6=c1 4=c1 5=c1 3=c2
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS79T_24hTis_DCIS'),winsize=winsize) #6=c1 4=c1 5=c1 3=c2
+copykat_per_sample(obj=obj,sample_name=c('BCMDCIS79T_24hTis_IDC'),winsize=winsize)
 copykat_per_sample(obj=obj,sample_name=c('BCMDCIS80T_24hTis'),winsize=winsize) #all diploid
 copykat_per_sample(obj=obj,sample_name=c('BCMDCIS82T_24hTis'),winsize=winsize) #super 10=c1 12=c1
 copykat_per_sample(obj=obj,sample_name=c('BCMDCIS92T_24hTis'),winsize=winsize) #5=c1 4=c1
@@ -217,8 +208,7 @@ assign_copykat_aneuploid_clonename<-function(sample_name,cancer_clones,split_on=
     copykat.test<-readRDS(paste0(output_dir,"/copykat/",sample_name[1],"/copykat.",sample_name[1],".",as.character(winsize),".rds"))
     dend<-readRDS(file=paste0(output_dir,"/copykat/",sample_name[1],"/copykat.",sample_name[1],".",as.character(winsize),".dendrogram.rds"))
     CNA.test <- data.frame(copykat.test$CNAmat)
-
-    copykat.test$prediction$clonename<-paste(sample_name,"NA",sep="_")
+    copykat.test$prediction$clonename<-paste(sample_name[1],"NA",sep="_")
     copykat.test$prediction$ploidy<-"NA"
 
 
@@ -257,16 +247,20 @@ assign_copykat_aneuploid_clonename<-function(sample_name,cancer_clones,split_on=
     cancerclone_col=setNames(nm=unique(as.character(pred.test$clonename[!is.na(pred.test$clonename)])),
                             colorRampPalette(brewer.pal(8, "Pastel2"))(length(unique(as.character(pred.test$clonename[!is.na(pred.test$clonename)])))))
     celltype_col=c(
-    'perivasc'='#c1d552',
-    'fibro'='#7f1911',
-    'endo'='#f0b243',
-    'tcell'='#2e3fa3',
-    'bcell'='#00adea',
-    'myeloid'="#55157a",
-    'plasma'='#006455',
-    'basal'='#7200cc',
-    'lumsec'='#af00af',
-    'lumhr'='#d8007c')
+    "pericyte"="#FF6600",
+    "fibroblast"="#FF0066",
+    "endothelial"="#FFCC00",
+    "unknown"="#666666",
+
+    "myeloid"="#00FFFF",
+    "bcell"="#0099FF",
+    "tcell"="#0033FF",
+
+    "basal"="#6600FF",
+    "lumsec"="#CC00FF",
+    "lumhr"="#FF00CC",
+    "cancer"="#00FF99",
+    "suspected_doublet"="#666666")
 
     #plot heatmap
     ha = rowAnnotation(
@@ -324,8 +318,6 @@ assign_copykat_aneuploid_clonename<-function(sample_name,cancer_clones,split_on=
 
 }
 
-
-
 assign_copykat_aneuploid_clonename(sample_name="BCMDCIS05T",
                                     cancer_clones=c('c1'='8','c1'='10'))
 assign_copykat_aneuploid_clonename(sample_name='BCMDCIS07T',
@@ -362,10 +354,13 @@ assign_copykat_aneuploid_clonename(sample_name='BCMDCIS74T',
                                     cancer_clones=c('c3'='5',
                                                     'c4'='8',
                                                     'c5'='10'))
-assign_copykat_aneuploid_clonename(sample_name='BCMDCIS79T_24hTis_DCIS',
-                                    cancer_clones=c('c1'='6','c1'='4','c2'='3','c2'='5')) 
+assign_copykat_aneuploid_clonename(sample_name='BCMDCIS79T_24hTis_DCIS',split_on='subclones',
+                                    cancer_clones=c('c1'='6','c2'='3','c2'='8','c2'='5','c2'='7')) 
+assign_copykat_aneuploid_clonename(sample_name='BCMDCIS79T_24hTis_IDC',
+                                    cancer_clones=c('c2'='5','c2'='1')) 
 assign_copykat_aneuploid_clonename(sample_name='BCMDCIS80T_24hTis',
                                     cancer_clones=c()) 
+
 assign_copykat_aneuploid_clonename(sample_name='BCMDCIS82T_24hTis',
                                             cancer_clones=c('c1'='10','c1'='12'))
 assign_copykat_aneuploid_clonename(sample_name='BCMDCIS92T_24hTis',
@@ -416,30 +411,66 @@ library(copykat)
 library(Seurat)
 library(parallel)
 setwd("/data/rmulqueen/projects/scalebio_dcis/rna")
-obj<-readRDS("tenx_dcis.pf.rds")
+rna<-readRDS("tenx_dcis.pf.rds")
 output_dir="/data/rmulqueen/projects/scalebio_dcis/rna"
 winsize=50
 
+cnv_meta<-mclapply(basename(list.dirs(paste0(output_dir,"/copykat/"))),function(sample_name){
+    copykat_file<-paste0(output_dir,"/copykat/",sample_name,"/copykat.",sample_name,".",as.character(winsize),".rds")
+    if(file.exists(copykat_file)){
+        copykat.test<-readRDS(copykat_file)
+        out<-data.frame(cellid=copykat.test$prediction$cell.names,
+                    rna_clonename=copykat.test$prediction$clonename,
+                    rna_ploidy=copykat.test$prediction$ploidy,
+                    rna_cancer_superclone=copykat.test$prediction$superclones,
+                    rna_cancer_subclone=copykat.test$prediction$subclones)
+        row.names(out)<-out$cellid
 
-cnv_meta<-mclapply(unique(obj$sample),function(sample_name){
-    copykat.test<-readRDS(paste0(output_dir,"/copykat/",sample_name,"/copykat.",sample_name,".",as.character(winsize),".rds"))
-    out<-data.frame(cellid=copykat.test$prediction$cell.names,
-                rna_clonename=copykat.test$prediction$clonename,
-                rna_ploidy=copykat.test$prediction$ploidy)
-    row.names(out)<-out$cellid
+    } else {
+        out<-data.frame(cellid=NA,
+                    rna_clonename=NA,
+                    rna_ploidy=NA,
+                    rna_cancer_superclone=NA,
+                    rna_cancer_subclone=NA)
+    }
     return(out)
-
 },mc.cores=50)
 
 
 cnv_meta<-do.call("rbind",cnv_meta)
+cnv_meta<-cnv_meta[complete.cases(cnv_meta),]
+rna<-AddMetaData(rna,meta=cnv_meta)
+rna$rna_ploidy<-ifelse(endsWith(rna$rna_clonename,suffix="diploid"),"diploid","aneuploid")
+rna@meta.data[rna$rna_ploidy=="aneuploid" & !is.na(rna$rna_ploidy),]$fine_celltype<-"cancer"
+rna@meta.data[rna$rna_ploidy=="aneuploid" & !is.na(rna$rna_ploidy),]$coarse_celltype<-"cancer"
 
-obj<-AddMetaData(obj,meta=cnv_meta)
-obj$rna_ploidy<-ifelse(endsWith(obj$rna_clonename,suffix="diploid"),"diploid","aneuploid")
-obj@meta.data[obj$rna_ploidy=="aneuploid" & !is.na(obj$rna_ploidy),]$fine_celltype<-"cancer"
-obj@meta.data[obj$rna_ploidy=="aneuploid" & !is.na(obj$rna_ploidy),]$coarse_celltype<-"cancer"
-saveRDS(obj,"tenx_dcis.pf.rds")
+saveRDS(rna,"tenx_dcis.pf.rds")
 
+#add cnv data to assay of seurat object
+#not run
+#copykat_files<-list.files(paste0(output_dir,"/copykat"),recursive=T,full.names = TRUE)
+#copykat_files<-copykat_files[grep(pattern=".rds",copykat_files)]
+#copykat_files<-copykat_files[grep(pattern=paste0("\\.",winsize,".rds"),copykat_files)]
+#copykat_files
+
+
+#cnv_assay<-mclapply(copykat_files,function(file){
+#    copykat.test<-readRDS(file)
+#    cnv<-as.data.frame(copykat.test$CNAmat)
+#    row.names(cnv)<-unlist(lapply(1:nrow(cnv),function(i){
+#        if(i==1){paste0("chr",cnv[i,1],"_",1,"_",cnv[i,2])
+#        }else{paste0("chr",cnv[i,1],"_",cnv[i-1,2]+1,"_",cnv[i,2])}
+#        }))
+#    cnv<-cnv[,4:ncol(cnv)]
+#    return(cnv)
+#},mc.cores=50)
+
+#row.names(cnv_assay[[1]])==row.names(cnv_assay[[2]])
+#cnv<-do.call("cbind",cnv_assay)
+#colnames(cnv)<-gsub(colnames(cnv),pattern="[.]",repl="-")
+
+#saveRDS(cnv,"tenx_dcis.pf.copykat_allcells.rds")
+#saveRDS(as.data.frame(rna@meta.data),"tenx_dcis.pf.copykat_meta.rds")
 
 ```
 

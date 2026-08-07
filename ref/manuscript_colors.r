@@ -5,6 +5,7 @@ celltype_col=c(
     "fibroblast"="#FF0066",
     "endothelial"="#FFCC00",
     "unknown"="#666666",
+    "suspected_doublet"="#666666",
 
     "myeloid"="#00FFFF",
     "bcell"="#0099FF",
