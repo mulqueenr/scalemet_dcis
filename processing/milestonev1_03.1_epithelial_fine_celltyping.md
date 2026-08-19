@@ -7,44 +7,6 @@
 6. use lineage to sublineage to cell type markers to define cells
 # Prepare RNA marker genes per cell type
 
-From processing/milestonev1_00.2_seurat_scrna_copykat.md seurat object.
-```R
-
-#compare dmr sites with rna marker genes overlap
-library(Seurat)
-library(GenomicRanges)
-
-rna<-readRDS("/data/rmulqueen/projects/scalebio_dcis/rna/tenx_dcis.pf.rds")
-#just run on all cell types
-Idents(rna)<-rna$coarse_celltype
-table(Idents(rna))
-rna<-subset(rna,coarse_celltype %in% c("lumsec","lumhr","cancer","basal"))
-
-rna <- NormalizeData(rna, normalization.method = "LogNormalize", scale.factor = 10000)
-rna <- ScaleData(rna)
-rna <- JoinLayers(rna)
-
-res=0.2
-dims=1:50
-#umap here is just for visualization, not used for redefining cell types
-rna <- FindVariableFeatures(rna, selection.method = "vst", nfeatures = 5000)
-rna <- RunPCA(rna, features = VariableFeatures(object = rna))
-rna <- FindNeighbors(rna, dims = dims)
-rna <- RunUMAP(rna, dims = dims)
-
-rna@meta.data$fine_cluster_UMAP_X<-rna@reductions$umap@cell.embeddings[,1]
-rna@meta.data$fine_cluster_UMAP_Y<-rna@reductions$umap@cell.embeddings[,2]
-saveRDS(rna,file="03_rna.fine_celltyping.epithelial.rds")
-
-Idents(rna)<-rna$fine_celltype
-rna_fine_markers<-FindAllMarkers(rna,assay="RNA",only.pos=TRUE)
-rna_markers<-rna$coarse_celltype
-rna_fine_markers<-FindAllMarkers(rna,assay="RNA",only.pos=TRUE)
-
-
-```
-
-
 
 # Read in methylation data and additional libraries
 From processing/milestonev1_01_amethyst_fine_celltyping.md
@@ -83,6 +45,85 @@ wd=paste(sep="/",project_data_directory,processing_folder)
 system(paste0("mkdir -p ",wd))
 setwd(wd)
 ```
+
+
+From processing/milestonev1_00.2_seurat_scrna_copykat.md seurat object.
+```R
+
+#compare dmr sites with rna marker genes overlap
+library(Seurat)
+library(GenomicRanges)
+
+rna<-readRDS("/data/rmulqueen/projects/scalebio_dcis/rna/tenx_dcis.pf.rds")
+#just run on all cell types
+Idents(rna)<-rna$coarse_celltype
+table(Idents(rna))
+rna<-subset(rna,coarse_celltype %in% c("lumsec","lumhr","cancer","basal"))
+
+rna <- NormalizeData(rna, normalization.method = "LogNormalize", scale.factor = 10000)
+rna <- ScaleData(rna)
+rna <- JoinLayers(rna)
+
+res=0.2
+dims=1:50 #originally 1:50
+#umap here is just for visualization, not used for redefining cell types
+rna <- FindVariableFeatures(rna, selection.method = "vst", nfeatures = 10000)
+rna <- RunPCA(rna, features = VariableFeatures(object = rna),npcs=max(dims))
+plt<-ElbowPlot(rna, reduction = "pca",ndims=max(dims))
+ggsave(plt,file="test.elbow.rna.pdf",width=30)
+
+rna <- FindNeighbors(rna, dims = 1:50)
+rna <- FindClusters(rna, resolution = 0.2)
+rna <- RunUMAP(rna, dims = 1:50)
+
+rna@meta.data$fine_cluster_UMAP_X<-rna@reductions$umap@cell.embeddings[,1]
+rna@meta.data$fine_cluster_UMAP_Y<-rna@reductions$umap@cell.embeddings[,2]
+rna@meta.data$fine_clusters<-rna@meta.data$seurat_clusters
+
+plt<-DimPlot(rna,group.by=c("fine_clusters","sample","coarse_celltype","rna_ploidy"),raster=T,label=TRUE)
+ggsave(plt,file="test.rna.pdf",width=20,height=20)
+
+#assigning cancer to clusters those with majority aneuploid signatures
+aneuploid_clust_table<-table(rna$rna_ploidy,rna$fine_clusters)
+pct_table <- sweep(aneuploid_clust_table, 2, colSums(aneuploid_clust_table), FUN = "/") %>% 
+  t() %>% 
+  as.data.frame() %>% 
+  tidyr::pivot_wider(id_cols=Var2,names_from=Var1,values_from=Freq) %>% 
+  tibble::column_to_rownames(var="Var2") %>% 
+  mutate(Var2=NULL)
+
+#majority aneuploid clusters defined as cancer
+aneuploid_clusters<-colnames(pct_table)[pct_table["aneuploid",]>0.5]
+rna@meta.data[rna@meta.data$fine_clusters %in% aneuploid_clusters,]$coarse_celltype<-"cancer"
+
+
+#also assigning to those with majority single sample signatures, consistent with cancer clones
+#this just grabs cluster 10 and 19
+sample_clust_table<-table(rna$sample,rna$fine_clusters)
+pct_table <- sweep(sample_clust_table, 2, colSums(aneuploid_clust_table), FUN = "/") %>% 
+  t() %>% 
+  as.data.frame() %>% 
+  tidyr::pivot_wider(id_cols=Var2,names_from=Var1,values_from=Freq) %>% 
+  tibble::column_to_rownames(var="Var2") %>% 
+  mutate(Var2=NULL)
+
+#majority aneuploid clusters defined as cancer
+sample_based_cancer<-which(pct_table>0.9,arr.ind=T)
+sample_cancer_col<-names(pct_table)[sample_based_cancer[,2]]
+rna@meta.data[rna@meta.data$fine_clusters %in% sample_cancer_col,]$coarse_celltype<-"cancer"
+
+
+saveRDS(rna,file="03_rna.fine_celltyping.epithelial.rds")
+Idents(rna)<-rna$fine_celltype
+rna_fine_markers<-FindAllMarkers(rna,assay="RNA",only.pos=TRUE)
+rna_markers<-rna$coarse_celltype
+rna_fine_markers<-FindAllMarkers(rna,assay="RNA",only.pos=TRUE)
+rna<-readRDS(file="03_rna.fine_celltyping.epithelial.rds")
+
+
+```
+
+
 
 Functions
 ```R
@@ -196,7 +237,6 @@ write_binned_bigwigs<-function(celltype_tracks=celltype_tracks,
   })
   return(c(list(multiwig),track_lines))
   
-
 }
 
 generate_bigwig<-function(obj=immune,
@@ -476,8 +516,6 @@ plot_umap_panels_met<-function(x=epithelial,outname="epithelial"){
           limitsize=FALSE)
 }
 
-
-
 plot_umap_panels_rna<-function(x=rna,outname="epithelial"){
   #plot celltype
   plt_celltype<-x@meta.data %>% 
@@ -623,6 +661,13 @@ epithelial@metadata$celltype<-celltype_assignment[epithelial@metadata$fine_clust
     coord_fixed()
   ggsave(plt_celltype,file="03.1.epithelial.celltype.umap.pdf",width=20,height=20)
 
+
+ plt_celltype<-epithelial@metadata %>% 
+    ggplot(aes(x = fine_cluster_UMAP_X, y = fine_cluster_UMAP_Y, color = fine_cluster_phenograph)) +
+    geom_point() +
+    coord_fixed()
+  ggsave(plt_celltype,file="03.1.epithelial.cluster.umap.pdf",width=20,height=20)
+
 saveRDS(epithelial,file="03_scaledcis.fine_celltyping.epithelial.rds")
 
 #now assign cancer to cells in the same cluster and CNV called cancer cells
@@ -637,9 +682,9 @@ plt<-ggplot(hm_count, aes(x=group, y=cluster, fill=scaled,label=count)) +
   theme(axis.text.x = element_text(angle = 90))
 ggsave(plt,file="03_scaledcis.fine_celltyping.epithelial.cancer_cluster.heatmap.pdf")
 
-#assign celltype as cancer to those with >90% aneuploid cells within cluster
+#assign celltype as cancer to those with >80% aneuploid cells within cluster and those from single sample origin (which tracks with cancer clustering)
 #this is to pick up any cells with NA calls for aneuploidy
-cancer_assignment<-c("epithelial_30","epithelial_29","epithelial_27","epithelial_26","epithelial_25","epithelial_24","epithelial_23","epithelial_22","epithelial_21","epithelial_19","epithelial_16","epithelial_12","epithelial_1")
+cancer_assignment<-c("epithelial_30","epithelial_29","epithelial_27","epithelial_26","epithelial_25","epithelial_24","epithelial_23","epithelial_22","epithelial_21","epithelial_19","epithelial_16","epithelial_12","epithelial_1","epithelial_28","epithelial_20")
 
 
 #get clusters with cancer clones assigned, assign the whole cluster as cancer
@@ -650,12 +695,19 @@ epithelial@metadata[epithelial@metadata$fine_cluster_phenograph %in% cancer_assi
 epithelial@metadata[epithelial@metadata$cnv_ploidy_500kb=="aneuploid",]$celltype<-"cancer"
 
 saveRDS(epithelial,file="03_scaledcis.fine_celltyping.epithelial.rds")
+epithelial<-readRDS(file="03_scaledcis.fine_celltyping.epithelial.rds")
+```
 
+Assign cancer by RNA clusters as well
+```R
+
+```
+
+```R
 ###Generate UMAP plots for supp figure###
-#met plots
-
 #colors taken from manuscript_colors.md in ref folder
 #source(manuscript_colors.r)
+
 plot_umap_panels_met(x=epithelial,outname="epithelial")
 plot_umap_panels_rna(x=rna,outname="epithelial")
 

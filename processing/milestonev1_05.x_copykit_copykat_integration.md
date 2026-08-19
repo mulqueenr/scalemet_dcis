@@ -1,6 +1,8 @@
 
 NOTE: THIS DIDNT WORK WELL
-PASSED DATA TO REEM TO TRY
+PASSED DATA TO REEM TO TRY WITH HER METHOD DRAMA
+
+<!--
 Using CCA on matched genomic windows to try and integrate RNA and MET CNVs
 
 ```R
@@ -257,3 +259,5 @@ umap_coords <- uwot::umap(integrated_cca_space)
 pdf("test.pdf")
 plot(umap_coords, col = "blue", pch = 16, main = "Integrated Space")
 dev.off()
+
+-->

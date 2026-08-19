@@ -100,7 +100,7 @@ gsea_enrichment<-function(dmrs,species="human",
     print(paste("Running:",group1,"..."))
     #treat multiple gene overlaps as same logFC
     #set -Inf to -3 and Inf to 3
-    group_features<-dmrs %>%
+    group_features<-dmrs %>% as.data.frame() %>%
       dplyr::filter(comparison_name == group1) %>%
       dplyr::filter(dmr_padj<0.05) %>% 
       dplyr::filter(gene_names!="NA") %>% 
@@ -667,10 +667,10 @@ write_de_bed<-function(markers=markers,
   )
   
   markers$gene_id<-ensembl_vector[markers$gene]
-
-  markers$direction_de<-ifelse(markers$avg_log2FC>0,"upregulated","downregulated")
-
   markers[is.na(markers$gene_id) & startsWith(markers$gene,prefix="ENSG00"),]$gene_id<-markers[is.na(markers$gene_id) & startsWith(markers$gene,prefix="ENSG00"),]$gene
+  markers<-markers %>% filter(markers$avg_log2FC>0)
+
+  markers$direction_de<-"upregulated"
 
   markers[is.na(markers$gene_id),] #some antisense genes are still lost
   gtf_markers$gene_id<-unlist(lapply(strsplit(gtf_markers$gene_id,"[.]"),'[',1))
@@ -684,24 +684,29 @@ write_de_bed<-function(markers=markers,
   markers_split<-markers_grange %>% split(~comparison_name)
 
   lapply(markers_split,function(marker_out){
-    outname=marker_out$comparison_name[1]
-    #rename features
-    mcols(marker_out)$name <- mcols(marker_out)$gene_name
-    #convert score to integer
-    mcols(marker_out)$score <- ifelse(marker_out$avg_log2FC<0,1,2)
+    if(length(marker_out)>0){
+      outname=marker_out$comparison_name[1]
+      print(paste("Generating output bed for ",outname))
 
-    #set color for hypo and hyper
-    mcols(marker_out)$itemRgb <- ifelse(marker_out$avg_log2FC<0,"gray","orange")
-    mcols(marker_out)$thickStart <- start(marker_out)
-    mcols(marker_out)$thickEnd <- end(marker_out)
+      #rename features
+      mcols(marker_out)$name <- mcols(marker_out)$gene_name
+      #convert score to integer
+      mcols(marker_out)$score <- 1
 
-    mcols(marker_out)<-mcols(marker_out)[c("name","score","thickStart","thickEnd","itemRgb")]
-    export.bed(marker_out, con = paste0(output_folder,"/",outname,".",prefix,".de.bed"))
+      #set color for hypo and hyper
+      mcols(marker_out)$itemRgb <- "orange"
+      mcols(marker_out)$thickStart <- start(marker_out)
+      mcols(marker_out)$thickEnd <- end(marker_out)
+
+      mcols(marker_out)<-mcols(marker_out)[c("name","score","thickStart","thickEnd","itemRgb")]
+      export.bed(marker_out, con = paste0(output_folder,"/",outname,".",prefix,".de.bed"))
+    }
   })
 }
 
 annotate_dmrs<-function(dmr=dmr,
                         prefix="celltype_v_rest",
+                        order_by=paste0(names(celltype_col),"_v_rest"),
                         output_folder=output_plots_folder){
 
   hg38_lengths <- seqlengths(Seqinfo(genome = "hg38"))
@@ -769,6 +774,7 @@ annotate_dmrs<-function(dmr=dmr,
               as.data.frame() 
     dm_catsum$celltype<-unlist(lapply(strsplit(dm_catsum$comparison_name,"_"),"[",1))
     dm_catsum$celltype<-factor(dm_catsum$celltype,levels=names(celltype_col))
+    dm_catsum$order_by<-factor(dm_catsum$comparison_name,levels=order_by)
     dm_catsum$annot.type<-factor(dm_catsum$annot.type,levels=feature_priority)
 
     print("Plotting randomized set for comparison (and statistical test)...")
@@ -794,7 +800,7 @@ annotate_dmrs<-function(dmr=dmr,
     dm_catsum_rando$percent<-round(dm_catsum_rando$n/sum(dm_catsum_rando$n),2)
     dm_catsum_rando$annot.type<-factor(dm_catsum_rando$annot.type,levels=feature_priority)
 
-    plt<-ggplot(dm_catsum,aes(x=celltype,y=n,fill=annot.type))+
+    plt<-ggplot(dm_catsum,aes(x=comparison_name,y=n,fill=annot.type))+
     geom_bar(stat="identity")+#geom_text(aes(label = percent),  size = 5)+
     facet_wrap(celltype~direction,scale="free",ncol=2)
     
@@ -847,9 +853,10 @@ annotate_dmrs<-function(dmr=dmr,
     
     print("DMR sites that fall outside of annotation (sanity check)...")
     print(dmr_outside_annotation$dmr_outside_annotation)
-
     dm_catsum$celltype<-unlist(lapply(strsplit(dm_catsum$comparison_name,"_"),"[",1))
     dm_catsum$celltype<-factor(dm_catsum$celltype,levels=names(celltype_col))
+    dm_catsum$order_by<-factor(dm_catsum$comparison_name,levels=order_by)
+    dm_catsum$annot.type<-factor(dm_catsum$annot.type,levels=feature_priority)
     dm_catsum<-dm_catsum %>% dplyr::group_by(comparison_name,direction) %>% mutate(percent=round((n/sum(n))*100,2)) %>% as.data.frame() 
 
     print("Plotting randomized set for comparison (and statistical test)...")
@@ -874,7 +881,7 @@ annotate_dmrs<-function(dmr=dmr,
       quiet = FALSE) %>% as.data.frame()
     dm_catsum_rando$percent<-round(dm_catsum_rando$n/sum(dm_catsum_rando$n),2)
 
-    plt<-ggplot(dm_catsum,aes(x=celltype,y=n,fill=annot.type))+
+    plt<-ggplot(dm_catsum,aes(x=comparison_name,y=n,fill=annot.type))+
     geom_bar(stat="identity")+#geom_text(aes(label = percent),  size = 5)+
     facet_wrap(celltype~direction,scale="free",ncol=2)
     
@@ -886,16 +893,15 @@ annotate_dmrs<-function(dmr=dmr,
     saveRDS(dm_catsum,file=paste0(output_folder,"/",prefix,".","dmr.gene_feature.annotation.counts.rds"))
 
 }
-
-
-
 ```
 
-# 1. Celltype level comparison (one v rest)
+# 3. Within cell type across groups
 
-### Methylation DMR summary stats
+
+### DE calculation and plotting
 ```R
-comparison_set="dmr_across_celltype"
+comparison_set="dmr_within_celltype_across_group"
+
 #read in DMRs (cell type comparisons)
 output_folder<-paste(project_data_directory,"04_dmr",comparison_set,sep="/")
 input_dmr_folder<-paste(project_data_directory,"04_dmr",comparison_set,"dmr_out",sep="/")
@@ -903,48 +909,160 @@ input_dmr_folder<-paste(project_data_directory,"04_dmr",comparison_set,"dmr_out"
 output_plots_folder<-paste0(output_folder,"/plots")
 dir.create(output_plots_folder)
 
+output_gsea_folder<-paste0(output_folder,"/gsea")
+dir.create(output_gsea_folder)
+
+output_rna_folder<-paste0(output_folder,"/rna_de")
+dir.create(output_rna_folder)
+
+#save markers (by celltype)
+#run markers (celltype x group)
+#do similar DMR overlap comparison
+rna$celltype_by_group<-paste(rna$coarse_celltype,rna$Group,sep="_")
+Idents(rna)<-rna$celltype_by_group
+
+celltype_by_group_markers<-do.call("rbind",lapply(unique(rna$coarse_celltype),function(celltype){
+  print(paste("Running celltype x group comparisons for",celltype))
+  print(paste("Running one v rest comparisons by group"))
+
+  rna_sub<-subset(rna,cells=row.names(rna@meta.data[rna@meta.data$coarse_celltype==celltype,]))
+  #one v rest within cell type
+  markers_one_v_rest<-FindAllMarkers(rna_sub)
+  markers_one_v_rest$comparison_name<-paste0(markers_one_v_rest$cluster,"_v_rest")
+  markers_one_v_rest$ident.1=markers_one_v_rest$cluster
+  markers_one_v_rest$ident.2=paste0(celltype,"_rest")
+
+  #one v one within celltype
+  markers_one_v_one<-do.call("rbind",
+  lapply(unique(Idents(rna_sub)),function(i){
+    do.call("rbind",lapply(unique(Idents(rna_sub)),function(j){
+        if(i!=j){
+          print(paste("Running DE on",paste0(i,"_v_",j)))
+          markers_one_v_one<-FindMarkers(rna_sub,
+            ident.1=i,
+            ident.2=j)
+          markers_one_v_one$comparison_name<-paste0(i,"_v_",j)
+          markers_one_v_one$ident.1=i
+          markers_one_v_one$ident.2=j
+          markers_one_v_one$gene=row.names(markers_one_v_one)
+          markers_one_v_one$cluster<-markers_one_v_one$comparison_name
+          markers_one_v_one<-markers_one_v_one[,colnames(markers_one_v_rest)]
+          return(markers_one_v_one)
+        }}))
+  }))
+  out<-rbind(markers_one_v_rest,markers_one_v_one)
+  return(out)
+}))
+
+output_de_folder<-paste(project_data_directory,"04_dmr",comparison_set,"rna_de",sep="/")
+dir.create(output_de_folder)
+
+saveRDS(celltype_by_group_markers,paste0(output_de_folder,"/",comparison_set,".rna.DE.rds"))
+
+celltype_by_group_markers<-readRDS(paste0(output_de_folder,"/",comparison_set,".rna.DE.rds"))
+
+
+```
+
+### DMR plotting
+```R
+#read in dmr comparisons
+comparison_set<-"dmr_within_celltype_across_group"
+input_dmr_folder<-paste(project_data_directory,"04_dmr",comparison_set,"dmr_out",sep="/")
+
+output_plots_folder<-paste0(output_folder,"/plots")
+dir.create(output_plots_folder)
+
+group_order<-list()
+for(i in names(celltype_col)){
+  for(j in c("HBCA","DCIS","Synchronous","IDC")){
+    group_order<-c(group_order,paste(i,j,"v","rest",sep="_"))
+    for(k in c("HBCA","DCIS","Synchronous","IDC"))
+      if(j!=k){
+        group_order<-c(group_order,paste(i,j,"v",i,k,sep="_"))}
+  }
+}
+group_order<-unlist(group_order)
+
 dmr=do.call("rbind",lapply(list.files(input_dmr_folder,full.names=T,pattern=".collapse.rds"),function(i){readRDS(i)}))
 dmr$comparison_name=dmr$type
-
-#filter to cell type comparisons (one v rest)
-dmr<- dmr %>% filter(endsWith(comparison_name,suffix="_v_rest"))
-
+dmr <- GRanges(dmr)
 seqinfo(dmr) <- Seqinfo(
   seqnames = levels(seqnames(dmr)),
-  seqlengths = hg38_lengths[levels(seqnames(dmr))],
+  seqlengths =  seqlengths(Seqinfo(genome = "hg38"))[levels(seqnames(dmr))],
   isCircular = rep(FALSE,length(levels(seqnames(dmr)))),
   genome = "hg38")
 
+
 output_dmr_tracks_folder<-paste("/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/04_dmr/bigwig_output_dmr_celltype_group_500bp",comparison_set,"met_dmr",sep="/")
 dir.create(output_dmr_tracks_folder,recursive=T)
+write_dmr_bed(dmr=dmr,prefix="celltype_within_group",output_folder=output_dmr_tracks_folder)
 
-write_dmr_bed(dmr=dmr,prefix="celltype_v_rest",output_plots_folder=output_dmr_tracks_folder)
+#set group order
+group_order<-group_order[group_order %in% unique(dmr$comparison_name)]
 
 #dmr counts per celltype comparison
-dmr_counts<-dmr %>% 
-            filter(endsWith(type,suffix="_v_rest")) %>% 
-            group_by(type,direction) %>% 
-            summarize(count=n()) %>% 
+dmr_counts<-dmr %>% as.data.frame() %>% 
+            group_by(comparison_name,direction) %>% 
+            summarize(count=n(),length_kbp=sum(dmr_length)/1000) %>% 
             as.data.frame()
-dmr_counts$type<-gsub(dmr_counts$type,pattern="_v_rest",repl="")
-dmr_counts$type<-factor(dmr_counts$type,levels=names(celltype_col))
+dmr_counts$celltype<-unlist(lapply(strsplit(dmr_counts$comparison_name,"_"),"[",1))
+dmr_counts$celltype<-factor(dmr_counts$celltype,levels=names(celltype_col))
+dmr_counts$comparison_name<-factor(dmr_counts$comparison_name,levels=group_order)
 
+dmr_counts
 #plot number of dmrs per cell type (hyper and hypo)
-plt<-ggplot(dmr_counts,aes(x=type,y=count,fill=type))+
-      geom_bar(stat="identity")+scale_fill_manual(values=celltype_col)+
-      facet_wrap(~direction)+
+
+plt<-ggplot(dmr_counts,aes(x=comparison_name,y=count,fill=celltype,label=round(length_kbp,1)))+
+      geom_bar(stat="identity")+
+      geom_text(angle = 90, hjust = -0.2, vjust = 0.5)+
+      scale_fill_manual(values=celltype_col)+
+      facet_wrap(celltype~direction,ncol=2,scales = "free_x")+
       theme_minimal()+
       theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
-ggsave(plt,file=paste0(output_plots_folder,"/",comparison_set,".dmr_counts.pdf"))
+ggsave(plt,file=paste0(output_plots_folder,"/",comparison_set,".dmr_counts.pdf"),height=50,limitsize=FALSE)
 
-```
+
+dmr_counts_without_cancer <- dmr_counts %>% filter(celltype!="cancer") #for y axis
+
+plt<-ggplot(dmr_counts_without_cancer,aes(x=comparison_name,y=count,fill=celltype,label=round(length_kbp,1)))+
+      geom_bar(stat="identity")+
+      geom_text(angle = 90, hjust = -0.2, vjust = 0.5)+
+      scale_fill_manual(values=celltype_col)+
+      facet_wrap(celltype~direction,ncol=2,scales = "free_x")+
+      theme_minimal()+
+      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+ggsave(plt,file=paste0(output_plots_folder,"/",comparison_set,".dmr_counts_without_cancer.pdf"),height=50,limitsize=FALSE)
+
+
+obj@metadata$celltype_group<-paste0(obj@metadata$celltype,"_",obj@metadata$Group)
+celltype_group_order<-unlist(lapply(names(celltype_col),function(celltype){
+  lapply(c("HBCA","DCIS","Synchronous","IDC"), function(group){
+    paste0(celltype,"_",group)})}))
+obj@metadata$celltype_group<-factor(obj@metadata$celltype_group,levels=celltype_group_order)
+obj@metadata$Group<-factor(obj@metadata$Group,c("HBCA","DCIS","Synchronous","IDC"))
+plt<-ggplot(obj@metadata,aes(x=Sample,y=mcg_pct,color=celltype))+geom_boxplot(fill=NA,outlier.shape=NA)+scale_color_manual(values=celltype_col)+facet_wrap(celltype~Group,scale="free_x",ncol=4)+theme_minimal()+theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))+ylim(c(0,100))+ylab("Percent Methylation")+xlab("Celltype, group, sample methylation")
+
+ggsave(plt,file=paste0(output_plots_folder,"/",comparison_set,".perc_met.pdf"),height=40,width=10,limitsize=FALSE)
+
+
+plt<-ggplot(obj@metadata,aes(x=obj@metadata$cg_cov,y=mcg_pct,color=Sample))+geom_point()+facet_wrap(celltype~Group,scale="free_x",ncol=4)+theme_minimal()+theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))+ylim(c(0,100))+ylab("Percent Methylation")+xlab("CGs covered")
+
+ggsave(plt,file=paste0(output_plots_folder,"/",comparison_set,".perc_met.pdf"),height=40,width=40,limitsize=FALSE)
+
+paste0(names(celltype_col),"_",rep(c("HBCA","DCIS","Synchronous","IDC"),n=length(names)))
+plt<
+
+
+``
 
 ## DMR annotation
 Compare DMR features over genes and CGIsland annotations.
 
 ```
-annotate_dmrs(dmr=dmr,prefix=comparison_set,output_folder=output_plots_folder)
+annotate_dmrs(dmr=dmr,prefix=comparison_set,output_folder=output_plots_folder,order_by=group_order)
 ```
+
 
 ### Run GSEA on methylation dmrs
 
@@ -955,77 +1073,76 @@ dir.create(output_gsea_folder)
 #run GSEA on the DMR sites
 gsea_across_sets(obj, 
                   dmr,
-                  sample_name="celltype", 
+                  sample_name="within_celltype", 
                   prefix=comparison_set,
                   output_gsea_directory=output_gsea_folder)
 
 #plot GSEA results
 #transcription factor targets GSEA
-gsea<-readRDS(paste0(output_gsea_folder,"/",comparison_set,".GSEA_enrichment.celltype.TFT.rds"))
+gsea<-readRDS(paste0(output_gsea_folder,"/",comparison_set,".GSEA_enrichment.within_celltype.TFT.rds"))
 gsea$names<-gsub(gsea$pathway,pattern="_TARGET_GENES",repl="") #make names a bit more readable
 plot_gsea(gsea=gsea,out_setname="TFT",prefix=comparison_set,output_directory=output_plots_folder)
 
 #cancer hallmark
-gsea<-readRDS(paste0(output_gsea_folder,"/",comparison_set,".GSEA_enrichment.celltype.hallmark.rds"))
+gsea<-readRDS(paste0(output_gsea_folder,"/",comparison_set,".GSEA_enrichment.within_celltype.hallmark.rds"))
 #get top hits per group
 gsea$names<-gsea$pathway
-plot_gsea(gsea=gsea,out_setname="hallmark",prefix=comparison_set,output_directory=output_plots_folder)
+plot_gsea(gsea=gsea,order_by=group_order,out_setname="hallmark",prefix=comparison_set,output_directory=output_plots_folder)
 
 #cancer 3C
-gsea<-readRDS(paste0(output_gsea_folder,"/",comparison_set,".GSEA_enrichment.celltype.3CA.rds"))
+gsea<-readRDS(paste0(output_gsea_folder,"/",comparison_set,".GSEA_enrichment.within_celltype.3CA.rds"))
 #get top hits per group
 gsea$names<-gsea$pathway
 plot_gsea(gsea=gsea,out_setname="3CA",prefix=comparison_set,output_directory=output_plots_folder)
 
 #position
-gsea<-readRDS(paste0(output_gsea_folder,"/",comparison_set,".GSEA_enrichment.celltype.position.rds"))
+gsea<-readRDS(paste0(output_gsea_folder,"/",comparison_set,".GSEA_enrichment.within_celltype.position.rds"))
 #get top hits per group
 gsea$names<-gsea$pathway
 plot_gsea(gsea=gsea,out_setname="position",prefix=comparison_set,output_directory=output_plots_folder)
 ```
 
-## Run RNA DE
+## Plot RNA DE
 ```R
+celltype_by_group_markers<-readRDS(paste0(output_de_folder,"/",comparison_set,".rna.DE.rds"))
 
-output_de_folder<-paste(project_data_directory,"04_dmr","dmr_across_celltype","rna_de",sep="/")
-dir.create(output_de_folder)
 
-#calculate rna differences per cell type (one v rest)
-table(Idents(rna))
-markers<-FindAllMarkers(rna)
-markers$comparison_name<-paste0(markers$cluster,"_v_rest")
-saveRDS(markers,paste0(output_de_folder,"/",comparison_set,".rna.DE.rds"))
-
-markers<-readRDS(paste0(output_de_folder,"/",comparison_set,".rna.DE.rds"))
-
-markers<-markers %>% filter(p_val_adj<0.05) %>% filter(avg_log2FC>1)
+markers<-celltype_by_group_markers %>% filter(p_val_adj<0.05) %>% filter(avg_log2FC>1)
 
 output_de_tracks_folder<-paste("/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/04_dmr/bigwig_output_dmr_celltype_group_500bp",comparison_set,"rna_de",sep="/")
 dir.create(output_de_tracks_folder)
 
-write_de_bed(markers=markers,prefix="celltype_v_rest",output_folder=output_de_tracks_folder)
+write_de_bed(markers=markers,prefix=comparison_set,output_folder=output_de_tracks_folder)
 
-marker_counts<-markers %>% 
-            filter(p_val_adj<0.05) %>% 
-            mutate(direction=ifelse(avg_log2FC>0,"upregulated","downregulated")) %>%
-            group_by(cluster,direction) %>% 
+
+markers$comparison_name<-factor(markers$comparison_name,levels=group_order)
+
+
+#dmr counts per celltype comparison
+de_counts<-markers %>% 
+            group_by(comparison_name) %>% 
             summarize(count=n()) %>% 
             as.data.frame()
 
-marker_counts$cluster<-factor(marker_counts$cluster,levels=names(celltype_col))
+de_counts$celltype<-unlist(lapply(strsplit(as.character(de_counts$comparison_name),"_"),"[",1))
+
+de_counts$celltype<-factor(de_counts$celltype,levels=names(celltype_col))
+
 #plot number of dmrs per cell type (hyper and hypo)
-plt<-ggplot(marker_counts,aes(x=cluster,y=count,fill=cluster))+
+plt<-ggplot(de_counts,aes(x=comparison_name,y=count,fill=celltype))+
       geom_bar(stat="identity")+scale_fill_manual(values=celltype_col)+
-      facet_wrap(~direction)+
+      facet_wrap(~celltype,ncol=1,scales = "free")+
       theme_minimal()+
       theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
-ggsave(plt,file=paste0(output_plots_folder,"/",comparison_set,".celltype_DE_counts.pdf"))
+ggsave(plt,file=paste0(output_plots_folder,"/",comparison_set,".celltype_DE_counts.pdf"),height=50,limitsize=FALSE)
+
 ```
 
 ## plot GSEA results on RNA
 Using SeuratExtend for enrichment analysis
 #https://github.com/huayc09/SeuratExtend/blob/master/vignettes/GSEA.md#conduct-gsea-using-the-go-or-reactome-database
 
+#### FIX THIS PART (ALSO REMOVE DOWNSAMPLING??)
 ```R
 
 calculate_rna_pathway(rna,out_name="position",cores=50,prefix=comparison_set,
@@ -1045,33 +1162,113 @@ calculate_rna_pathway(rna,out_name="canonical",cores=50,prefix=comparison_set,
   output_directory=output_plots_folder)
 ```
 
+
+
+
 ## Now plot overlap of RNA and MET DMRs
 ```R
 plot_marker_dmr_overlap(markers=markers,
                         dmrs=dmr,
                         prefix=comparison_set,
                         output_plots_folder=output_plots_folder,
-                        order_by=paste0(names(celltype_col),"_v_rest"))
+                        order_by=group_order)
 
 ```
 
-## Now plot chromvar motif enrichment over 500bp dmrs
+
+--
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## DMR annotation
+```R
+
+```
+
+### DE Plotting
+```R
+
+celltype_by_group_markers$comparison_name<-factor(celltype_by_group_markers$comparison_name,levels=group_order)
+
+
+celltype_by_group_markers$direction<-ifelse(celltype_by_group_markers$avg_log2FC<0,"downregulated","upregulated")
+
+
+#dmr counts per celltype comparison
+de_counts<-celltype_by_group_markers %>% 
+            group_by(type,direction) %>% 
+            summarize(count=n()) %>% 
+            as.data.frame()
+
+de_counts$celltype<-unlist(lapply(strsplit(as.character(de_counts$type),"_"),"[",1))
+
+#plot number of dmrs per cell type (hyper and hypo)
+plt<-ggplot(de_counts,aes(x=type,y=count,fill=celltype))+
+      geom_bar(stat="identity")+scale_fill_manual(values=celltype_col)+
+      facet_wrap(celltype~direction,ncol=2,scales = "free")+
+      theme_minimal()+
+      theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+ggsave(plt,file=paste0(output_plots_folder,"/",comparison_set,".celltype_DE_counts.pdf"),height=50,limitsize=FALSE)
+
+```
+
+### plot GSEA results on RNA
 
 ```R
-input_dmr_folder<-paste(project_data_directory,"04_dmr",comparison_set,"dmr_out",sep="/")
+gsea_across_sets_rna(rna, celltype_by_group_markers, 
+                    sample_name="celltype_within.rna", 
+                    prefix=comparison_set,
+                    output_gsea_directory=output_gsea_folder)
 
-dmr_500=do.call("rbind",lapply(list.files(input_dmr_folder,full.names=T,pattern=".dmr.filt.rds"),function(i){readRDS(i)}))
-dmr$comparison_name=dmr$type
+#transcription factor targets GSEA
+gsea<-readRDS(paste0(output_gsea_folder,"/",comparison_set,".GSEA_enrichment.celltype_within.rna.TFT.rds"))
+gsea$names<-gsub(gsea$pathway,pattern="_TARGET_GENES",repl="") #make names a bit more readable
+plot_gsea(gsea=gsea,out_setname="TFT",prefix=paste0(comparison_set,".rna"),output_directory=output_plots_folder,order_by=group_order)
 
-#filter to cell type comparisons (one v rest)
-dmr<- dmr %>% filter(endsWith(comparison_name,suffix="_v_rest"))
+#cancer hallmark
+gsea<-readRDS(paste0(output_gsea_folder,"/",comparison_set,".GSEA_enrichment.celltype_within.rna.hallmark.rds"))
+#get top hits per group
+gsea$names<-gsea$pathway
+plot_gsea(gsea=gsea,out_setname="hallmark",prefix=paste0(comparison_set,".rna"),output_directory=output_plots_folder,order_by=group_order)
 
-seqinfo(dmr) <- Seqinfo(
-  seqnames = levels(seqnames(dmr)),
-  seqlengths = hg38_lengths[levels(seqnames(dmr))],
-  isCircular = rep(FALSE,length(levels(seqnames(dmr)))),
-  genome = "hg38")
+#cancer 3C
+gsea<-readRDS(paste0(output_gsea_folder,"/",comparison_set,".GSEA_enrichment.celltype_within.rna.3CA.rds"))
+#get top hits per group
+gsea$names<-gsea$pathway
+plot_gsea(gsea=gsea,out_setname="3CA",prefix=paste0(comparison_set,".rna"),output_directory=output_plots_folder,order_by=group_order)
 
-#could use plotting tracks for percentages? then partition to hypomethylated
+#position
+gsea<-readRDS(paste0(output_gsea_folder,"/",comparison_set,".GSEA_enrichment.celltype_within.rna.position.rds"))
+#get top hits per group
+gsea$names<-gsea$pathway
+plot_gsea(gsea=gsea,out_setname="position",prefix=paste0(comparison_set,".rna"),output_directory=output_plots_folder,order_by=group_order)
+```
+
+Overlap per cell type for within comparisons
+```R
+unique(dmr$comparison_name)[!(unique(dmr$comparison_name) %in% unique(celltype_by_group_markers$comparison_name))]
+#rna is just missing HBCA comparisons (couldnt find the one clone in HBCA sample)
+
+dmr<-dmr[dmr$comparison_name %in% unique(celltype_by_group_markers$comparison_name)]
+```
+
+### Plot GSEA and DMR overlap
+```R
+plot_marker_dmr_overlap(markers=celltype_by_group_markers,
+                        dmrs=dmr,
+                        prefix=comparison_set,
+                        output_plots_folder=output_plots_folder,
+                        order_by=group_order)
 
 ```

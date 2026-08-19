@@ -260,6 +260,7 @@ dat<-subsetObject(dat,cells=row.names(dat@metadata[!(dat@metadata$cnv_clonename_
 #require at least 50 cells for clones passing filter
 #clones_passing_filter <-table(dat@metadata$cnv_clonename_500kb)[table#(dat@metadata$cnv_clonename_500kb)>50]
 #note that bigwig output in the dropbox will still be 50 cell requirement (since its hard to tell otherwise)
+
 table(dat@metadata$cnv_clonename_500kb)
 
 #dat<-subsetObject(dat,cells=row.names(dat@metadata[dat@metadata$cnv_clonename_500kb %in% names#(clones_passing_filter),]))

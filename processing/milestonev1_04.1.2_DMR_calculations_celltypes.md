@@ -427,7 +427,7 @@ row.names(comparisons_without)<-comparisons_without$name
 
 #run dmr
 comparisons<-comparisons_without
-output_folder<-paste(project_data_directory,"04_dmr","dmr_across_celltype",sep="/")
+output_folder<-paste(project_data_directory,"04_dmr","dmr_across_celltype","dmr_out",sep="/")
 dir.create(output_folder)
 suffix="dmr_across_celltype"
 dmr_out<-lapply(row.names(comparisons),comparison_set_dmr)
@@ -464,7 +464,7 @@ row.names(comparisons_HBCA_only)<-comparisons_HBCA_only$name
 
 
 comparisons<-comparisons_HBCA_only
-output_folder<-paste(project_data_directory,"04_dmr","dmr_across_celltype_HBCAonly",sep="/")
+output_folder<-paste(project_data_directory,"04_dmr","dmr_across_celltype_HBCAonly","dmr_out",sep="/")
 dir.create(output_folder)
 suffix="dmr_across_celltype_HBCAonly"
 dmr_out<-lapply(row.names(comparisons),comparison_set_dmr)
@@ -498,7 +498,7 @@ comparisons_within <- comparisons_within[complete.cases(comparisons_within),]
 row.names(comparisons_within)<-comparisons_within$name
 
 comparisons<-comparisons_within
-output_folder<-paste(project_data_directory,"04_dmr","dmr_within_celltype_across_group",sep="/")
+output_folder<-paste(project_data_directory,"04_dmr","dmr_within_celltype_across_group","dmr_out",sep="/")
 dir.create(output_folder)
 suffix="within_celltype_across_group"
 dmr_out<-lapply(row.names(comparisons),comparison_set_dmr)

@@ -9,11 +9,12 @@ Running DMR comparisons across different sets.
 2. For all samples with >=1 clone (clones > 50 cells):
 - Run clone vs lumhr_HBCA set
 
-3. For classes of 1q gain, 16q gain, 16p loss:
+3. For classes of WGD:
+- Run WGD groups against lumhr_HBCA
+
+4. For classes of 1q gain, 16q gain, 16p loss:
 - Run aggregate clones groups against lumhr_HBCA
 
-4. For classes of WGD:
-- Run WGD groups against lumhr_HBCA
 
 ```R
 
@@ -462,7 +463,7 @@ comparisons_within <- comparisons_within[complete.cases(comparisons_within),]
 row.names(comparisons_within)<-comparisons_within$name
 
 comparisons<-comparisons_within
-output_folder<-paste(project_data_directory,"04_dmr","dmr_within_sample_across_clones",sep="/")
+output_folder<-paste(project_data_directory,"04_dmr","dmr_within_sample_across_clones","dmr_out",sep="/")
 dir.create(output_folder)
 suffix="dmr_within_sample_across_clones"
 dmr_out<-lapply(row.names(comparisons),comparison_set_dmr)
@@ -515,7 +516,7 @@ row.names(comparisons_without)<-comparisons_without$name
 
 #run dmr
 comparisons<-comparisons_without
-output_folder<-paste(project_data_directory,"04_dmr","dmr_clones_to_lumhrHBCA",sep="/")
+output_folder<-paste(project_data_directory,"04_dmr","dmr_clones_to_lumhrHBCA","dmr_out",sep="/")
 dir.create(output_folder)
 suffix="dmr_clones_to_lumhrHBCA"
 dmr_out<-lapply(row.names(comparisons),comparison_set_dmr)
@@ -573,7 +574,7 @@ comparisons <- comparisons[complete.cases(comparisons),]
 row.names(comparisons)<-comparisons$name
 
 
-output_folder<-paste(project_data_directory,"04_dmr","dmr_wgd_clones",sep="/")
+output_folder<-paste(project_data_directory,"04_dmr","dmr_wgd_clones","dmr_out",sep="/")
 dir.create(output_folder)
 suffix="dmr_wgd_clones"
 dmr_out<-lapply(row.names(comparisons),comparison_set_dmr)
@@ -581,8 +582,13 @@ dmr_out<-do.call("rbind",dmr_out)
 
 ```
 
-#3. der(1,16) clones
+3. der(1,16) clones
+
 ```R
+clone500kbwindows<-readRDS(file="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/04_dmr/bigwig_output_dmr_clones_500bp/03.1.VMR_umap.dmr_clones_500bp.fine_cluster.500bp_windows.rds")
+
+pct_mat<-clone500kbwindows[["pct_matrix"]] 
+sum_mat<-clone500kbwindows[["sum_matrix"]] 
 
 #diploid cells with clones that lead to the t(1,16) genotype
 chr1q_2n_16p_2n_16q_2n=c(
@@ -599,14 +605,12 @@ chr1q_2n_16p_2n_16q_2n=c(
   "BCMDCIS94T_24hTis_diploid",
   "BCMDCIS97T_diploid",
   "BCMHBCA03R_diploid",
-  "BCMHBCA83L−3h_diploid",
   "ECIS26T_diploid",
   "ECIS36T_diploid")
   
 chr1q_2n_16p_2n_16q_1n=c("BCMDCIS74T_c2",
                         "BCMDCIS41T_c1",
-                        "BCMDCIS28T_c1",
-                        "BCMHBCA83L−3h_c1")
+                        "BCMDCIS28T_c1")
 
 chr1q_2n_16p_3n_16q_1n=c("BCMDCIS66T_c2")
 
@@ -629,7 +633,7 @@ chr1q_3n_16p_2n_16q_1n=c("BCMDCIS70T_c2",
                         "BCMDCIS94T_24hTis_c1",
                         "BCMDCIS79T_24hTis_DCIS_c1",
                         "BCMDCIS94T_24hTis_c2",
-                        "ECIS26T_c2ECIS26T_c3",
+                        "ECIS26T_c2","ECIS26T_c3",
                         "BCMDCIS97T_c2",
                         "ECIS36T_c2",
                         "ECIS36T_c3")
@@ -640,15 +644,19 @@ chr1q_4n_16p_2n_16q_1n=c("BCMDCIS41T_c4","BCMDCIS41T_c3")
 
 chr1q_4n_16p_3n_16q_1n=c("BCMDCIS41T_c5",
                           "BCMDCIS41T_c6",
-                          "BCMDCIS70T_c3",
                           "BCMDCIS28T_c2",
                           "BCMDCIS79T_24hTis_DCIS_c2",
-                          "BCMDCIS92T_24hTis_c3",
                           "BCMDCIS97T_c3",
-                          "BCMDCIS97T_c4",
-                          "BCMDCIS79T_24hTis_DCIS_c5",
-                          "BCMDCIS92T_24hTis_c4")
+                          "BCMDCIS79T_24hTis_DCIS_c5")
 
+chr1q_2n_16p_2n_16q_2n<-chr1q_2n_16p_2n_16q_2n[chr1q_2n_16p_2n_16q_2n %in% unique(dat@metadata$cnv_clonename_500kb)]
+chr1q_2n_16p_2n_16q_1n<-chr1q_2n_16p_2n_16q_1n[chr1q_2n_16p_2n_16q_1n %in% unique(dat@metadata$cnv_clonename_500kb)]
+chr1q_2n_16p_3n_16q_1n<-chr1q_2n_16p_3n_16q_1n[chr1q_2n_16p_3n_16q_1n %in% unique(dat@metadata$cnv_clonename_500kb)]
+chr1q_3n_16p_2n_16q_2n<-chr1q_3n_16p_2n_16q_2n[chr1q_3n_16p_2n_16q_2n %in% unique(dat@metadata$cnv_clonename_500kb)]
+chr1q_3n_16p_2n_16q_1n<-chr1q_3n_16p_2n_16q_1n[chr1q_3n_16p_2n_16q_1n %in% unique(dat@metadata$cnv_clonename_500kb)]
+chr1q_3n_16p_3n_16q_1n<-chr1q_3n_16p_3n_16q_1n[chr1q_3n_16p_3n_16q_1n %in% unique(dat@metadata$cnv_clonename_500kb)]
+chr1q_4n_16p_2n_16q_1n<-chr1q_4n_16p_2n_16q_1n[chr1q_4n_16p_2n_16q_1n %in% unique(dat@metadata$cnv_clonename_500kb)]
+chr1q_4n_16p_3n_16q_1n<-chr1q_4n_16p_3n_16q_1n[chr1q_4n_16p_3n_16q_1n %in% unique(dat@metadata$cnv_clonename_500kb)]
 dat@metadata$cnv_comparison_set<-NA
 dat@metadata[(dat@metadata$Group=="HBCA") & (dat@metadata$celltype=="lumhr"),]$cnv_comparison_set<-"HBCA_lumhr"
 dat@metadata[dat@metadata$cnv_clonename_500kb %in% chr1q_2n_16p_2n_16q_2n,]$cnv_comparison_set<-"chr1q_2n_16p_2n_16q_2n"
@@ -698,7 +706,7 @@ comparisons<-comparisons_der1_16
 
 comparisons <- comparisons[complete.cases(comparisons),]
 row.names(comparisons)<-comparisons$name
-output_folder<-paste(project_data_directory,"04_dmr","dmr_der1_16_clones",sep="/")
+output_folder<-paste(project_data_directory,"04_dmr","dmr_der1_16_clones","dmr_out",sep="/")
 dir.create(output_folder)
 suffix="dmr_der1_16_clones"
 dmr_out<-lapply(row.names(comparisons),comparison_set_dmr)

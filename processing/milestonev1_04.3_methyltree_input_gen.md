@@ -242,6 +242,10 @@ for(i in sample_names_priority){
     print(strrep("-", 30))
 }
 
+#66t keeps throwing error
+methyltree_output(obj=obj,sample_name=c("BCMDCIS66T"),threads=1) 
+ethyltree_output(obj=obj,sample_name=c("BCMDCIS102T_24hTis"),threads=1) 
+
 #run 79T together since from same sample
 methyltree_output(obj=obj,sample_name=c('BCMDCIS79T_24hTis_DCIS','BCMDCIS79T_24hTis_IDC'),threads=1) 
 

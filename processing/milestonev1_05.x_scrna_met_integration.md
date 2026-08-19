@@ -1,5 +1,317 @@
 Integration of seurat object with methylation object.
+Note that all the commented out section did not work well. Mostly focused on the use of LIGER for integration. Passing to Reem to try
 
+- Summarizing methylation over gene body (percent and score)
+- Summarizing methylation over promoter + 5kbp downstream (percent and score)
+
+Pass to Reem
+1. Summarized methylation windows per cell
+2. Metadata of assigned cell types
+3. List of marker genes that track with methylation per celltype
+
+Plan is:
+1. Run window features (promoter + 2kbp downstream, promoter + 2kbp up and downstream TSS, gene body)
+2. Summarize methylation per cell
+3. Run correlation per cell type for each window
+
+Load libraries
+
+```R
+library(amethyst)
+library(rtracklayer)
+library(GenomicRanges)
+library(data.table)
+library(dplyr)
+library(Matrix)
+library(Seurat)
+library(AnnotationDbi)
+library(org.Hs.eg.db)
+library(annotatr)
+library(GenomeInfoDb)
+
+library(parallel)
+options(future.globals.maxSize= 500000*1024^2) #80gb limit for parallelizing
+options(scipen = 0)
+set.seed(111)
+```
+
+Set up environment
+```R
+project_data_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1"
+
+#read in object from directory
+task_cpus=300
+processing_folder="04_integration"
+wd=paste(sep="/",project_data_directory,processing_folder)
+system(paste0("mkdir -p ",wd))
+setwd(wd)
+
+#read RNA
+rna<-readRDS("/data/rmulqueen/projects/scalebio_dcis/rna/tenx_dcis.pf.rds")
+rna<-subset(rna,cells=row.names(rna@meta.data)[!(rna$coarse_celltype %in% c("suspected_doublet"))])
+Idents(rna)<-rna$coarse_celltype
+
+#read methylation
+obj<-readRDS(file=paste(project_data_directory,"03_fine_celltyping","03_scaledcis.final_celltypes.amethyst.rds",sep="/"))
+
+#read GTF for RNA annotation
+gtf<-import("/home/rmulqueen/ref/refdata-cellranger-arc-GRCh38-2020-A-2.0.0/gencode.v44.annotation.gtf.gz")
+gtf$gene<-gtf$gene_name
+```
+
+Make window sets and save
+- Using cellrange gencode gtf file to grab the gene body and promoter positions
+- Promoters described as 2kbp upstream of TSS
+```R
+#promoter regions (doing all by bed)
+
+#
+print("Using GTF file to annotate gene locations...")
+gtf_markers<- gtf %>% as.data.frame() %>% filter(type=="gene") %>% filter(gene_type=="protein_coding") 
+gtf_markers<-gtf_markers[gtf_markers$gene %in% Features(rna),] %>% GRanges()
+
+promoters<-GRanges(gtf_markers) %>% promoters(upstream=2000,downstream=0)
+promoters_plus2kb<-GRanges(gtf_markers) %>% promoters(upstream=2000,downstream=2000)
+genebody<-GRanges(gtf_markers)
+promoter_genebody<- resize(gtf_markers, width = width(gtf_markers) + 2000, fix = "end")
+
+# Clean up out-of-bound coordinates (e.g., coordinates < 1)
+#make named list for output
+outlist<-setNames(list(promoters,promoters_plus2kb,genebody,promoter_genebody),nm=c("promoters","promotersplus2kbp","genebody","promoter_genebody"))
+#apply calculation on both CG percentage and score for each set of windows for all cells
+#save output to directory
+lapply(1:length(outlist),function(window_set){
+  outname=names(outlist)[window_set]
+  win_out <- makeWindows(obj, 
+                    bed = as.data.frame(outlist[[window_set]])[,1:3],
+                    type = "CG", 
+                    metric = "percent", 
+                    threads = 100, 
+                    index = "chr_cg", 
+                    nmin = 5) 
+  saveRDS(win_out,paste0("04_met_rna_integration.",outname,".CGpercentage.rds"))
+  win_out <- makeWindows(obj, 
+                    bed = as.data.frame(outlist[[window_set]])[,1:3],
+                    type = "CG", 
+                    metric = "score", 
+                    threads = 100, 
+                    index = "chr_cg", 
+                    nmin = 5) 
+  saveRDS(win_out,paste0("04_met_rna_integration.",outname,".score.rds"))
+  saveRDS(outlist[[window_set]],paste0(outname,".genomicRanges.rds"))
+})
+
+```
+Now run correlation between features and RNA
+- reassign windows to gene names
+- pairwise correlation (mean met, mean RNA) split by cell types
+
+```R
+for(outname in c("promoters","promotersplus2kbp","genebody")){
+  met_win<-readRDS(paste0("04_met_rna_integration.",outname,".CGpercentage.rds"))
+  window_ranges<-readRDS(paste0(outname,".genomicRanges.rds"))
+  dim(met_win)
+  #[1] 19044 29801
+
+  window_ranges$window_name<-paste(seqnames(window_ranges),start(window_ranges),end(window_ranges),sep="_")
+  window_ranges<-window_ranges[!duplicated(window_ranges$window_name),]
+  window_ranges<-window_ranges[!duplicated(window_ranges$gene),]
+  length(window_ranges)
+  cgi<-import("/data/rmulqueen/projects/scalebio_dcis/ref/cpgIslandExt.bed")
+
+  window_ranges$cgi<-ifelse(1:length(window_ranges) %in% queryHits(findOverlaps(window_ranges, cgi)), "cgi","noncgi")
+  table(window_ranges$cgi)
+
+    # cgi noncgi 
+  #10943   8428 
+
+  met_win<-met_win[row.names(met_win)%in% window_ranges$window_name,]
+
+  row.names(met_win)<-window_ranges[window_ranges$window_name %in% row.names(met_win),]$gene
+
+  met_win[1:5,1:5]
+
+  #add celltype information to methylation window
+  met_win<- met_win %>% t() %>% as.data.frame()
+  celltype_set<-setNames(obj@metadata$celltype,nm=row.names(obj@metadata))
+  met_win$celltype<-celltype_set[row.names(met_win)]
+
+  #summarize mean methylation over features per gene
+  met_win<-met_win %>% 
+          group_by(celltype) %>% 
+          summarise(across(where(is.numeric), ~ mean(.x, na.rm = TRUE))) %>% 
+          tibble::column_to_rownames(var = "celltype") %>% mutate(celltype=NULL) %>%
+          as.data.frame() %>% t() %>% as.data.frame()
+
+  #using mean expression per cell instead
+  Idents(rna)<-rna$coarse_celltype
+  rna_sub<-subset(rna,downsample=100,features=row.names(met_win))
+  
+  #select top 5000 variable genes
+  rna_win<-FetchData(rna_sub,assay="RNA",vars=row.names(met_win),layer="data")
+  rna_win$celltype<-rna_sub$coarse_celltype[row.names(rna_win)]
+
+  rna_win<-rna_win %>% 
+            group_by(celltype) %>% 
+            summarise(across(where(is.numeric), ~ mean(.x, na.rm = TRUE))) %>% 
+            tibble::column_to_rownames(var = "celltype") %>% mutate(celltype=NULL) %>%
+            as.data.frame() 
+
+  rna_win<-t(scale(rna_win,center=T,scale=T))
+  #met_win<-scale(met_win,center=T)
+
+  #pairwise correlation between features per cell type
+  plt_list<-lapply(unique(obj@metadata$celltype), function(celltype) {
+    var_feat<-VariableFeatures(FindVariableFeatures(subset(rna_sub,celltype==celltype,nfeatures=5000)))
+
+    rna_feat<-rna_win[var_feat,celltype]
+    met_feat<-met_win[var_feat,celltype]
+    feat<-data.frame(rna=rna_win[row.names(met_win),celltype],
+                        met=met_win[,celltype])
+    row.names(feat)<-row.names(met_win)
+    feat$cgi_overlap<-window_ranges[window_ranges$gene %in% row.names(feat),]$cgi
+    
+  cor_cgi<-cor(feat[feat$cgi_overlap=="cgi",]$rna,
+                  feat[feat$cgi_overlap=="cgi",]$met,
+              use="pairwise.complete",method="spearman")
+
+  cor_nocgi<-cor(feat[feat$cgi_overlap=="noncgi",]$rna,
+                  feat[feat$cgi_overlap=="noncgi",]$met,
+              use="pairwise.complete",method="spearman")
+
+    plt<-ggplot(feat,aes(x=met,y=rna,color=cgi_overlap))+
+      geom_point()+geom_density_2d_filled(alpha = 0.5)+
+      geom_smooth(method = "lm", formula = y ~ x)+
+      xlab("MET")+
+      ylab("RNA")+
+      ggtitle(paste0(celltype,"\n",
+      "Spearman cor without cgioverlap:",as.character(round(cor_nocgi,2)),"\n",
+      "Spearman cor with cgioverlap:",as.character(round(cor_cgi,2))))
+  return(plt)
+  })
+  ggsave(patchwork::wrap_plots(plt_list,nrow=2),file=paste0("test.correlation.",outname,".pdf"),width=50,height=20,limitsize=F)
+}
+```
+
+Combine cells into metacells per celltype to reduce noise, find which genes (across cell types correlate to expression)
+```R
+library(ggrepel)
+for(outname in c("promoters","promotersplus2kbp","genebody")){
+  met_win<-readRDS(paste0("04_met_rna_integration.",outname,".CGpercentage.rds"))
+  window_ranges<-readRDS(paste0(outname,".genomicRanges.rds"))
+  dim(met_win)
+
+  window_ranges$window_name<-paste(seqnames(window_ranges),start(window_ranges),end(window_ranges),sep="_")
+  window_ranges<-window_ranges[!duplicated(window_ranges$window_name),]
+  window_ranges<-window_ranges[!duplicated(window_ranges$gene),]
+  length(window_ranges)
+  cgi<-import("/data/rmulqueen/projects/scalebio_dcis/ref/cpgIslandExt.bed")
+
+  window_ranges$cgi<-ifelse(1:length(window_ranges) %in% queryHits(findOverlaps(window_ranges, cgi)), "cgi","noncgi")
+  table(window_ranges$cgi)
+
+    # cgi noncgi 
+  #10943   8428 
+
+  met_win<-met_win[row.names(met_win)%in% window_ranges$window_name,]
+
+  row.names(met_win)<-window_ranges[window_ranges$window_name %in% row.names(met_win),]$gene
+
+  met_win[1:5,1:5]
+
+  #add celltype information to methylation window
+  met_win<- met_win %>% t() %>% as.data.frame()
+  celltype_set<-setNames(obj@metadata$celltype,nm=row.names(obj@metadata))
+  met_win$celltype<-celltype_set[row.names(met_win)]
+  #now add metacell identity per celltype
+  #doing 50 cells
+  chunked_df_list <- met_win %>% group_by(celltype) %>% 
+    mutate(chunk_id = paste0(celltype,"_",ntile(row_number(), 50))) 
+
+  #summarize mean methylation over features per gene (in metacells)
+  met_win<-chunked_df_list %>% 
+          group_by(chunk_id) %>% 
+          summarise(across(where(is.numeric), ~ mean(.x, na.rm = TRUE))) %>% 
+          tibble::column_to_rownames(var = "chunk_id") %>% mutate(chunk_id=NULL) %>%
+          as.data.frame() %>% t() %>% as.data.frame()
+
+  #do the same for RNA, then do correlation per gene matching RNA to MET by metacells
+  #downsample to roughly same cell counts, then doing the same metacell stuff
+
+  Idents(rna)<-rna$orig.ident
+  rna_sub<-subset(rna,downsample=30000,features=row.names(met_win))
+    
+  rna_win<-FetchData(rna_sub,assay="RNA",vars=row.names(met_win),layer="data")
+  rna_win$celltype<-rna_sub$coarse_celltype[row.names(rna_win)]
+
+  chunked_df_list <- rna_win %>% group_by(celltype) %>% 
+                    mutate(chunk_id = paste0(celltype,"_",ntile(row_number(), 50))) 
+
+  rna_win<-chunked_df_list %>% 
+            group_by(chunk_id) %>% 
+            summarise(across(where(is.numeric), ~ mean(.x, na.rm = TRUE))) %>% 
+            tibble::column_to_rownames(var = "chunk_id") %>% mutate(chunk_id=NULL) %>%
+            as.data.frame() 
+
+  rna_win<-t(scale(rna_win,center=T,scale=F))
+
+  rna_win<-rna_win[,intersect(colnames(rna_win),colnames(met_win))]
+  met_win<-met_win[,intersect(colnames(rna_win),colnames(met_win))]
+
+  met_feat<-names(which(rowSums(!is.na(met_win))>=100)) #require at least 100 observations
+  met_win<-met_win[met_feat,]
+  rna_win<-rna_win[met_feat,]
+
+  gene_cor<-lapply(1:nrow(rna_win), function(i){
+    gene<-row.names(rna_win)[i]
+    gene_cor<-cor(unlist(rna_win[i,]),unlist(met_win[i,]),method="spearman",use="pairwise.complete")
+    return(c(i,gene,gene_cor,
+    mean(unlist(met_win[i,]),na.rm=T),
+    mean(unlist(rna_win[i,]),na.rm=T)))
+  })
+  out<-as.data.frame(do.call("rbind",gene_cor))
+  colnames(out)<-c("index","gene","cor","met","rna")
+  out$cor<-as.numeric(out$cor)
+  out$met<-as.numeric(out$met)
+  out$rna<-as.numeric(out$rna)
+  out<-out[complete.cases(out),]
+
+  out$label<-NA
+  out_bottom<-out %>% arrange(cor) %>% slice_head(n=20) 
+  out_top<-out %>% arrange(cor) %>% slice_tail(n=20)
+
+  out[out$gene %in% out_bottom$gene | out$gene %in% out_top$gene,]$label<-out[out$gene %in% out_bottom$gene | out$gene %in% out_top$gene,]$gene
+
+  out %>% filter(abs(cor)>0.2) %>% mutate(cor_direction=ifelse(cor>0,"pos","neg")) %>% group_by(cor_direction) %>% summarize(count=n())
+  
+  output_de_folder<-paste(project_data_directory,"04_dmr","dmr_across_celltype","rna_de",sep="/")
+  markers<-readRDS(paste0(output_de_folder,"/dmr_across_celltype.rna.DE.rds"))
+  markers<-markers %>% filter(p_val_adj<0.05) %>% filter(avg_log2FC>1)
+
+  #rna marker overlap
+  out$marker_overlap<-ifelse(out$gene %in% markers$gene,"TRUE","FALSE")
+  saveRDS(out,file=paste0("test.metacell.",outname,".cor.rds"))
+
+  out %>% filter(abs(cor)>0.2) %>% mutate(cor_direction=ifelse(cor>0,"pos","neg")) %>% group_by(cor_direction,marker_overlap) %>% summarize(count=n())
+  
+#order by absolute value of cor for plotting 
+out <- out %>% 
+  arrange(abs(cor))
+plt<-ggplot(out,aes(x=met,y=rna,color=cor,size=abs(cor),label=label))+
+geom_point()+
+geom_text_repel(size=2,color="black")+
+scale_color_gradient2(low="blue",mid="white",high="red")+
+theme_minimal()+
+scale_size_continuous(range = c(0, 3))+
+ggtitle("Metacell gene-wise correlation for feature window:",outname)
+ggsave(plt,file=paste0("test.metacell.",outname,".cor.pdf"),width=10,height=10)
+}
+
+```
+#so getting methylation and RNA per gene (over feature space), then per cell type subsetting to top 5000 variable genes and plotting
+```
+
+<!--
 Could also potentially run DMRs on broad_celltypes assigned. But I'm going to start at the cluster level.
 Note that this is not working, either the old method or the new method.
 

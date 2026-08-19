@@ -30,7 +30,7 @@ library(rtracklayer)
 library(cowplot)
 library(patchwork)
 
-rna<-readRDS("/data/rmulqueen/projects/scalebio_dcis/rna/tenx_dcis.pf.rds")
+rna_full<-readRDS("/data/rmulqueen/projects/scalebio_dcis/rna/tenx_dcis.pf.rds")
 rna<-subset(rna,cells=row.names(rna@meta.data)[!(rna$coarse_celltype %in% c("suspected_doublet"))])
 
 rna <- NormalizeData(rna, normalization.method = "LogNormalize", scale.factor = 10000)
@@ -50,6 +50,7 @@ rna@meta.data$fine_cluster_UMAP_Y<-rna@reductions$umap@cell.embeddings[,2]
 
 #read in object from directory
 task_cpus=300
+project_data_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1"
 processing_folder="03_fine_celltyping"
 wd=paste(sep="/",project_data_directory,processing_folder)
 setwd(wd)
@@ -57,7 +58,7 @@ obj<-readRDS(file=paste(project_data_directory,"02_copykit_cnv_calling","02_scal
 
 saveRDS(rna,file="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/03_fine_celltyping/03_rna.fine_celltyping.merged.rds")
 
-project_data_directory="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1"
+rna<-readRDS(file="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/03_fine_celltyping/03_rna.fine_celltyping.merged.rds")
 
 ```
 
@@ -364,11 +365,12 @@ cell_subtyping_clustering<-function(suffix="stromal",
     return(obj)
 }
 
-plot_umap_panels_met<-function(x=epithelial,outname="epithelial"){
+plot_umap_panels_met<-function(x=epithelial,outname="epithelial",outline=FALSE,raster=FALSE){
   #plot celltype
   plt_celltype<-x@metadata %>% 
-      ggplot(aes(x = fine_cluster_UMAP_X, y = fine_cluster_UMAP_Y, color = celltype)) +
-      geom_point() +
+      ggplot(aes(x = fine_cluster_UMAP_X, y = fine_cluster_UMAP_Y, color = celltype,alpha=0.1)) +
+      {if(outline)geom_point(color="black",size=2.5)}+
+      geom_point(size=1.5) +
       coord_fixed() + 
       theme_minimal() + xlab("UMAP X") + ylab("UMAP Y")+ ggtitle("cell type")+
       theme(axis.line.x = element_line(color = "black"), axis.line.y = element_line(color = "black"))+
@@ -378,8 +380,9 @@ plot_umap_panels_met<-function(x=epithelial,outname="epithelial"){
 
   #plot group
   plt_group<-x@metadata %>% 
-      ggplot(aes(x = fine_cluster_UMAP_X, y = fine_cluster_UMAP_Y, color = Group)) +
-      geom_point() +
+      ggplot(aes(x = fine_cluster_UMAP_X, y = fine_cluster_UMAP_Y, color = Group,alpha=0.1)) +
+      {if(outline)geom_point(color="black",size=2.5)}+
+      geom_point(size=1.5) +
       coord_fixed() + 
       theme_minimal() + xlab("UMAP X") + ylab("UMAP Y")+ ggtitle("read counts")+
       theme(axis.line.x = element_line(color = "black"), axis.line.y = element_line(color = "black"))+
@@ -390,8 +393,9 @@ plot_umap_panels_met<-function(x=epithelial,outname="epithelial"){
 
   #plot Sample
   plt_sample<-x@metadata %>% 
-      ggplot(aes(x = fine_cluster_UMAP_X, y = fine_cluster_UMAP_Y, color = Sample)) +
-      geom_point() +
+      ggplot(aes(x = fine_cluster_UMAP_X, y = fine_cluster_UMAP_Y, color = Sample,alpha=0.1)) +
+      {if(outline)geom_point(color="black",size=2.5)}+
+      geom_point(size=1.5) +
       coord_fixed() + 
       theme_minimal() + xlab("UMAP X") + ylab("UMAP Y")+ ggtitle("percent methylation")+
       theme(axis.line.x = element_line(color = "black"), axis.line.y = element_line(color = "black")) +
@@ -401,20 +405,22 @@ plot_umap_panels_met<-function(x=epithelial,outname="epithelial"){
 
   #plot %met
   plt_cgperc<-x@metadata %>% 
-      ggplot(aes(x = fine_cluster_UMAP_X, y = fine_cluster_UMAP_Y, color = mcg_pct)) +
-      geom_point() +
+      ggplot(aes(x = fine_cluster_UMAP_X, y = fine_cluster_UMAP_Y, color = mcg_pct,alpha=0.1)) +
+      {if(outline)geom_point(color="black",size=2.5)}+
+      geom_point(size=1.5) +
       coord_fixed() + 
       theme_minimal() + xlab("UMAP X") + ylab("UMAP Y")+ ggtitle("diagnostic group")+
       theme(axis.line.x = element_line(color = "black"), axis.line.y = element_line(color = "black")) +
-      scale_color_gradient2(low="#ff70ff",mid="#CCCCCC",high="#000000",midpoint=median(x@metadata$mcg_pct))
+      scale_color_gradient2(low="#ff70ff",mid="#CCCCCC",high="#000000",limits = c(0, 100),midpoint=median(x@metadata$mcg_pct))
   plt_cgperc_legend <- get_legend(plt_cgperc)
   plt_cgperc_umap<-plt_cgperc+ theme(legend.position='none')
 
 
   #plot %met
   plt_read<-x@metadata %>% 
-      ggplot(aes(x = fine_cluster_UMAP_X, y = fine_cluster_UMAP_Y, color = log10(unique_reads))) +
-      geom_point() +
+      ggplot(aes(x = fine_cluster_UMAP_X, y = fine_cluster_UMAP_Y, color = log10(unique_reads),alpha=0.1)) +
+      {if(outline)geom_point(color="black",size=2.5)}+
+      geom_point(size=1.5) +
       coord_fixed() + 
       theme_minimal() + xlab("UMAP X") + ylab("UMAP Y")+ ggtitle("sample")+
       theme(axis.line.x = element_line(color = "black"), axis.line.y = element_line(color = "black")) +
@@ -424,8 +430,9 @@ plot_umap_panels_met<-function(x=epithelial,outname="epithelial"){
 
   #plot ploidy
   plt_ploidy<-x@metadata %>% 
-      ggplot(aes(x = fine_cluster_UMAP_X, y = fine_cluster_UMAP_Y, color = cnv_ploidy_500kb)) +
-      geom_point() +
+      ggplot(aes(x = fine_cluster_UMAP_X, y = fine_cluster_UMAP_Y, color = cnv_ploidy_500kb,alpha=0.1)) +
+      {if(outline)geom_point(color="black",size=2.5)}+
+      geom_point(size=1.5) +
       coord_fixed() + 
       theme_minimal() + xlab("UMAP X") + ylab("UMAP Y")+ ggtitle("cnv based ploidy")+
       theme(axis.line.x = element_line(color = "black"), axis.line.y = element_line(color = "black")) +
@@ -440,11 +447,19 @@ plot_umap_panels_met<-function(x=epithelial,outname="epithelial"){
   umap_plts<-plt_celltype_umap+plt_read_umap+plt_cgperc_umap+plt_group_umap+plt_sample_umap+plt_ploidy_umap+ggplot() + plot_layout(design = layout)+theme(plot.margin = margin(l = 3, r = 3))
   legends_plts<-plot_grid(plt_celltype_legend, plt_read_legend, plt_cgperc_legend, plt_group_legend,plt_sample_legend,plt_ploidy_legend, nrow = 1, align = "h")
 
+  if(raster){
   ggsave(umap_plts,
-        file=paste0("03.1.",outname,".celltype.met.umap.pdf"),
-        width=60,
-        height=40,
-        limitsize=FALSE)
+  file=paste0("03.1.",outname,".celltype.met.umap.png"),
+  width=30,
+  height=20,dpi=600,
+  limitsize=FALSE)
+  }else{  
+  ggsave(umap_plts,
+  file=paste0("03.1.",outname,".celltype.met.umap.pdf"),
+  width=60,
+  height=40,
+  limitsize=FALSE)
+  }
 
   ggsave(legends_plts,
           file=paste0("03.1.",outname,".celltype.umap.met.legends.pdf"),
@@ -453,11 +468,12 @@ plot_umap_panels_met<-function(x=epithelial,outname="epithelial"){
           limitsize=FALSE)
 }
 
-plot_umap_panels_rna<-function(x=rna,outname="epithelial"){
+plot_umap_panels_rna<-function(x=rna,outname="epithelial",outline=FALSE,raster=FALSE){
   #plot celltype
   plt_celltype<-x@meta.data %>% 
       ggplot(aes(x = fine_cluster_UMAP_X, y = fine_cluster_UMAP_Y, color = coarse_celltype)) +
-      geom_point() +
+      {if(outline)geom_point(color="black",size=2.5)}+
+      geom_point(size=1.5) +
       coord_fixed() + 
       theme_minimal() + xlab("UMAP X") + ylab("UMAP Y")+ ggtitle("cell type")+
       theme(axis.line.x = element_line(color = "black"), axis.line.y = element_line(color = "black"))+
@@ -468,7 +484,8 @@ plot_umap_panels_rna<-function(x=rna,outname="epithelial"){
   #plot group
   plt_group<-x@meta.data %>% 
       ggplot(aes(x = fine_cluster_UMAP_X, y = fine_cluster_UMAP_Y, color = Group)) +
-      geom_point() +
+      {if(outline)geom_point(color="black",size=2.5)}+
+      geom_point(size=1.5) +
       coord_fixed() + 
       theme_minimal() + xlab("UMAP X") + ylab("UMAP Y")+ ggtitle("read counts")+
       theme(axis.line.x = element_line(color = "black"), axis.line.y = element_line(color = "black"))+
@@ -480,7 +497,8 @@ plot_umap_panels_rna<-function(x=rna,outname="epithelial"){
   #plot Sample
   plt_sample<-x@meta.data %>% 
       ggplot(aes(x = fine_cluster_UMAP_X, y = fine_cluster_UMAP_Y, color = sample)) +
-      geom_point() +
+      {if(outline)geom_point(color="black",size=2.5)}+
+      geom_point(size=1.5) +
       coord_fixed() + 
       theme_minimal() + xlab("UMAP X") + ylab("UMAP Y")+ ggtitle("percent methylation")+
       theme(axis.line.x = element_line(color = "black"), axis.line.y = element_line(color = "black")) +
@@ -491,7 +509,8 @@ plot_umap_panels_rna<-function(x=rna,outname="epithelial"){
   #plot ploidy
   plt_ploidy<-x@meta.data %>% 
       ggplot(aes(x = fine_cluster_UMAP_X, y = fine_cluster_UMAP_Y, color = rna_ploidy)) +
-      geom_point() +
+      {if(outline)geom_point(color="black",size=2.5)}+
+      geom_point(size=1.5) +
       coord_fixed() + 
       theme_minimal() + xlab("UMAP X") + ylab("UMAP Y")+ ggtitle("cnv based ploidy")+
       theme(axis.line.x = element_line(color = "black"), axis.line.y = element_line(color = "black")) +
@@ -499,28 +518,32 @@ plot_umap_panels_rna<-function(x=rna,outname="epithelial"){
   plt_ploidy_legend <- get_legend(plt_ploidy)
   plt_ploidy_umap<-plt_ploidy+ theme(legend.position='none')
 
-  layout<-"
-  AABD
-  AACE"
+ layout<-"
+  AABDF
+  AACEG"
 
-  umap_plts<-plt_celltype_umap+plt_group_umap+plt_sample_umap+plt_ploidy_umap+ggplot() + plot_layout(design = layout)+theme(plot.margin = margin(l = 3, r = 3))
+
+  umap_plts<-plt_celltype_umap+plt_group_umap+plt_sample_umap+plt_ploidy_umap+ggplot()+ggplot()+ggplot() + plot_layout(design = layout)+theme(plot.margin = margin(l = 3, r = 3))
   legends_plts<-plot_grid(plt_celltype_legend, plt_group_legend,plt_sample_legend,plt_ploidy_legend, nrow = 1, align = "h")
 
+  if(raster){
   ggsave(umap_plts,
-        file=paste0("03.1.",outname,".celltype.rna.umap.pdf"),
-        width=60,
-        height=40,
-        limitsize=FALSE)
+  file=paste0("03.1.",outname,".celltype.rna.umap.png"),
+  width=30,
+  height=20,dpi=600,
+  limitsize=FALSE)
+  }else{  
+  ggsave(umap_plts,
+  file=paste0("03.1.",outname,".celltype.rna.umap.pdf"),
+  width=60,
+  height=40,
+  limitsize=FALSE)
+  }
 
-  ggsave(legends_plts,
-          file=paste0("03.1.",outname,".celltype.rna.umap.legends.pdf"),
-          width=60,
-          height=10,
-          limitsize=FALSE)
 }
 ```
 
-```
+```R
 epithelial<-readRDS(file="03_scaledcis.fine_celltyping.epithelial.rds")
 immune<-readRDS(file="03_scaledcis.fine_celltyping.immune.rds")
 stromal<-readRDS(file="03_scaledcis.fine_celltyping.stromal.rds")
@@ -560,10 +583,12 @@ saveRDS(obj,file="03_scaledcis.final_celltypes.amethyst.rds")
 
 
 ```r
+
+obj<-readRDS(file=paste(project_data_directory,"03_fine_celltyping","03_scaledcis.final_celltypes.amethyst.rds",sep="/"))
 obj<-cell_subtyping_clustering(suffix="merged",
                           outdir="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/03_fine_celltyping/",
                           init_npc=50,
-                          pc_var_explained=85, #80
+                          pc_var_explained=95, #80
                           reduction_name="irlba_merged",
                           leiden_cluster_resolution=1e-5,
                           pheno_k=200,
@@ -584,8 +609,8 @@ obj<-generate_bigwig(obj=obj,
 #one cluster of note is 28 which has both aneuploid cells and basal cells, but looks like its a mix of samples
 #decided to not adjust any cell annotations
 
-plot_umap_panels_met(x=obj,outname="merged")
-plot_umap_panels_rna(x=rna,outname="merged")
+plot_umap_panels_met(x=obj,outname="merged",raster=TRUE,outline=TRUE)
+plot_umap_panels_rna(x=rna,outname="merged",raster=TRUE,outline=TRUE)
 
 obj<-generate_bigwig(obj=obj,
                         suffix="celltype",

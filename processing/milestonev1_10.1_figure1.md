@@ -31,6 +31,7 @@ saveRDS(obj,file=paste(project_data_directory,"03_fine_celltyping","03_scaledcis
 
 
 rna<-readRDS("/data/rmulqueen/projects/scalebio_dcis/rna/tenx_dcis.pf.rds")
+rna<-subset(rna,celltype!="suspected_doublet")
 
 ####################################################
 #           Fig 1 Sample Heatmap                  #
@@ -42,7 +43,10 @@ met<-obj@metadata
 #summarize per sample (heatmap categorical)
 met<-met[!duplicated(met$Sample),]
 met<-met[!is.na(met$Sample),]
-meta_cat<-met %>% group_by(Sample) %>% select(Sample,Group,DCIS_Grade,IDC_Differentiation,Age,Race_Ethnicity,Menopause,ER,PR,HER2) %>% as.data.frame()
+
+
+meta_cat<-met  %>% group_by(Sample) %>% dplyr::select(Sample,Group,DCIS_Grade,IDC_Differentiation,Age,Race_Ethnicity,Menopause,ER,PR,HER2) %>% as.data.frame()
+
 row.names(meta_cat)<-meta_cat$Sample
 meta_cat[which(is.na(meta_cat),arr.ind=T)]<-"N/A"
 meta_cat[which(meta_cat=="",arr.ind=T)]<-"N/A"
@@ -50,58 +54,8 @@ meta_cat[which(meta_cat=="",arr.ind=T)]<-"N/A"
 meta_cat$Group<-factor(meta_cat$Group,levels=c("HBCA","DCIS","Synchronous","IDC"))
 row_order<-rev(meta_cat %>% arrange(Group,ER,PR,HER2,Sample) %>% pull(Sample))
 
-race_ethnicity_col=c(
-    "African_American"="#0F6FC6",
-    "Asian"="#10CF9B",           
-    "White"="#A5C249",  
-    "Hispanic_or_Latino"="#DBEFF9")
-
 age_col=colorRamp2(breaks=c(min(meta_cat$Age,na.rm=T),median(meta_cat$Age,na.rm=T),max(meta_cat$Age,na.rm=T)),c("#53FFFF","#90A2FF","#FF7BFF"))
 
-class_col=c("+"="black",
-            "-"="grey",
-            "N/A"="white")
-
-grade_col=c("N/A"="white",
-            "G1"="#CCDF92",
-            "G2"="#8A9A5B",
-            "G3"="#45503B")
-differentiation_col=c("N/A"="white",
-            "well"="#B7957C",
-            "moderate"="#734939",
-            "poor"="#A6432D")
-
-menopause_col=c("Hysterectomy (perimenopausal)"="#E2BD6B",
-                "Perimenopausal"="#E2BD6B",
-                "Post-menopausal(Hysterectomy)"="#4D067B",
-                "Post-menopausal"="#4D067B",
-                "Pre-menopausal"="#B984DB",
-                "Unknown"="white",
-                "s/p hysterectomy"="#E2BD6B")
-
-group_col=c("DCIS"="#278192",
-            "HBCA"="#20223E",
-            "Synchronous"="#00B089",
-            "IDC"="#8FF7BD")
-
-
-#color assignment is fluor as cancer associated cell type, rest muted versions
-celltype_col=c(
-#orange and reds
-"pericyte"="#F1D302",
-"fibroblast"="#780000",
-"endothelial"="#F86624",
-
-#blues
-"myeloid"="#0B5563",
-"bcell"="#98C1D9",
-"tcell"="#43BCCD",
-
-#purple and high contract green
-"basal"="#f72585",
-"lumsec"="#C490D1",
-"lumhr"="#412854",
-"cancer"="#99ffd3")
 
 #plot metadata
 ha = rowAnnotation(
