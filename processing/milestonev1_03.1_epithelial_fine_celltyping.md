@@ -96,7 +96,6 @@ pct_table <- sweep(aneuploid_clust_table, 2, colSums(aneuploid_clust_table), FUN
 aneuploid_clusters<-colnames(pct_table)[pct_table["aneuploid",]>0.5]
 rna@meta.data[rna@meta.data$fine_clusters %in% aneuploid_clusters,]$coarse_celltype<-"cancer"
 
-
 #also assigning to those with majority single sample signatures, consistent with cancer clones
 #this just grabs cluster 10 and 19
 sample_clust_table<-table(rna$sample,rna$fine_clusters)
@@ -111,7 +110,6 @@ pct_table <- sweep(sample_clust_table, 2, colSums(aneuploid_clust_table), FUN = 
 sample_based_cancer<-which(pct_table>0.9,arr.ind=T)
 sample_cancer_col<-names(pct_table)[sample_based_cancer[,2]]
 rna@meta.data[rna@meta.data$fine_clusters %in% sample_cancer_col,]$coarse_celltype<-"cancer"
-
 
 saveRDS(rna,file="03_rna.fine_celltyping.epithelial.rds")
 Idents(rna)<-rna$fine_celltype
@@ -236,7 +234,6 @@ write_binned_bigwigs<-function(celltype_tracks=celltype_tracks,
       paste(c("color", paste(col2rgb(col_out[met])[,1],collapse=","),collapse=" "))))
   })
   return(c(list(multiwig),track_lines))
-  
 }
 
 generate_bigwig<-function(obj=immune,

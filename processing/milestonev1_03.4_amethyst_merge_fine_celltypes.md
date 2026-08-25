@@ -60,6 +60,8 @@ saveRDS(rna,file="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v
 
 rna<-readRDS(file="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/03_fine_celltyping/03_rna.fine_celltyping.merged.rds")
 
+rna@meta.data[rna@meta.data$coarse_celltype %in% c("basal","lumsec","lumhr","cancer"),]$coarse_celltype<-rna_epi@meta.data[row.names(rna@meta.data[rna@meta.data$coarse_celltype %in% c("basal","lumsec","lumhr","cancer"),]),]$coarse_celltype
+
 ```
 
 ```R
@@ -176,7 +178,6 @@ write_binned_bigwigs<-function(celltype_tracks=celltype_tracks,
   })
   return(c(list(multiwig),track_lines))
   
-
 }
 
 generate_bigwig<-function(obj=immune,
@@ -251,14 +252,9 @@ cell_subtyping_clustering<-function(suffix="stromal",
   print(paste0("Saving RNA umap to ",plot_dir))
 
   for(i in c("coarse_celltype","fine_celltype","Group")){
-      plt_dim<-DimPlot(rna,group.by=i,label=TRUE,raster=FALSE)
+      plt_dim<-DimPlot(rna,group.by=i,label=TRUE,raster=TRUE)
       ggsave(plt_dim,file=paste0(plot_dir,"/","tenx_dcis.pf.final.",suffix,".",i,".umap.pdf"),width=10)
       }
-
-  print(paste0("Saving RNA Markers to ",plot_dir))
-  Idents(rna)<-rna$coarse_celltype
-  rna_markers<-FindAllMarkers(rna,assay="RNA",only.pos=TRUE)
-  saveRDS(rna_markers,file=paste0(plot_dir,"/tenx_dcis.rna_markers.",suffix,".rds"))
 
   print(paste0("Saving plots to ",plot_dir))
 
@@ -274,7 +270,7 @@ cell_subtyping_clustering<-function(suffix="stromal",
 
   pca<- t(obj@genomeMatrices[["vmr_matrix_cg_residuals"]][row.names(top_var_features),]) %>% 
       scale(center = T, scale = F) %>% 
-      prcomp_iterative(n = init_npc)  # this is number of initial run principle components to get a sense of variance explained
+      prcomp_iterative(n = init_npc)  
 
   # Compute variance explained
   variance_explained <- pca$sdev^2
@@ -284,7 +280,7 @@ cell_subtyping_clustering<-function(suffix="stromal",
   #cut off pca at N% variance explained
   pca_to_use<-min(which(cumsum(percent_variance)>pc_var_explained))
 
-  pca_plt<-ggplot()+geom_point(aes(x=1:length(percent_variance),y=percent_variance)) + geom_vline(xintercept=pca_to_use,color="red")+theme_minimal() + ggtitle("PCA elbow with 75% variance explained")
+  pca_plt<-ggplot()+geom_point(aes(x=1:length(percent_variance),y=percent_variance)) + geom_vline(xintercept=pca_to_use,color="red")+theme_minimal() + ggtitle(paste0("PCA elbow with", as.character(pc_var_explained),"% variance explained"))
   ggsave(pca_plt,file=paste0(plot_dir,"/pca_variance_explained.",suffix,".pdf"))
   print(paste("PCs to explain",as.character(pc_var_explained),"%", "of captured variance:",as.character(pca_to_use)))
 
@@ -352,12 +348,17 @@ cell_subtyping_clustering<-function(suffix="stromal",
     obj@metadata$fine_cluster_phenograph<-paste0(suffix,"_",as.character(unlist(as.list(igraph::membership(umap_clus[[2]])))))
 
     print("Plotting...")
-    lapply(c("fine_cluster_leidenclus","fine_cluster_phenograph","Sample","mcg_pct","unique_reads","Group"), 
+    lapply(c("fine_cluster_leidenclus","fine_cluster_phenograph","Sample","mcg_pct","unique_reads","Group","celltype"), 
       function(groupby){
         if(groupby %in% colnames(obj@metadata)){
+
+      groupby_centers <- obj@metadata %>%
+        group_by(.data[[groupby]]) %>%
+        summarize(fine_cluster_UMAP_X = mean(fine_cluster_UMAP_X), fine_cluster_UMAP_Y = mean(fine_cluster_UMAP_Y))
+
           plt_clus<-obj@metadata %>% 
             ggplot(aes(x = fine_cluster_UMAP_X, y = fine_cluster_UMAP_Y, color = obj@metadata[[groupby]])) +
-              geom_point() +
+              geom_point() + geom_text_repel(data = groupby_centers,aes(label = .data[[groupby]]),color = "black",fontface = "bold", box.padding = 0.5)+
               coord_fixed()
             ggsave(plt_clus,file=paste0(plot_dir,"/","03.1.VMR_umap.",suffix,".",as.character(pca_to_use),".",as.character(min_dist),".","clus.",as.character(groupby),".pdf"),width=20,height=20)
           }
@@ -585,29 +586,36 @@ saveRDS(obj,file="03_scaledcis.final_celltypes.amethyst.rds")
 ```r
 
 obj<-readRDS(file=paste(project_data_directory,"03_fine_celltyping","03_scaledcis.final_celltypes.amethyst.rds",sep="/"))
+
 obj<-cell_subtyping_clustering(suffix="merged",
                           outdir="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/03_fine_celltyping/",
                           init_npc=50,
                           pc_var_explained=95, #80
                           reduction_name="irlba_merged",
-                          leiden_cluster_resolution=1e-5,
+                          leiden_cluster_resolution=1e-4,
                           pheno_k=200,
                           min_dist=1e-6,
                           var_features_count=20000,
                           n_neighbors=50) #20
 
+library(ggrepel)
+celltype_centers <- obj@metadata %>%
+  group_by(celltype) %>%
+  summarize(fine_cluster_UMAP_X = mean(fine_cluster_UMAP_X), fine_cluster_UMAP_Y = mean(fine_cluster_UMAP_Y))
 
+plt1<-ggplot(obj@metadata,aes(x=fine_cluster_UMAP_X,y=fine_cluster_UMAP_Y,color=celltype))+geom_point()+geom_text_repel(data = celltype_centers,aes(label = celltype),color = "black",fontface = "bold", box.padding = 0.5)
+
+cluster_centers <- obj@metadata %>%
+  group_by(fine_cluster_leidenclus) %>%
+  summarize(fine_cluster_UMAP_X = mean(fine_cluster_UMAP_X), fine_cluster_UMAP_Y = mean(fine_cluster_UMAP_Y))
+
+plt2<-ggplot(obj@metadata,aes(x=fine_cluster_UMAP_X,y=fine_cluster_UMAP_Y,color=fine_cluster_leidenclus))+geom_point()+geom_text_repel(data = cluster_centers,aes(label = fine_cluster_leidenclus),color = "black",fontface = "bold", box.padding = 0.5)
+ggsave(plt1|plt2,file="test.pdf",width=10)
 #check to ensure some suspect clusters are either real or doublets
 obj<-generate_bigwig(obj=obj,
                         suffix="merged",
                         groupBy="fine_cluster_phenograph",
                         outdir=getwd())
-
-#based on this, cell typing looks good! 
-#some small clusters that co-express different lineage markers are presumed to be from the merged data set
-#i.e. cluster 24 has PTPRC and COL1A1 markers, but looks like it is a mix of immune and fibroblast cells
-#one cluster of note is 28 which has both aneuploid cells and basal cells, but looks like its a mix of samples
-#decided to not adjust any cell annotations
 
 plot_umap_panels_met(x=obj,outname="merged",raster=TRUE,outline=TRUE)
 plot_umap_panels_rna(x=rna,outname="merged",raster=TRUE,outline=TRUE)

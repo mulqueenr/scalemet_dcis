@@ -107,7 +107,7 @@ Now run correlation between features and RNA
 - pairwise correlation (mean met, mean RNA) split by cell types
 
 ```R
-for(outname in c("promoters","promotersplus2kbp","genebody")){
+for(outname in c("promoters","promotersplus2kbp","genebody","promoter_genebody")){
   met_win<-readRDS(paste0("04_met_rna_integration.",outname,".CGpercentage.rds"))
   window_ranges<-readRDS(paste0(outname,".genomicRanges.rds"))
   dim(met_win)
@@ -196,7 +196,7 @@ for(outname in c("promoters","promotersplus2kbp","genebody")){
 Combine cells into metacells per celltype to reduce noise, find which genes (across cell types correlate to expression)
 ```R
 library(ggrepel)
-for(outname in c("promoters","promotersplus2kbp","genebody")){
+for(outname in c("promoters","promotersplus2kbp","genebody","promoter_genebody")){
   met_win<-readRDS(paste0("04_met_rna_integration.",outname,".CGpercentage.rds"))
   window_ranges<-readRDS(paste0(outname,".genomicRanges.rds"))
   dim(met_win)
