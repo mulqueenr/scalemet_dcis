@@ -377,7 +377,7 @@ plot_gsea<-function(gsea=hallmark_dmr,
 
 ```
 
-## Run 500 or 250bp windows per celltype/group and per clone and lumhr
+## Run 500 windows per celltype/group and per clone and lumhr
 
 ### Run per celltype
 Running at 500bp and 250bp window sizes
@@ -430,7 +430,7 @@ comparisons<-comparisons_without
 output_folder<-paste(project_data_directory,"04_dmr","dmr_across_celltype","dmr_out",sep="/")
 dir.create(output_folder)
 suffix="dmr_across_celltype"
-dmr_out<-lapply(row.names(comparisons),comparison_set_dmr)
+dmr_out<-parallel::mclapply(row.names(comparisons),comparison_set_dmr,mc.cores=100)
 dmr_out<-do.call("rbind",dmr_out)
 
 # 2. across cell types HBCA only (for normal set)
@@ -467,7 +467,7 @@ comparisons<-comparisons_HBCA_only
 output_folder<-paste(project_data_directory,"04_dmr","dmr_across_celltype_HBCAonly","dmr_out",sep="/")
 dir.create(output_folder)
 suffix="dmr_across_celltype_HBCAonly"
-dmr_out<-lapply(row.names(comparisons),comparison_set_dmr)
+dmr_out<-parallel::mclapply(row.names(comparisons),comparison_set_dmr,mc.cores=100)
 
 
 #3-4. do all one v one and one v rest comparisons per cell type
@@ -501,5 +501,5 @@ comparisons<-comparisons_within
 output_folder<-paste(project_data_directory,"04_dmr","dmr_within_celltype_across_group","dmr_out",sep="/")
 dir.create(output_folder)
 suffix="within_celltype_across_group"
-dmr_out<-lapply(row.names(comparisons),comparison_set_dmr)
+dmr_out<-parallel::mclapply(row.names(comparisons),comparison_set_dmr,mc.cores=100)
 dmr_out<-do.call("rbind",dmr_out)

@@ -207,7 +207,7 @@ generate_bigwig<-function(obj=immune,
 
 ```
 
-## Run 500 or 250bp windows per celltype/group and per clone and lumhr
+## Run 500bp windows per celltype/group and per clone and lumhr
 
 ### Run per celltype x group
 Running at 500bp and 250bp window sizes
@@ -225,19 +225,14 @@ obj<-generate_bigwig(obj=obj,
                         groupBy="celltype_group",
                         step=500,
                         outdir=getwd())
-
-obj<-generate_bigwig(obj=obj,
-                        suffix="dmr_celltype_group_250bp",
-                        groupBy="celltype_group",
-                        step=250,
-                        outdir=getwd())                      
+             
 ```
 
 
-## Run 500 or 250bp windows per celltype/group and per clone and lumhr
+## Run 500bp windows per celltype/group and per clone and lumhr
 
 ### Run per clone (within sample only)
-Running at 500bp and 250bp window sizes
+Running at 500bp window sizes
 Only run on cancer and lumhr
 
 #Rerun

@@ -180,60 +180,93 @@ write_binned_bigwigs<-function(celltype_tracks=celltype_tracks,
   
 }
 
-generate_bigwig<-function(obj=immune,
-                      suffix="immune",
-                      groupBy="fine_cluster_phenograph",
-                      outdir="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/03_fine_celltyping/"){
-  bigwig_output_dir=paste0(outdir,"/bigwig_output_",suffix)
-  system(paste("mkdir -p ", bigwig_output_dir))
-  system(paste("mkdir -p ", paste0(bigwig_output_dir,"/","hg38")))
 
-  obj@h5paths$path<-obj@h5paths$paths
-  obj@h5paths$barcode<-row.names(obj@h5paths)
 
-  #update to new smoothed windows
-  celltype500bpwindows <- calcSmoothedWindows(obj, 
-                                          type = "CG", 
-                                          threads = 300,
-                                          step = 500, 
-                                          smooth = 1,
-                                          genome = "hg38",
-                                          index = "chr_cg",
-                                          groupBy = groupBy,
-                                          returnSumMatrix = TRUE, # save sum matrix for DMR analysis
-                                          returnPctMatrix = TRUE)
-  saveRDS(celltype500bpwindows,file=paste0(bigwig_output_dir,"/","03.1.VMR_umap.",suffix,".fine_cluster.500bp_windows.rds"))
-  obj@genomeMatrices[[paste0("cg_",suffix,"_cells_perc")]] <- celltype500bpwindows[["pct_matrix"]]
-  #output tracks as bigwig
-  groups<-colnames(celltype500bpwindows[["pct_matrix"]])[4:ncol(celltype500bpwindows[["pct_matrix"]])]
-  groups<-groups[groups!="NA"]
+write_single_bigwigs<-function(celltype_tracks=celltype_tracks,
+                                outdir=celltype_outdir,
+                                i){
+    #split bw into 4 files per cell type by methylation/average methylation
+    out_dat<-celltype_tracks %>% distinct(chr,start,end, .keep_all=TRUE) %>% select(chr,start,end,i) 
+
+    hg38_seq_info<-Seqinfo(genome="hg38")
+    out_dat<-GRanges(out_dat[complete.cases(out_dat),]) #filter NA
+    out_dat<-out_dat[out_dat@seqnames %in% hg38_seq_info@seqnames,] #filter chr
+    out_dat<-resize(out_dat,width=500)
+    names(out_dat@elementMetadata)<-"score"
+    mean_score<-mean(mcols(out_dat)$score)
+
+    out_dat <- out_dat %>% 
+                        as.data.frame() %>% 
+                        filter(mcols(out_dat)$score > mean_score) %>% 
+                        mutate(score=score-mean_score) %>% 
+                        GRanges() 
+    names(out_dat@elementMetadata)<-"score"
+    genome(out_dat)<-"hg38"
+    seqlengths(out_dat)<-as.data.frame(hg38_seq_info)[hg38_seq_info@seqnames %in% out_dat@seqnames,]$seqlengths #filter by seqlengths
+    export.bw(out_dat,con=paste0(outdir,"/",i,".singletrack.bw"))
   
-  #make track hub.txt
-  writeLines(c(
-    paste(c("hub", groupBy),collapse=" "),
-    paste(c("shortLabel", groupBy),collapse=" "),
-    paste(c("longLabel", groupBy),collapse=" "),
-    paste(c("genomesFile", "genomesFile.txt"),collapse=" "),
-    paste(c("email ryan"),collapse=" ")),
-  paste0(bigwig_output_dir,"/","hub.txt"))
-
-  #make track genomesFile.txt
-  writeLines(c(
-    paste(c("genome", "hg38"),collapse=" "),
-    paste(c("trackDb", "hg38/trackDb.txt"),collapse=" ")),
-  paste0(bigwig_output_dir,"/","genomesFile.txt"))
-  
-  #write out bigwigs and trackhub data
-  trackhub_dat<-lapply(groups,function(i) {
-    write_binned_bigwigs(celltype_tracks=celltype500bpwindows[["pct_matrix"]],
-                          outdir=paste0(bigwig_output_dir,"/","hg38"),
-                          i=i)})
-  file_conn <- file(paste0(bigwig_output_dir,"/hg38/","trackDb.txt"), open = "a")
-  for(i in trackhub_dat){writeLines(unlist(i), con = file_conn)}
-  close(file_conn)
-
-  return(obj)
 }
+
+  generate_bigwig<-function(obj=immune,tracktype="binned",
+                        suffix="immune",
+                        groupBy="fine_cluster_phenograph",
+                        outdir="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/03_fine_celltyping/"){
+    bigwig_output_dir=paste0(outdir,"/bigwig_output_",suffix)
+    system(paste("mkdir -p ", bigwig_output_dir))
+    system(paste("mkdir -p ", paste0(bigwig_output_dir,"/","hg38")))
+
+    obj@h5paths$path<-obj@h5paths$paths
+    obj@h5paths$barcode<-row.names(obj@h5paths)
+
+    #update to new smoothed windows
+    celltype500bpwindows <- calcSmoothedWindows(obj, 
+                                            type = "CG", 
+                                            threads = 300,
+                                            step = 500, 
+                                            smooth = 1,
+                                            genome = "hg38",
+                                            index = "chr_cg",
+                                            groupBy = groupBy,
+                                            returnSumMatrix = TRUE, # save sum matrix for DMR analysis
+                                            returnPctMatrix = TRUE)
+    saveRDS(celltype500bpwindows,file=paste0(bigwig_output_dir,"/","03.1.VMR_umap.",suffix,".fine_cluster.500bp_windows.rds"))
+    obj@genomeMatrices[[paste0("cg_",suffix,"_cells_perc")]] <- celltype500bpwindows[["pct_matrix"]]
+    #output tracks as bigwig
+    groups<-colnames(celltype500bpwindows[["pct_matrix"]])[4:ncol(celltype500bpwindows[["pct_matrix"]])]
+    groups<-groups[groups!="NA"]
+    
+    if(tracktype=="binned"){
+      #make track hub.txt
+      writeLines(c(
+        paste(c("hub", groupBy),collapse=" "),
+        paste(c("shortLabel", groupBy),collapse=" "),
+        paste(c("longLabel", groupBy),collapse=" "),
+        paste(c("genomesFile", "genomesFile.txt"),collapse=" "),
+        paste(c("email ryan"),collapse=" ")),
+      paste0(bigwig_output_dir,"/","hub.txt"))
+
+      #make track genomesFile.txt
+      writeLines(c(
+        paste(c("genome", "hg38"),collapse=" "),
+        paste(c("trackDb", "hg38/trackDb.txt"),collapse=" ")),
+      paste0(bigwig_output_dir,"/","genomesFile.txt"))
+      
+      #write out bigwigs and trackhub data
+      trackhub_dat<-lapply(groups,function(i) {
+        write_binned_bigwigs(celltype_tracks=celltype500bpwindows[["pct_matrix"]],
+                              outdir=paste0(bigwig_output_dir,"/","hg38"),
+                              i=i)})
+      file_conn <- file(paste0(bigwig_output_dir,"/hg38/","trackDb.txt"), open = "a")
+      for(i in trackhub_dat){writeLines(unlist(i), con = file_conn)}
+      close(file_conn)
+    } else {
+      trackhub_dat<-lapply(groups,function(i) {
+      write_single_bigwigs(celltype_tracks=celltype500bpwindows[["pct_matrix"]],
+                            outdir=paste0(bigwig_output_dir,"/","hg38"),
+                            i=i)})
+    }
+    return(obj)
+  }
 
 cell_subtyping_clustering<-function(suffix="stromal",
                                     outdir="/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/03_fine_celltyping/",
@@ -471,7 +504,7 @@ plot_umap_panels_met<-function(x=epithelial,outname="epithelial",outline=FALSE,r
 
 plot_umap_panels_rna<-function(x=rna,outname="epithelial",outline=FALSE,raster=FALSE){
   #plot celltype
-  plt_celltype<-x@meta.data %>% 
+  plt_celltype<-x@meta.data %>%
       ggplot(aes(x = fine_cluster_UMAP_X, y = fine_cluster_UMAP_Y, color = coarse_celltype)) +
       {if(outline)geom_point(color="black",size=2.5)}+
       geom_point(size=1.5) +
@@ -598,24 +631,40 @@ obj<-cell_subtyping_clustering(suffix="merged",
                           var_features_count=20000,
                           n_neighbors=50) #20
 
-library(ggrepel)
-celltype_centers <- obj@metadata %>%
-  group_by(celltype) %>%
-  summarize(fine_cluster_UMAP_X = mean(fine_cluster_UMAP_X), fine_cluster_UMAP_Y = mean(fine_cluster_UMAP_Y))
-
-plt1<-ggplot(obj@metadata,aes(x=fine_cluster_UMAP_X,y=fine_cluster_UMAP_Y,color=celltype))+geom_point()+geom_text_repel(data = celltype_centers,aes(label = celltype),color = "black",fontface = "bold", box.padding = 0.5)
-
-cluster_centers <- obj@metadata %>%
-  group_by(fine_cluster_leidenclus) %>%
-  summarize(fine_cluster_UMAP_X = mean(fine_cluster_UMAP_X), fine_cluster_UMAP_Y = mean(fine_cluster_UMAP_Y))
-
-plt2<-ggplot(obj@metadata,aes(x=fine_cluster_UMAP_X,y=fine_cluster_UMAP_Y,color=fine_cluster_leidenclus))+geom_point()+geom_text_repel(data = cluster_centers,aes(label = fine_cluster_leidenclus),color = "black",fontface = "bold", box.padding = 0.5)
-ggsave(plt1|plt2,file="test.pdf",width=10)
 #check to ensure some suspect clusters are either real or doublets
 obj<-generate_bigwig(obj=obj,
                         suffix="merged",
                         groupBy="fine_cluster_phenograph",
-                        outdir=getwd())
+                        outdir=getwd(),tracktype="single"
+                        )
+
+#assign final cell types
+obj@metadata$subclustering_celltype<-obj@metadata$celltype
+celltype_clus<-setNames(rep("cancer",length(unique(obj@metadata$fine_cluster_phenograph))),
+                          nm=unique(obj@metadata$fine_cluster_phenograph))
+
+celltypes_noncancer=c(
+    "merged_16"="tcell", "merged_1"="tcell", "merged_3"="tcell",
+    "merged_6"="bcell", 
+    "merged_4"="myeloid",
+    "merged_24"="myeloid", 
+    "merged_2"="endothelial", 
+    "merged_20"="pericyte","merged_11"="pericyte", 
+    "merged_21"="fibroblast","merged_5"="fibroblast", "merged_13"="fibroblast", 
+    "merged_27"="basal","merged_19"="basal", "merged_9"="basal", 
+    "merged_22"="lumsec","merged_18"="lumsec", "merged_25"="lumsec", "merged_17"="lumsec","merged_14"="lumsec", 
+    "merged_12"="lumhr","merged_8"="lumhr", "merged_10"="lumhr")
+
+celltype_clus[names(celltypes_noncancer)]<-unname(celltypes_noncancer)
+obj@metadata$celltype<-unname(celltype_clus[obj@metadata$fine_cluster_phenograph])
+
+table(obj@metadata$celltype,obj@metadata$subclustering_celltype)
+#apply some apriori celltyping
+#if cell is "cancer" and "hbca" assign lumhr
+obj@metadata[obj@metadata$Group=="HBCA" & obj@metadata$celltype=="cancer",]$celltype<-"lumhr"
+
+#if cell is aneuploid assign cancer
+obj@metadata[obj@metadata$cnv_ploidy_500kb=="aneuploid",]$celltype<-"cancer"
 
 plot_umap_panels_met(x=obj,outname="merged",raster=TRUE,outline=TRUE)
 plot_umap_panels_rna(x=rna,outname="merged",raster=TRUE,outline=TRUE)

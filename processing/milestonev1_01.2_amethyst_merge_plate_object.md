@@ -122,6 +122,11 @@ dat_cellline@metadata$cellid<-row.names(dat_cellline@metadata)
 saveRDS(dat_cellline,file="01.0.cellline.amethyst.rds")
 dat_cellline<-readRDS(file="01.0.cellline.amethyst.rds")
 
+plt<-ggplot(dat_cellline@metadata,aes(x=Sample,y=mcg_pct,color=Sample),)+geom_jitter()+geom_boxplot(outlier.shape=NA,color="black")
+
+ggsave(plt,file="./plot/cellline_methylation.pdf")
+dat_cellline@metadata %>% group_by(Sample) %>% summarize(cg_cov=mean(cg_cov),cg_perc=mean(mcg_pct))
+
 ##########################################################################################
 ######################3. Add apriori metadata#############################################
 ##########################################################################################

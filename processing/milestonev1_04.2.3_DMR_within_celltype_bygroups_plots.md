@@ -993,7 +993,8 @@ seqinfo(dmr) <- Seqinfo(
   isCircular = rep(FALSE,length(levels(seqnames(dmr)))),
   genome = "hg38")
 
-
+dmr %>% as.data.frame() %>% filter(dmr_padj<0.05) %>% filter(direction=="hypo")  %>% filter(comparison_name=="basal_DCIS_v_basal_HBCA") %>% summarize(count=n(),logfc=mean(dmr_logFC),mean_size=mean(width),sum_size=sum(width))
+#%>% filter(is.finite(dmr_logFC))
 output_dmr_tracks_folder<-paste("/data/rmulqueen/projects/scalebio_dcis/data/250815_milestone_v1/04_dmr/bigwig_output_dmr_celltype_group_500bp",comparison_set,"met_dmr",sep="/")
 dir.create(output_dmr_tracks_folder,recursive=T)
 write_dmr_bed(dmr=dmr,prefix="celltype_within_group",output_folder=output_dmr_tracks_folder)

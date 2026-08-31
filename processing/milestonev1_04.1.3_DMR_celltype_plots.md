@@ -1,6 +1,5 @@
 
-Running differential methylation across clones.
-
+Plotting differential methylation results
 Running DMR comparisons across different sets.
 
 1. Cell type level comparison
